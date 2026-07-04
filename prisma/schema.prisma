@@ -1,0 +1,510 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String           @id @default(uuid())
+  email             String           @unique
+  phone             String?
+  username          String           @unique
+  displayName       String
+  avatar            String?
+  bio               String?
+  role              String           @default("USER")
+  subscription      String           @default("FREE")
+  subscriptionEnd   DateTime?
+  isVerified        Boolean          @default(false)
+  isActive          Boolean          @default(true)
+  isBanned          Boolean          @default(false)
+  bannedReason      String?
+  passwordHash      String    @default("")
+  googleId          String?
+  refreshToken      String?
+  fcmToken          String?
+  preferredLang     String           @default("ru")
+  preferredVehicle  String           @default("CAR")
+  homeAddress       String?
+  homeLat           Float?
+  homeLng           Float?
+  workAddress       String?
+  workLat           Float?
+  workLng           Float?
+  driverScore       Float            @default(5.0)
+  totalTrips        Int              @default(0)
+  totalDistance     Float            @default(0)
+  reputation        Int              @default(0)
+  city              String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  vehicles          Vehicle[]
+  trips             Trip[]
+  savedRoutes       SavedRoute[]
+  bookmarks         Bookmark[]
+  reports           Report[]
+  reportVotes       ReportVote[]
+  achievements      UserAchievement[]
+  sentMessages      Message[]        @relation("SentMessages")
+  receivedMessages  Message[]        @relation("ReceivedMessages")
+  followers         Follow[]         @relation("Following")
+  following         Follow[]         @relation("Followers")
+  groupMessages     GroupMessage[]
+  groupMembers      GroupMember[]
+  notifications     Notification[]
+  preferences       UserPreference?
+  sessions          Session[]
+  reviews           Review[]
+  fuelLogs          FuelLog[]
+  emergencyContacts EmergencyContact[]
+  fuelCalculations  FuelCalculation[]
+  premiumSubscriptions PremiumSubscription[]
+  ownedGroups       Group[]          @relation("GroupOwner")
+  cityChatMessages  CityChatMessage[]
+  friendsInitiated  Friend[]         @relation("UserFriends")
+  friendsAdded      Friend[]         @relation("FriendOf")
+
+  @@map("users")
+}
+
+model PremiumSubscription {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  tier          Int      @default(1)
+  levelName     String   @default("PREMIUM_BASIC")
+  startDate     DateTime @default(now())
+  endDate       DateTime
+  autoRenew     Boolean  @default(true)
+  price         Float    @default(0)
+  currency      String   @default("USD")
+  paymentId     String?
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("premium_subscriptions")
+}
+
+model Friend {
+  id        String   @id @default(uuid())
+  userId    String
+  friendId  String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+  @@unique([userId, friendId])
+  @@map("friends")
+}
+
+model EmergencyContact {
+  id           String  @id @default(uuid())
+  userId       String
+  name         String
+  phone        String
+  relation     String?
+  isNotified   Boolean @default(true)
+  createdAt    DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("emergency_contacts")
+}
+
+model FuelLog {
+  id           String   @id @default(uuid())
+  userId       String
+  vehicleId    String?
+  odometer     Float?
+  liters       Float
+  pricePerLiter Float?
+  totalCost    Float?
+  gasStation   String?
+  lat          Float?
+  lng          Float?
+  date         DateTime @default(now())
+  notes        String?
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@map("fuel_logs")
+}
+
+model FuelCalculation {
+  id            String   @id @default(uuid())
+  userId        String
+  originName    String
+  originLat     Float
+  originLng     Float
+  destName      String
+  destLat       Float
+  destLng       Float
+  distanceKm    Float
+  durationMin   Int
+  fuelConsumed  Float
+  fuelCost      Float
+  fuelPricePerLiter Float @default(0)
+  vehicleFuelEfficiency Float @default(0)
+  vehicleName   String?
+  routeType     String   @default("FASTEST")
+  createdAt     DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("fuel_calculations")
+}
+
+model UserPreference {
+  id                 String  @id @default(uuid())
+  userId             String  @unique
+  avoidTolls         Boolean @default(false)
+  avoidHighways      Boolean @default(false)
+  avoidFerries       Boolean @default(false)
+  preferScenicRoutes Boolean @default(false)
+  nightMode          Boolean @default(false)
+  voiceEnabled       Boolean @default(true)
+  voiceLanguage      String  @default("ru")
+  voiceVolume        Float   @default(1.0)
+  speedAlerts        Boolean @default(true)
+  cameraAlerts       Boolean @default(true)
+  trafficAlerts      Boolean @default(true)
+  hazardAlerts       Boolean @default(true)
+  restStopInterval   Int     @default(120)
+  fuelWarningLevel   Int     @default(20)
+  units              String  @default("metric")
+  mapStyle           String  @default("streets")
+  defaultRouteType   String  @default("fastest")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("user_preferences")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+model Vehicle {
+  id           String      @id @default(uuid())
+  userId       String
+  type         String      @default("CAR")
+  name         String
+  make         String?
+  model        String?
+  year         Int?
+  licensePlate String?
+  color        String?
+  weight       Float?
+  height       Float?
+  length       Float?
+  axleCount    Int?
+  fuelType     String      @default("gasoline")
+  fuelEfficiency Float?
+  tankCapacity Float?
+  isDefault    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trips Trip[]
+  fuelLogs FuelLog[]
+  @@map("vehicles")
+}
+
+model SavedRoute {
+  id          String    @id @default(uuid())
+  userId      String
+  name        String
+  originName  String
+  originLat   Float
+  originLng   Float
+  destName    String
+  destLat     Float
+  destLng     Float
+  waypoints   String?
+  routeType   String    @default("FASTEST")
+  distance    Float?
+  duration    Int?
+  polyline    String?
+  isFavorite  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("saved_routes")
+}
+
+model Trip {
+  id              String    @id @default(uuid())
+  userId          String
+  vehicleId       String?
+  originName      String
+  originLat       Float
+  originLng       Float
+  destName        String
+  destLat         Float
+  destLng         Float
+  routeType       String    @default("FASTEST")
+  distance        Float?
+  duration        Int?
+  plannedDuration Int?
+  fuelUsed        Float?
+  fuelCost        Float?
+  avgSpeed        Float?
+  maxSpeed        Float?
+  tollCost        Float?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  polyline        String?
+  status          String    @default("planned")
+  weatherSummary  String?
+  aiSuggestions   String?
+  ecoScore        Int?
+  safetyScore     Int?
+  createdAt       DateTime  @default(now())
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@map("trips")
+}
+
+model MapObject {
+  id          String            @id @default(uuid())
+  category    String
+  name        String
+  description String?
+  lat         Float
+  lng         Float
+  address     String?
+  phone       String?
+  website     String?
+  openHours   String?
+  amenities   String?
+  images      String?
+  rating      Float?
+  reviewCount Int               @default(0)
+  isVerified  Boolean           @default(false)
+  isActive    Boolean           @default(true)
+  isPremium   Boolean           @default(false)
+  data        String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  reviews  Review[]
+  bookmarks Bookmark[]
+  @@map("map_objects")
+}
+
+model Bookmark {
+  id          String   @id @default(uuid())
+  userId      String
+  mapObjectId String?
+  name        String
+  lat         Float
+  lng         Float
+  address     String?
+  note        String?
+  createdAt   DateTime @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mapObject MapObject? @relation(fields: [mapObjectId], references: [id])
+  @@map("bookmarks")
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  userId      String
+  mapObjectId String
+  rating      Int
+  comment     String?
+  images      String?
+  helpfulCount Int     @default(0)
+  createdAt   DateTime @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mapObject MapObject @relation(fields: [mapObjectId], references: [id], onDelete: Cascade)
+  @@unique([userId, mapObjectId])
+  @@map("reviews")
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  userId      String
+  type        String
+  status      String       @default("ACTIVE")
+  lat         Float
+  lng         Float
+  address     String?
+  description String?
+  images      String?
+  videos      String?
+  severity    Int          @default(3)
+  confidence  Float        @default(1.0)
+  confirmedBy Int          @default(0)
+  rejectedBy  Int          @default(0)
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  votes ReportVote[]
+  @@map("reports")
+}
+
+model ReportVote {
+  id        String   @id @default(uuid())
+  reportId  String
+  userId    String
+  isConfirm Boolean
+  createdAt DateTime @default(now())
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([reportId, userId])
+  @@map("report_votes")
+}
+
+model TrafficSegment {
+  id          String   @id @default(uuid())
+  roadId      String?
+  startLat    Float
+  startLng    Float
+  endLat      Float
+  endLng      Float
+  speedKmh    Float
+  freeFlowSpeed Float
+  congestion  Float
+  travelTime  Int
+  updatedAt   DateTime @updatedAt
+  @@map("traffic_segments")
+}
+
+model CityChatMessage {
+  id        String   @id @default(uuid())
+  city      String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([city, createdAt])
+  @@map("city_chat_messages")
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower  User @relation("Followers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  avatar      String?
+  region      String?
+  city        String?
+  ownerId     String
+  isPublic    Boolean  @default(true)
+  memberCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner    User         @relation("GroupOwner", fields: [ownerId], references: [id])
+  members  GroupMember[]
+  messages GroupMessage[]
+  @@map("groups")
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  isAdmin   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  receiverId  String
+  content     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  @@map("messages")
+}
+
+model GroupMessage {
+  id        String   @id @default(uuid())
+  groupId   String
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id])
+  @@map("group_messages")
+}
+
+model Achievement {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  description String
+  icon        String
+  points      Int    @default(0)
+  category    String
+  userAchievements UserAchievement[]
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String
+  achievementId String
+  earnedAt      DateTime @default(now())
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  data      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("notifications")
+}
+
+
+
+model Advertisement {
+  id          String   @id @default(uuid())
+  partnerId   String
+  title       String
+  description String?
+  imageUrl    String?
+  clickUrl    String
+  category    String
+  lat         Float?
+  lng         Float?
+  radius      Float?
+  budget      Float
+  spent       Float    @default(0)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  isActive    Boolean  @default(true)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime @default(now())
+  @@map("advertisements")
+}
