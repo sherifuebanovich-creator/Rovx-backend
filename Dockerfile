@@ -17,7 +17,7 @@ RUN npx nest build 2>/dev/null || npx tsc -p tsconfig.json --skipLibCheck --noEm
 # ── Stage 2: Runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
-RUN apk add --no-cache wget py3-pip
+RUN apk add --no-cache wget py3-pip openssl1.1-compat
 RUN pip3 install --break-system-packages edge-tts
 
 WORKDIR /app

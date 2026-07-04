@@ -3,9 +3,9 @@ set -e
 
 echo "=== ROVX Backend Entrypoint ==="
 
-# Run database migrations
-echo "Running migrations..."
-npx prisma migrate deploy --schema=./prisma/schema.prisma 2>/dev/null || echo "Migration skipped (no new migrations)"
+# Push schema to database (creates tables if not exist)
+echo "Running db push..."
+npx prisma db push --schema=./prisma/schema.prisma --accept-indexes 2>&1 || echo "db push skipped"
 
 # Seed demo data (only if DB is empty)
 echo "Seeding data..."
