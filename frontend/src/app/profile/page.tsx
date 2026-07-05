@@ -61,7 +61,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async () => {
     if (!editForm.displayName.trim()) {
-      toast.error('Display name is required');
+      toast.error(t('profile.displayNameRequired'));
       return;
     }
     setEditLoading(true);
@@ -74,7 +74,7 @@ export default function ProfilePage() {
       const updated = res.data.data || res.data;
       setUser({ ...user!, displayName: updated.displayName, username: updated.username, bio: updated.bio });
       setEditing(false);
-      toast.success('Profile updated');
+      toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to update profile';
       toast.error(msg);
@@ -133,7 +133,7 @@ export default function ProfilePage() {
     FREE: 'text-gray-400', PREMIUM_BASIC: 'text-primary-400', PREMIUM_STANDARD: 'text-accent-400', PREMIUM_MAX: 'text-yellow-400',
   };
   const tierLabels: Record<string, string> = {
-    FREE: 'Бесплатно', PREMIUM_BASIC: 'Premium Basic', PREMIUM_STANDARD: 'Premium Standard', PREMIUM_MAX: 'Premium Max',
+    FREE: t('premium.free'), PREMIUM_BASIC: t('premium.basic'), PREMIUM_STANDARD: t('premium.standard'), PREMIUM_MAX: t('premium.max'),
   };
 
   return (
@@ -159,27 +159,27 @@ export default function ProfilePage() {
                 value={editForm.displayName}
                 onChange={e => setEditForm(p => ({ ...p, displayName: e.target.value }))}
                 className="input-field text-center text-xl font-bold"
-                placeholder="Display name"
+                placeholder={t('profile.displayNamePlaceholder')}
               />
               <input
                 value={editForm.username}
                 onChange={e => setEditForm(p => ({ ...p, username: e.target.value }))}
                 className="input-field text-center text-sm"
-                placeholder="Username"
+                placeholder={t('profile.usernamePlaceholder')}
               />
               <textarea
                 value={editForm.bio}
                 onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))}
                 className="input-field text-center text-sm resize-none"
                 rows={2}
-                placeholder="Bio (optional)"
+                placeholder={t('profile.bioPlaceholder')}
               />
               <div className="flex gap-2 justify-center">
                 <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-all flex items-center gap-1">
-                  <FaTimes size={12} /> Cancel
+                  <FaTimes size={12} /> {t('common.cancel')}
                 </button>
                 <button onClick={handleSaveProfile} disabled={editLoading} className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm hover:bg-primary-500 transition-all flex items-center gap-1 disabled:opacity-50">
-                  {editLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaCheck size={12} /> Save</>}
+                  {editLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaCheck size={12} /> {t('common.save')}</>}
                 </button>
               </div>
             </div>

@@ -19,7 +19,8 @@
   "meta": {
     "title": "ROVX — Умная навигация",
     "description": "Навигация нового поколения с искусственным интеллектом для водителей, дальнобойщиков и путешественников",
-    "appName": "ROVX"
+    "appName": "ROVX",
+    "tagline": "AI Навигация"
   },
   "topbar": {
     "to": "Куда",
@@ -440,7 +441,12 @@
     "fuel": "Топливо:",
     "cancel": "Отмена",
     "editProfile": "Редактировать профиль",
-    "editProfileFull": "Настройки профиля"
+    "editProfileFull": "Настройки профиля",
+    "displayNameRequired": "Имя обязательно",
+    "profileUpdated": "Профиль обновлён",
+    "displayNamePlaceholder": "Имя",
+    "usernamePlaceholder": "Имя пользователя",
+    "bioPlaceholder": "О себе (необязательно)"
   },
   "bookmarks": {
     "loadFailed": "Не удалось загрузить закладки",
@@ -623,6 +629,10 @@
   "premium": {
     "title": "Премиум возможности",
     "subtitle": "Получите приоритетный статус, AI-ассистента и продвинутую навигацию",
+    "free": "Бесплатно",
+    "basic": "Premium Basic",
+    "standard": "Premium Standard",
+    "max": "Premium Max",
     "popular": "Популярно",
     "bestValue": "Максимум",
     "perMonth": "месяц",

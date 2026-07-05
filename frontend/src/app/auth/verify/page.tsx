@@ -110,10 +110,10 @@ function VerifyForm() {
 
       <div className="relative flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12">
         <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex items-center gap-3 mb-8">
-          <Image src="/logo.png" alt="ROVX" width={48} height={48} className="rounded-xl object-cover" />
+          <Image src="/logo.png" alt={t('meta.appName')} width={48} height={48} className="rounded-xl object-cover" />
           <div>
-            <h1 className="font-display text-2xl font-black text-white">ROVX</h1>
-            <p className="text-primary-400 text-xs">AI Navigation</p>
+            <h1 className="font-display text-2xl font-black text-white">{t('meta.appName')}</h1>
+            <p className="text-primary-400 text-xs">{t('meta.tagline')}</p>
           </div>
         </motion.div>
 

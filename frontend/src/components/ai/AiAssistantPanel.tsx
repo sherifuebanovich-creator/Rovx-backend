@@ -105,7 +105,7 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-safe-top pt-4 pb-4 border-b border-dark-border">
         <div className="relative w-10 h-10 flex-shrink-0">
-          <Image src="/logo.png" alt="ROVX" width={40} height={40} className="rounded-xl object-cover" />
+          <Image src="/logo.png" alt={t('meta.appName')} width={40} height={40} className="rounded-xl object-cover" />
           <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-dark-bg
             ${isAiCoDriverEnabled ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
         </div>

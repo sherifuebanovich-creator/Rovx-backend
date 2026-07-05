@@ -4,11 +4,7 @@ import { LANGUAGES } from '@/config/languages';
 import { FaChevronDown, FaSearch } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
-const POPULAR = [
-  'en', 'ru', 'uz', 'kk', 'tr', 'de', 'fr', 'es',
-  'it', 'pt', 'pl', 'uk', 'ar', 'hi', 'bn', 'zh',
-  'ja', 'ko', 'id', 'vi', 'th', 'az', 'ka', 'hy',
-];
+const POPULAR = ['en', 'ru'];
 
 interface LanguagePickerProps {
   value: string;
@@ -112,25 +108,29 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                     <span>{l.nativeName}</span>
                   </button>
                 ))}
-                <div className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold mt-0.5">
-                  {t('settings.allLanguages')}
-                </div>
-                {others.map((l) => (
-                  <button
-                    key={l.code}
-                    type="button"
-                    onClick={() => {
-                      onChange(l.code);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors hover:bg-dark-border/60 ${
-                      l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
-                    }`}
-                  >
-                    <span className="text-lg leading-none">{l.flag}</span>
-                    <span>{l.nativeName}</span>
-                  </button>
-                ))}
+                {others.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-semibold mt-0.5">
+                      {t('settings.allLanguages')}
+                    </div>
+                    {others.map((l) => (
+                      <button
+                        key={l.code}
+                        type="button"
+                        onClick={() => {
+                          onChange(l.code);
+                          setIsOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors hover:bg-dark-border/60 ${
+                          l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
+                        }`}
+                      >
+                        <span className="text-lg leading-none">{l.flag}</span>
+                        <span>{l.nativeName}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </div>

@@ -19,7 +19,8 @@
   "meta": {
     "title": "ROVX — Smart Navigation",
     "description": "Next-generation AI-powered navigation for drivers, truckers, and travelers",
-    "appName": "ROVX"
+    "appName": "ROVX",
+    "tagline": "AI Navigation"
   },
   "topbar": {
     "to": "To",
@@ -445,7 +446,12 @@
     "fuel": "Fuel:",
     "cancel": "Cancel",
     "editProfile": "Edit Profile",
-    "editProfileFull": "Profile Settings"
+    "editProfileFull": "Profile Settings",
+    "displayNameRequired": "Display name is required",
+    "profileUpdated": "Profile updated",
+    "displayNamePlaceholder": "Display name",
+    "usernamePlaceholder": "Username",
+    "bioPlaceholder": "Bio (optional)"
   },
   "bookmarks": {
     "loadFailed": "Failed to load bookmarks",
@@ -628,6 +634,10 @@
   "premium": {
     "title": "Premium Features",
     "subtitle": "Get priority status, AI assistant and advanced navigation",
+    "free": "Free",
+    "basic": "Premium Basic",
+    "standard": "Premium Standard",
+    "max": "Premium Max",
     "popular": "Popular",
     "bestValue": "Best Value",
     "perMonth": "month",
