@@ -20,5 +20,11 @@ echo "=== Running prisma db push ==="
 npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1
 echo "=== Prisma db push done ==="
 
+# Runtime patch: remove `include:{preferences:true}` from compiled auth service
+# This fixes registration hanging on non-verified users (Prisma include SELECT timeout)
+echo "=== Applying runtime patch for auth service ==="
+sed -i 's/,include:{preferences:true}//g' dist/auth/auth.service.js 2>/dev/null || true
+sed -i 's/,"include":{"preferences":true}//g' dist/auth/auth.service.js 2>/dev/null || true
+
 echo "Starting application..."
 exec node dist/main 2>&1
