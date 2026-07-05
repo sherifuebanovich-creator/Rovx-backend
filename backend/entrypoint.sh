@@ -12,8 +12,10 @@ export DATABASE_URL=$(
   sed -E 's/\?sslmode=require/?pgbouncer=true\&sslmode=require/'
 )
 
-# Push schema in background (tables needed for app)
-npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1 &
+# Push schema (tables needed for app)
+echo "=== Running prisma db push ==="
+npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1
+echo "=== Prisma db push done ==="
 
 echo "Starting application..."
 exec node dist/main 2>&1
