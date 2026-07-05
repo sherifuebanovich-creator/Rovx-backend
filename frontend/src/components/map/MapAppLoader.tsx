@@ -7,6 +7,7 @@ import Cookies from 'js-cookie';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 
+
 function MapLoadingFallback() {
   const { t } = useTranslation();
   return (
@@ -34,25 +35,41 @@ const MapApp = dynamic(() => import('@/components/map/MapApp'), {
 export default function MapAppLoader() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { user, isAuthenticated, isLoading } = useAuthStore();
+  const { user, isAuthenticated, isLoading, isInitDone } = useAuthStore();
   const [checking, setChecking] = useState(true);
   const redirectedRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    const hasToken = !!Cookies.get('access_token');
+    const check = () => {
+      const hasToken = !!Cookies.get('access_token');
+      if (useAuthStore.getState().isAuthenticated || useAuthStore.getState().user || hasToken) {
+        setChecking(false);
+        redirectedRef.current = false;
+        return true;
+      }
+      return false;
+    };
 
-    if (isLoading) return;
+    if (isLoading || !isInitDone) return;
 
-    if (isAuthenticated || user || hasToken) {
-      setChecking(false);
-      redirectedRef.current = false;
-      return;
-    }
+    if (check()) return;
 
     if (redirectedRef.current) return;
     redirectedRef.current = true;
 
-    const timer = setTimeout(() => {
+    const unsub = useAuthStore.subscribe((state) => {
+      if (state.isAuthenticated || state.user) {
+        clearTimeout(timerRef.current);
+        setChecking(false);
+        redirectedRef.current = false;
+        unsub();
+      }
+    });
+
+    timerRef.current = setTimeout(() => {
+      unsub();
+      if (check()) return;
       const hasVisited = localStorage.getItem('rovx_hasVisitedBefore');
       if (!hasVisited) {
         localStorage.setItem('rovx_hasVisitedBefore', 'true');
@@ -60,10 +77,13 @@ export default function MapAppLoader() {
       } else {
         router.replace('/auth/login');
       }
-    }, 300);
+    }, 2000);
 
-    return () => clearTimeout(timer);
-  }, [isAuthenticated, user, isLoading, router]);
+    return () => {
+      clearTimeout(timerRef.current);
+      unsub();
+    };
+  }, [isAuthenticated, user, isLoading, isInitDone, router]);
 
   if (checking) {
     return (
