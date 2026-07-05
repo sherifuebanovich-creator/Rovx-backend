@@ -13,20 +13,29 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
+  // eslint-disable-next-line no-console
+  console.log('=== BOOTSTRAP START ===');
+  // eslint-disable-next-line no-console
+  console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+  // eslint-disable-next-line no-console
+  console.log('DATABASE_URL_DIRECT exists:', !!process.env.DATABASE_URL_DIRECT);
 
   // Push Prisma schema before any DB access
   try {
-    logger.log('Running prisma db push...');
+    // eslint-disable-next-line no-console
+    console.log('Running prisma db push...');
     const pushResult = execSync(
       'npx prisma db push --accept-data-loss 2>&1',
-      { encoding: 'utf-8', timeout: 60000 },
+      { encoding: 'utf-8', timeout: 120000 },
     ).trim();
-    logger.log(pushResult.split('\n').pop() || 'prisma db push done');
+    // eslint-disable-next-line no-console
+    console.log('prisma db push result:', pushResult.split('\n').slice(-3).join('\n'));
   } catch (err: any) {
-    logger.warn(`prisma db push failed (non-fatal): ${err.message?.split('\n')[0]}`);
+    // eslint-disable-next-line no-console
+    console.log('prisma db push error:', err.message?.split('\n')[0]);
   }
 
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     logger: ['error', 'warn', 'log', 'debug'],
