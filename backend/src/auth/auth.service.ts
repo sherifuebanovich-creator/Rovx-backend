@@ -65,14 +65,14 @@ export class AuthService {
         displayName: dto.displayName || dto.username,
         passwordHash,
         preferredLang: dto.lang || 'ru',
-        preferences: {
-          create: {},
-        },
-      },
-      include: {
-        preferences: true,
       },
     });
+
+    this.prisma.userPreference.create({
+      data: { userId: user.id },
+    }).catch(err =>
+      this.logger.warn(`Failed to create user preferences: ${err.message}`)
+    );
 
     this.verificationService.generateCode(user.email).then(code =>
       this.mailService.sendVerificationCode(user.email, code).catch(err =>

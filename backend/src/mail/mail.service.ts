@@ -5,14 +5,15 @@ import * as nodemailer from 'nodemailer';
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null = null;
 
   constructor(private configService: ConfigService) {
     const user = this.configService.get('SMTP_USER');
     const pass = this.configService.get('SMTP_PASS');
 
     if (!user || !pass) {
-      this.logger.warn('SMTP not configured. Email sending will fail.');
+      this.logger.warn('SMTP not configured. Email sending will be skipped.');
+      return;
     }
 
     this.transporter = nodemailer.createTransport({
@@ -20,21 +21,30 @@ export class MailService {
       port: this.configService.get<number>('SMTP_PORT', 587),
       secure: false,
       auth: { user, pass },
+      connectionTimeout: 5000,
     });
   }
 
   async sendVerificationCode(to: string, code: string): Promise<void> {
+    if (!this.transporter) {
+      this.logger.warn(`SMTP not configured — skipping email to ${to}`);
+      return;
+    }
+
     const from =
       this.configService.get('MAIL_FROM') || this.configService.get('SMTP_USER');
 
-    await this.transporter.sendMail({
-      from,
-      to,
-      subject: 'Подтверждение email — ROVX',
-      html: this.buildVerificationEmail(code),
-    });
-
-    this.logger.log(`Verification code sent to ${to}`);
+    try {
+      await this.transporter.sendMail({
+        from,
+        to,
+        subject: 'Подтверждение email — ROVX',
+        html: this.buildVerificationEmail(code),
+      });
+      this.logger.log(`Verification code sent to ${to}`);
+    } catch (err: any) {
+      this.logger.warn(`Failed to send verification email: ${err.message}`);
+    }
   }
 
   private buildVerificationEmail(code: string): string {
