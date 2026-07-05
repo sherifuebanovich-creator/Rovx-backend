@@ -1,7 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -30,34 +28,54 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   private async ensureTables() {
     try {
-      const result = await this.$queryRawUnsafe<{exists: boolean}[]>(
-        `SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='users') as exists`
-      );
-      if (result[0]?.exists) return;
+      const result = await this.$queryRawUnsafe(
+        `SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='users') as "exists"`
+      ) as any;
+      if (result[0]?.exists) { this.logger.log('Tables already exist'); return; }
     } catch {
       // table check failed, proceed to create
     }
 
-    try {
-      this.logger.log('Creating database tables...');
-      const migrationPath = join(__dirname, '..', '..', 'prisma', 'migrations', '20260705101500_init', 'migration.sql');
-      const sql = readFileSync(migrationPath, 'utf-8');
-      const statements = sql
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'));
+    this.logger.log('Creating database tables...');
 
-      for (const stmt of statements) {
-        try {
-          await this.$executeRawUnsafe(stmt + ';');
-        } catch (err: any) {
-          this.logger.warn(`SQL warning (non-fatal): ${err.message?.slice(0, 100)}`);
-        }
+    const createTableSQLs = [
+      `CREATE TABLE IF NOT EXISTS "users" (
+          "id" TEXT NOT NULL,
+          "email" TEXT NOT NULL,
+          "username" TEXT NOT NULL,
+          "displayName" TEXT NOT NULL,
+          "passwordHash" TEXT NOT NULL DEFAULT '',
+          "googleId" TEXT,
+          "avatar" TEXT,
+          "phone" TEXT,
+          "bio" TEXT,
+          "role" TEXT NOT NULL DEFAULT 'USER',
+          "subscription" TEXT NOT NULL DEFAULT 'FREE',
+          "subscriptionEnd" TIMESTAMP(3),
+          "isVerified" BOOLEAN NOT NULL DEFAULT false,
+          "isActive" BOOLEAN NOT NULL DEFAULT true,
+          "isBanned" BOOLEAN NOT NULL DEFAULT false,
+          "preferredLang" TEXT NOT NULL DEFAULT 'ru',
+          "refreshToken" TEXT,
+          "city" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL,
+          CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email")`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "users_username_key" ON "users"("username")`,
+    ];
+
+    for (const sql of createTableSQLs) {
+      try {
+        await this.$executeRawUnsafe(sql);
+        this.logger.log(`Executed: ${sql.slice(0, 50)}...`);
+      } catch (err: any) {
+        this.logger.warn(`SQL warning: ${err.message?.slice(0, 120)}`);
       }
-      this.logger.log('Database tables created');
-    } catch (err: any) {
-      this.logger.error(`Failed to create tables: ${err.message}`);
     }
+
+    this.logger.log('Database tables check complete');
   }
 
   async cleanDatabase() {
