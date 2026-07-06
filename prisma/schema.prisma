@@ -333,17 +333,18 @@ model Bookmark {
 }
 
 model Review {
-  id          String   @id @default(uuid())
-  userId      String
-  mapObjectId String
-  rating      Int
-  comment     String?
-  images      String?
-  helpfulCount Int     @default(0)
-  createdAt   DateTime @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mapObject MapObject @relation(fields: [mapObjectId], references: [id], onDelete: Cascade)
-  @@unique([userId, mapObjectId])
+  id             String   @id @default(uuid())
+  userId         String
+  mapObjectId    String?
+  truckRestStopId String?
+  rating         Int
+  comment        String?
+  images         String?
+  helpfulCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mapObject  MapObject?   @relation(fields: [mapObjectId], references: [id])
+  truckStop  TruckRestStop? @relation(fields: [truckRestStopId], references: [id])
   @@map("reviews")
 }
 
