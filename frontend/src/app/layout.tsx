@@ -23,11 +23,16 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'ROVX — AI Navigation',
+    default: 'ROVX — Навигация для дальнобойщиков | AI маршруты, радары, стоянки',
     template: '%s | ROVX',
   },
-  description: 'Next-generation AI-powered navigation for drivers, truckers, and travelers. Real-time traffic, fuel prices, speed cameras, and smart route planning.',
-  keywords: ['navigation', 'GPS', 'AI', 'maps', 'route', 'traffic', 'fuel prices', 'speed cameras', 'truck navigation'],
+  description: 'Бесплатная AI-навигация для дальнобойщиков и водителей грузовиков. Камеры скорости, цены на топливо, весовые рамки, стоянки для фур, умные маршруты с учётом параметров ТС.',
+  keywords: [
+    'навигация для дальнобойщиков', 'грузоперевозки', 'AI навигация', 'камеры скорости',
+    'радары', 'цены на топливо', 'весовые рамки', 'стоянки для фур', 'truck navigation',
+    'GPS для грузовиков', 'маршруты для фур', 'дальнобой', 'truck routes', 'weigh stations',
+    'truck stops', 'fuel prices', 'speed cameras', 'caravan mode', 'ROVX'
+  ],
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -42,14 +47,14 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ru_RU',
     siteName: 'ROVX',
-    title: 'ROVX — AI Navigation',
-    description: 'Next-generation AI-powered navigation for drivers, truckers, and travelers.',
+    title: 'ROVX — AI навигация для дальнобойщиков',
+    description: 'Бесплатная AI-навигация для дальнобойщиков: камеры скорости, цены на топливо, стоянки для фур, весовые рамки и умная прокладка маршрутов с учётом параметров грузовика.',
     images: [{ url: '/opengraph-image', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ROVX — AI Navigation',
-    description: 'Next-generation AI-powered navigation for drivers, truckers, and travelers.',
+    title: 'ROVX — Навигация для дальнобойщиков',
+    description: 'Бесплатная AI-навигация для дальнобойщиков: камеры скорости, цены на топливо, стоянки для фур и маршруты для грузовиков.',
     images: ['/opengraph-image'],
   },
   robots: {

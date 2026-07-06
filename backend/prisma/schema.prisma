@@ -130,6 +130,7 @@ model FuelLog {
   notes        String?
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@index([lat, lng])
   @@map("fuel_logs")
 }
 
@@ -204,15 +205,22 @@ model Vehicle {
   weight       Float?
   height       Float?
   length       Float?
+  width        Float?
   axleCount    Int?
   fuelType     String      @default("gasoline")
   fuelEfficiency Float?
   tankCapacity Float?
+  cargoType    String?     // GENERAL, REFRIGERATED, LIQUID, DANGEROUS, OVERSIZE, LIVESTOCK
+  hazardousMaterials Boolean @default(false)
+  hasTrailer   Boolean     @default(false)
+  trailerType  String?     // SEMI, FULL, REEFER, FLATBED, TANKER, DUMP
+  maxPayload   Float?      // kg
   isDefault    Boolean     @default(false)
   createdAt    DateTime    @default(now())
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   trips Trip[]
   fuelLogs FuelLog[]
+  @@index([userId, type])
   @@map("vehicles")
 }
 
@@ -234,6 +242,8 @@ model SavedRoute {
   isFavorite  Boolean   @default(false)
   createdAt   DateTime  @default(now())
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([originLat, originLng])
+  @@index([destLat, destLng])
   @@map("saved_routes")
 }
 
@@ -256,6 +266,12 @@ model Trip {
   avgSpeed        Float?
   maxSpeed        Float?
   tollCost        Float?
+  cargoType       String?   // GENERAL, REFRIGERATED, LIQUID, DANGEROUS, OVERSIZE
+  cargoWeight     Float?    // kg
+  hazardousMaterials Boolean @default(false)
+  vehicleHeight   Float?    // m
+  vehicleWeight   Float?    // tonnes
+  vehicleLength   Float?    // m
   startedAt       DateTime?
   endedAt         DateTime?
   polyline        String?
@@ -267,6 +283,8 @@ model Trip {
   createdAt       DateTime  @default(now())
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@index([originLat, originLng])
+  @@index([destLat, destLng])
   @@map("trips")
 }
 
@@ -293,6 +311,8 @@ model MapObject {
   updatedAt   DateTime          @updatedAt
   reviews  Review[]
   bookmarks Bookmark[]
+  @@index([lat, lng])
+  @@index([category])
   @@map("map_objects")
 }
 
@@ -308,6 +328,7 @@ model Bookmark {
   createdAt   DateTime @default(now())
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   mapObject MapObject? @relation(fields: [mapObjectId], references: [id])
+  @@index([lat, lng])
   @@map("bookmarks")
 }
 
@@ -346,6 +367,8 @@ model Report {
   updatedAt   DateTime     @updatedAt
   user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   votes ReportVote[]
+  @@index([lat, lng])
+  @@index([type, status])
   @@map("reports")
 }
 
@@ -373,6 +396,8 @@ model TrafficSegment {
   congestion  Float
   travelTime  Int
   updatedAt   DateTime @updatedAt
+  @@index([startLat, startLng])
+  @@index([endLat, endLng])
   @@map("traffic_segments")
 }
 
@@ -487,8 +512,6 @@ model Notification {
   @@map("notifications")
 }
 
-
-
 model Advertisement {
   id          String   @id @default(uuid())
   partnerId   String
@@ -509,4 +532,57 @@ model Advertisement {
   endsAt      DateTime
   createdAt   DateTime @default(now())
   @@map("advertisements")
+}
+
+model SpeedCamera {
+  id        String   @id @default(uuid())
+  type      String   // STATIONARY, MOBILE, TRAFFIC_LIGHT, SECTION, AVERAGE
+  lat       Float
+  lng       Float
+  direction Float?   // direction of travel in degrees (0-360)
+  speedLimit Int?    // km/h
+  roadName  String?
+  isActive  Boolean  @default(true)
+  source    String   @default("USER") // USER, OFFICIAL, OVERPASS
+  verifiedAt DateTime?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lat, lng])
+  @@index([type, isActive])
+  @@map("speed_cameras")
+}
+
+model TruckRestStop {
+  id              String   @id @default(uuid())
+  name            String
+  lat             Float
+  lng             Float
+  address         String?
+  phone           String?
+  spots           Int?     // number of truck parking spots
+  hasSecurity     Boolean  @default(false)
+  hasShower       Boolean  @default(false)
+  hasToilet       Boolean  @default(false)
+  hasCafe         Boolean  @default(false)
+  hasHotel        Boolean  @default(false)
+  hasFuel         Boolean  @default(false)
+  hasTruckRepair  Boolean  @default(false)
+  hasWeighScale   Boolean  @default(false)
+  hasWifi         Boolean  @default(false)
+  hasElectricCharging Boolean @default(false)
+  hasTruckWash    Boolean  @default(false)
+  priceLevel      Int?     // 1-5
+  rating          Float?
+  images          String?
+  isVerified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reviews  Review[]
+
+  @@index([lat, lng])
+  @@index([hasFuel, hasSecurity, hasShower])
+  @@map("truck_rest_stops")
 }

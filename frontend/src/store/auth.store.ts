@@ -38,19 +38,21 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken, refreshToken, isAuthenticated: true });
         Cookies.set('access_token', accessToken, {
           expires: 1 / 96,
+          path: '/',
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
         });
         Cookies.set('refresh_token', refreshToken, {
           expires: 30,
+          path: '/',
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
         });
       },
 
       logout: () => {
-        Cookies.remove('access_token');
-        Cookies.remove('refresh_token');
+        Cookies.remove('access_token', { path: '/' });
+        Cookies.remove('refresh_token', { path: '/' });
         set({ user: null, isAuthenticated: false, preferences: null, accessToken: null, refreshToken: null });
       },
 
@@ -72,8 +74,8 @@ export const useAuthStore = create<AuthState>()(
           const api = (await import('@/lib/api')).default;
           const res = await api.get('/auth/me');
           const payload = res.data?.data || res.data || {};
-          const userData = payload.user || payload.data?.user;
-          if (userData) {
+          const userData = payload.user || payload;
+          if (userData?.id) {
             set({ user: userData, isAuthenticated: true, isLoading: false, isInitDone: true });
           } else {
             set({ isInitDone: true, isLoading: false });
