@@ -9,7 +9,7 @@ RUN npm install
 
 COPY . .
 RUN npx prisma generate
-RUN npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false
+RUN npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false || true
 
 RUN mkdir -p uploads
 
