@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaArrowLeft, FaRoute, FaMap, FaStar, FaTrophy, FaEdit, FaCrown, FaUser, FaCar, FaTruck, FaTrash, FaPlus, FaCheck, FaTimes, FaPhone, FaHome, FaBriefcase, FaMapMarkerAlt } from 'react-icons/fa';
+import { FaArrowLeft, FaRoute, FaMap, FaStar, FaTrophy, FaEdit, FaCrown, FaUser, FaCar, FaTruck, FaTrash, FaPlus, FaCheck, FaTimes, FaPhone, FaHome, FaBriefcase, FaMapMarkerAlt, FaCamera } from 'react-icons/fa';
 import { usersApi } from '@/lib/api';
 import { getFuelType } from '@/lib/fuelMap';
 import { Vehicle } from '@/types';
@@ -41,6 +41,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ displayName: '', username: '', bio: '', phone: '', city: '', homeAddress: '', workAddress: '' });
   const [editLoading, setEditLoading] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -63,6 +65,18 @@ export default function ProfilePage() {
     setEditing(true);
   };
 
+  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(t('profile.avatarTooLarge'));
+      return;
+    }
+    const dataUrl = await fileToDataUrl(file);
+    setAvatarFile(dataUrl);
+  };
+
   const handleSaveProfile = async () => {
     if (!editForm.displayName.trim()) {
       toast.error(t('profile.displayNameRequired'));
@@ -70,7 +84,7 @@ export default function ProfilePage() {
     }
     setEditLoading(true);
     try {
-      const res = await usersApi.updateProfile({
+      const payload: any = {
         displayName: editForm.displayName.trim(),
         username: editForm.username.trim(),
         bio: editForm.bio.trim(),
@@ -78,7 +92,11 @@ export default function ProfilePage() {
         city: editForm.city.trim(),
         homeAddress: editForm.homeAddress.trim(),
         workAddress: editForm.workAddress.trim(),
-      });
+      };
+      if (avatarFile) {
+        payload.avatar = avatarFile;
+      }
+      const res = await usersApi.updateProfile(payload);
       const updated = res.data.data || res.data;
       setUser({ ...user!,
         displayName: updated.displayName,
@@ -88,8 +106,10 @@ export default function ProfilePage() {
         city: updated.city,
         homeAddress: updated.homeAddress,
         workAddress: updated.workAddress,
+        avatar: updated.avatar || user!.avatar,
       });
       setEditing(false);
+      setAvatarFile(null);
       toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to update profile';
@@ -164,7 +184,27 @@ export default function ProfilePage() {
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center mb-8">
           <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-4xl font-bold text-white mb-4 shadow-glow-primary overflow-hidden relative">
-            {user.avatar ? <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" /> : (user.displayName ?? '?')[0].toUpperCase()}
+            {editing ? (
+              <>
+                <div onClick={() => avatarInputRef.current?.click()} className="w-full h-full flex items-center justify-center cursor-pointer group">
+                  {avatarFile ? (
+                    <img src={avatarFile} className="w-full h-full object-cover" />
+                  ) : user.avatar ? (
+                    <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" />
+                  ) : (
+                    <span>{(user.displayName ?? '?')[0].toUpperCase()}</span>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <FaCamera size={20} className="text-white" />
+                  </div>
+                </div>
+                <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+              </>
+            ) : (
+              <>
+                {user.avatar ? <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" /> : (user.displayName ?? '?')[0].toUpperCase()}
+              </>
+            )}
             <button onClick={startEditing} className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center border-2 border-dark-bg">
               <FaEdit size={12} className="text-white" />
             </button>

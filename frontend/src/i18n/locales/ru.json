@@ -526,6 +526,35 @@
   "mapPage": {
     "loading": "Загрузка карты..."
   },
+  "groups": {
+    "title": "Группы",
+    "back": "Назад",
+    "search": "Поиск групп",
+    "searchError": "Ошибка поиска",
+    "create": "Создать",
+    "createGroup": "Создать группу",
+    "created": "Группа создана",
+    "createFailed": "Не удалось создать группу",
+    "join": "Вступить",
+    "joinPlaceholder": "Введите название группы",
+    "joined": "Вступил",
+    "joinedSuccess": "Вы вступили в группу!",
+    "enterName": "Введите название группы",
+    "notFound": "Группы не найдены",
+    "loginRequired": "Войдите чтобы использовать группы",
+    "login": "Войти",
+    "all": "Все группы",
+    "my": "Мои группы",
+    "namePlaceholder": "Название группы",
+    "descriptionPlaceholder": "Описание",
+    "cityPlaceholder": "Город",
+    "public": "Публичная",
+    "cancel": "Отмена",
+    "owner": "Владелец",
+    "premiumRequired": "Требуется премиум",
+    "limitCheckFailed": "Ошибка проверки лимита",
+    "limitExceeded": "Лимит {{current}}/{{max}} достигнут"
+  },
   "friends": {
     "requestSent": "Запрос отправлен",
     "error": "Ошибка",
@@ -545,7 +574,8 @@
     "noFriends": "Пока нет друзей",
     "findFriends": "Найти друзей",
     "online": "В сети",
-    "offline": "Не в сети"
+    "offline": "Не в сети",
+    "searchError": "Ошибка поиска"
   },
   "fuel": {
     "petrol95": "АИ-95",
@@ -647,6 +677,7 @@
     "cancelError": "Ошибка отмены",
     "paymentSuccess": "Оплата прошла! Премиум активирован.",
     "paymentCanceled": "Оплата отменена. Деньги не списаны.",
+    "testModeActivated": "Премиум активирован (тестовый режим)!",
     "checkoutError": "Не удалось создать сессию оплаты",
     "subscribeError": "Ошибка оформления подписки",
     "features": {

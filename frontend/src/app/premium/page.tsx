@@ -55,21 +55,23 @@ function PremiumPage() {
   useEffect(() => {
     const success = searchParams.get('success');
     const canceled = searchParams.get('canceled');
+    const testMode = searchParams.get('test_mode');
     if (success === 'true') {
-      toast.success(t('premium.paymentSuccess'));
+      if (testMode === 'true') {
+        toast.success(t('premium.testModeActivated'));
+      } else {
+        toast.success(t('premium.paymentSuccess'));
+      }
       fetchData();
+      router.replace('/premium');
     } else if (canceled === 'true') {
       toast(t('premium.paymentCanceled'), { icon: '💳' });
+      router.replace('/premium');
     } else {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!loading) fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [i18n.language]);
 
   const fetchData = async () => {
     try {

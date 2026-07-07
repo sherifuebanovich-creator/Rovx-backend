@@ -531,6 +531,35 @@
   "mapPage": {
     "loading": "Loading map..."
   },
+  "groups": {
+    "title": "Groups",
+    "back": "Back",
+    "search": "Search groups",
+    "searchError": "Search failed",
+    "create": "Create",
+    "createGroup": "Create Group",
+    "created": "Group created",
+    "createFailed": "Failed to create group",
+    "join": "Join",
+    "joinPlaceholder": "Enter group name to join",
+    "joined": "Joined",
+    "joinedSuccess": "Joined group!",
+    "enterName": "Enter group name",
+    "notFound": "No groups found",
+    "loginRequired": "Sign in to use groups",
+    "login": "Sign In",
+    "all": "All groups",
+    "my": "My groups",
+    "namePlaceholder": "Group name",
+    "descriptionPlaceholder": "Description",
+    "cityPlaceholder": "City",
+    "public": "Public",
+    "cancel": "Cancel",
+    "owner": "Owner",
+    "premiumRequired": "Premium required",
+    "limitCheckFailed": "Failed to check limit",
+    "limitExceeded": "Limit {{current}}/{{max}} reached"
+  },
   "friends": {
     "requestSent": "Request sent",
     "error": "Error",
@@ -550,7 +579,8 @@
     "noFriends": "No friends yet",
     "findFriends": "Find Friends",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "searchError": "Search failed"
   },
   "fuel": {
     "petrol95": "AI-95",
@@ -652,6 +682,7 @@
     "cancelError": "Failed to cancel",
     "paymentSuccess": "Payment successful! Your premium is now active.",
     "paymentCanceled": "Payment was canceled. No charges were made.",
+    "testModeActivated": "Premium activated (test mode)!",
     "checkoutError": "Failed to create checkout session",
     "subscribeError": "Failed to process subscription",
     "features": {

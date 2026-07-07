@@ -51,6 +51,7 @@ export default function GroupsPage() {
       setSearchResults(res.data?.data || res.data || []);
     } catch {
       if (thisFetch === searchFetchId.current) setSearchResults([]);
+      toast.error(t('groups.searchError'));
     }
   };
 

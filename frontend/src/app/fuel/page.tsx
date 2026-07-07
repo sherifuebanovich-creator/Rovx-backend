@@ -1,6 +1,6 @@
 'use client';
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { fuelApi, mapApi } from '@/lib/api';
@@ -29,13 +29,18 @@ export default function FuelPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [suggestions, setSuggestions] = useState<{ origin: any[]; dest: any[] }>({ origin: [], dest: [] });
 
+  const searchIdRef = useRef(0);
   const searchLocation = async (q: string, field: 'origin' | 'dest') => {
     if (!q.trim()) { setSuggestions(p => ({ ...p, [field]: [] })); return; }
+    const thisId = ++searchIdRef.current;
     try {
       const res = await mapApi.search(q);
+      if (thisId !== searchIdRef.current) return;
       const data = res.data?.data || res.data;
       setSuggestions(p => ({ ...p, [field]: data || [] }));
-    } catch { setSuggestions(p => ({ ...p, [field]: [] })); }
+    } catch {
+      if (thisId === searchIdRef.current) setSuggestions(p => ({ ...p, [field]: [] }));
+    }
   };
 
   useEffect(() => {

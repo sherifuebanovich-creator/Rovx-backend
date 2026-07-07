@@ -425,103 +425,18 @@ export class ReportsService {
       data: { reputation: { increment: 5 } },
     });
 
-    // 1. Broadcast via WebSocket to nearby area
-    await this.gateway.broadcastReport(report);
-
     // --- Common data for notifications ---
     const timeStr = new Date().toLocaleString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
     const typeLabel = REPORT_TYPE_LABELS[dto.type] || dto.type;
-    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng));
+    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng).catch(() => null));
 
-    // 2. Send to Telegram bot
-    await this.telegram.sendReportNotification({
-      type: dto.type,
-      description: dto.description,
-      lat: dto.lat,
-      lng: dto.lng,
-      severity: dto.severity || 3,
-      images: dto.images,
-      address: dto.address,
-      city: reportCity || undefined,
-      time: timeStr,
-      userDisplayName: report.user?.displayName,
-    });
-
-    // 3. Send to all Premium users (tier 1+)
-    const premiumUserIds = await this.getPremiumUsers();
-
-    const notificationData = JSON.stringify({
-      reportId: report.id,
-      lat: dto.lat,
-      lng: dto.lng,
-      type: dto.type,
-      images: dto.images,
-      time: timeStr,
-      address: dto.address,
-      city: reportCity,
-      severity: dto.severity || 3,
-      description: dto.description,
-    });
-
-    for (const uid of premiumUserIds) {
-      if (uid === userId) continue;
-      const premiumNotif = await this.prisma.notification.create({
-        data: {
-          userId: uid,
-          type: 'report_premium',
-          title: `⚠️ ${typeLabel}`,
-          body: dto.description || `Новый репорт: ${typeLabel}`,
-          data: notificationData,
-        },
-      }).catch(() => null);
-      if (premiumNotif) {
-        await this.gateway.sendToUser(uid, 'notification:new', premiumNotif).catch(() => {});
-      }
-      await this.gateway.sendToUser(uid, 'report:new', {
-        ...report,
-        premiumNotification: true,
-        time: timeStr,
-      }).catch(() => {});
-    }
-
-    // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)
-    const city = reportCity;
-    if (city) {
-      const cityRoom = `city:${city.toLowerCase()}`;
-      this.gateway.emitToRoom(cityRoom, 'report:new', {
-        ...report,
-        cityNotification: true,
-        time: timeStr,
-        city,
-      });
-
-      // 5. Send to users in the same city
-      const cityUserIds = await this.getUsersInCity(city);
-      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumUserIds.includes(uid)))];
-      if (uniqueIds.length > 0) {
-        await this.prisma.notification.createMany({
-          data: uniqueIds.map(uid => ({
-            userId: uid,
-            type: 'report' as const,
-            title: `⚠️ ${typeLabel} в ${city}`,
-            body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
-            data: notificationData,
-          })),
-        }).catch(e => this.logger.error('Failed to batch-create city notifications', e));
-
-        for (const uid of uniqueIds) {
-          await this.gateway.sendToUser(uid, 'report:new', {
-            ...report,
-            cityNotification: true,
-            time: timeStr,
-          }).catch(() => {});
-        }
-      }
-      this.logger.log(`Sent city notifications to ${uniqueIds.length} users in ${city}`);
-    }
+    // Background notifications (don't block response)
+    this.sendReportNotifications(report, dto, userId, typeLabel, timeStr, reportCity).catch(e =>
+      this.logger.error('Background notifications failed', e),
+    );
 
     this.logger.log(`Report created: ${dto.type} by user ${userId}`);
     return this.formatReport(report);
@@ -665,5 +580,97 @@ export class ReportsService {
       data: { status: ReportStatus.EXPIRED },
     });
     this.logger.log(`Expired ${count.count} reports`);
+  }
+
+  private async sendReportNotifications(report: any, dto: CreateReportDto, userId: string, typeLabel: string, timeStr: string, reportCity: string | null) {
+    // 1. Broadcast via WebSocket to nearby area
+    await this.gateway.broadcastReport(report).catch(() => {});
+
+    // 2. Send to Telegram bot
+    await this.telegram.sendReportNotification({
+      type: dto.type,
+      description: dto.description,
+      lat: dto.lat,
+      lng: dto.lng,
+      severity: dto.severity || 3,
+      images: dto.images,
+      address: dto.address,
+      city: reportCity || undefined,
+      time: timeStr,
+      userDisplayName: report.user?.displayName,
+    }).catch(() => {});
+
+    // 3. Send to all Premium users (tier 1+)
+    const premiumUserIds = await this.getPremiumUsers().catch(() => []);
+
+    const notificationData = JSON.stringify({
+      reportId: report.id,
+      lat: dto.lat,
+      lng: dto.lng,
+      type: dto.type,
+      images: dto.images,
+      time: timeStr,
+      address: dto.address,
+      city: reportCity,
+      severity: dto.severity || 3,
+      description: dto.description,
+    });
+
+    for (const uid of premiumUserIds) {
+      if (uid === userId) continue;
+      const premiumNotif = await this.prisma.notification.create({
+        data: {
+          userId: uid,
+          type: 'report_premium',
+          title: `⚠️ ${typeLabel}`,
+          body: dto.description || `Новый репорт: ${typeLabel}`,
+          data: notificationData,
+        },
+      }).catch(() => null);
+      if (premiumNotif) {
+        await this.gateway.sendToUser(uid, 'notification:new', premiumNotif).catch(() => {});
+      }
+      await this.gateway.sendToUser(uid, 'report:new', {
+        ...report,
+        premiumNotification: true,
+        time: timeStr,
+      }).catch(() => {});
+    }
+
+    // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)
+    const city = reportCity;
+    if (city) {
+      const cityRoom = `city:${city.toLowerCase()}`;
+      this.gateway.emitToRoom(cityRoom, 'report:new', {
+        ...report,
+        cityNotification: true,
+        time: timeStr,
+        city,
+      });
+
+      // 5. Send to users in the same city
+      const cityUserIds = await this.getUsersInCity(city).catch(() => []);
+      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumUserIds.includes(uid)))];
+      if (uniqueIds.length > 0) {
+        await this.prisma.notification.createMany({
+          data: uniqueIds.map(uid => ({
+            userId: uid,
+            type: 'report' as const,
+            title: `⚠️ ${typeLabel} в ${city}`,
+            body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
+            data: notificationData,
+          })),
+        }).catch(e => this.logger.error('Failed to batch-create city notifications', e));
+
+        for (const uid of uniqueIds) {
+          await this.gateway.sendToUser(uid, 'report:new', {
+            ...report,
+            cityNotification: true,
+            time: timeStr,
+          }).catch(() => {});
+        }
+      }
+      this.logger.log(`Sent city notifications to ${uniqueIds.length} users in ${city}`);
+    }
   }
 }

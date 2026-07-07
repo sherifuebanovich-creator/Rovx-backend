@@ -44,6 +44,7 @@ export default function FriendsPage() {
       setSearchResults(res.data?.data || res.data || []);
     } catch {
       if (thisFetch === searchFetchId.current) setSearchResults([]);
+      toast.error(t('friends.searchError'));
     }
     finally { if (thisFetch === searchFetchId.current) setSearchLoading(false); }
   };
