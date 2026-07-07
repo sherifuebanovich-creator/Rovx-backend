@@ -451,7 +451,8 @@
     "profileUpdated": "Profile updated",
     "displayNamePlaceholder": "Display name",
     "usernamePlaceholder": "Username",
-    "bioPlaceholder": "Bio (optional)"
+    "bioPlaceholder": "Bio (optional)",
+    "avatarTooLarge": "Image too large (max 5MB)"
   },
   "bookmarks": {
     "loadFailed": "Failed to load bookmarks",

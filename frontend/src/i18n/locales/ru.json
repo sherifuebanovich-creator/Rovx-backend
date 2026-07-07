@@ -446,7 +446,8 @@
     "profileUpdated": "Профиль обновлён",
     "displayNamePlaceholder": "Имя",
     "usernamePlaceholder": "Имя пользователя",
-    "bioPlaceholder": "О себе (необязательно)"
+    "bioPlaceholder": "О себе (необязательно)",
+    "avatarTooLarge": "Изображение слишком большое (макс 5МБ)"
   },
   "bookmarks": {
     "loadFailed": "Не удалось загрузить закладки",
