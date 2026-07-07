@@ -22,18 +22,12 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3001);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
-  // Increase body parser limit for photo/video uploads in reports
   app.useBodyParser('json', { limit: '50mb' });
   app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
 
-  // Security
-  app.use(helmet({
-    crossOriginEmbedderPolicy: false,
-    contentSecurityPolicy: false,
-  }));
+  app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
   app.use(compression());
 
-  // CORS
   app.enableCors({
     origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000').split(','),
     credentials: true,
@@ -41,13 +35,9 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token'],
   });
 
-  // Global prefix
   app.setGlobalPrefix(apiPrefix);
-
-  // Raw body for Stripe webhooks (must be after global prefix)
   app.use(`/${apiPrefix}/premium/webhook`, express.raw({ type: 'application/json' }));
 
-  // Global pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -57,14 +47,9 @@ async function bootstrap() {
     }),
   );
 
-  // Global filters & interceptors
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(
-    new LoggingInterceptor(),
-    new TransformInterceptor(),
-  );
+  app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
 
-  // Swagger
   if (configService.get('NODE_ENV') !== 'production') {
     const config = new DocumentBuilder()
       .setTitle('ROVX API')

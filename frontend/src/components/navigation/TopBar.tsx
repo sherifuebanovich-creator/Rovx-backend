@@ -81,7 +81,7 @@ export function TopBar() {
           </button>
 
           {/* Map mode selector */}
-          <div className="relative hidden sm:block">
+          <div className="relative">
             <button
               onClick={() => setShowModeMenu(!showModeMenu)}
               className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all"
@@ -152,7 +152,7 @@ export function TopBar() {
               if (next && mapStyle === 'streets') setMapStyle('night');
               else if (!next && mapStyle === 'night') setMapStyle('streets');
             }}
-            className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all hidden sm:flex"
+            className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all"
             title={darkMode ? t('topbar.lightTheme') : t('topbar.darkTheme')}
           >
             {darkMode ? <FaSun size={13} className="text-yellow-400" /> : <FaMoon size={13} className="text-gray-300" />}

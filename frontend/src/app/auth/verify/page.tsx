@@ -104,8 +104,8 @@ function VerifyForm() {
   return (
     <div className="min-h-dvh bg-dark-bg flex flex-col overflow-y-auto safe-bottom safe-top">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-primary-900/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/4 w-64 h-64 bg-accent-900/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 left-1/3 w-[50vw] h-[50vw] max-w-80 max-h-80 bg-primary-900/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/3 right-1/4 w-[40vw] h-[40vw] max-w-64 max-h-64 bg-accent-900/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12">
@@ -140,7 +140,7 @@ function VerifyForm() {
             )}
 
             <form onSubmit={handleVerify}>
-              <div className="flex items-center justify-center gap-2.5 mb-6" onPaste={handlePaste}>
+              <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 mb-6" onPaste={handlePaste}>
                 {code.map((digit, i) => (
                   <input
                     key={i}
@@ -153,7 +153,7 @@ function VerifyForm() {
                     onChange={(e) => handleCodeChange(i, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(i, e)}
                     onFocus={(e) => e.target.select()}
-                    className={`w-11 h-12 text-center text-lg font-bold rounded-xl border outline-none transition-all
+                    className={`w-9 sm:w-11 h-10 sm:h-12 text-center text-base sm:text-lg font-bold rounded-xl border outline-none transition-all
                       ${digit ? 'border-primary-500/60 bg-primary-600/15 text-white' : 'border-white/10 bg-white/5 text-white'}
                       focus:border-primary-400 focus:bg-primary-600/10 focus:ring-1 focus:ring-primary-400/50
                       ${code.length === CODE_LENGTH && code.every(Boolean) ? 'ring-1 ring-primary-400/40' : ''}

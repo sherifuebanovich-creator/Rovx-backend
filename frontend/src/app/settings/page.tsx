@@ -83,7 +83,7 @@ export default function SettingsPage() {
     await signOut({ redirect: false });
     useAuthStore.getState().logout();
     toast.success(t('settings.loggedOut'));
-    router.push('/auth/login');
+    router.push('/');
   };
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
@@ -110,7 +110,7 @@ export default function SettingsPage() {
           right: (
             <button onClick={() => setShowLangPicker(true)}
               className="text-sm text-gray-300 hover:text-white transition-all flex items-center gap-1.5">
-              {getLanguageConfig(lang).flag} {getLanguageConfig(lang).nativeName}
+              <span className="font-emojiflag">{getLanguageConfig(lang).flag}</span> {getLanguageConfig(lang).nativeName}
             </button>
           )
         },
@@ -361,7 +361,7 @@ export default function SettingsPage() {
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left hover:bg-white/5 ${
                     lang === l.code ? 'bg-primary-600/20' : ''
                   }`}>
-                  <span className="text-xl flex-shrink-0">{l.flag}</span>
+                  <span className="text-xl flex-shrink-0 font-emojiflag">{l.flag}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white font-medium">{l.nativeName}</p>
                     <p className="text-[11px] text-gray-500">{l.englishName}</p>

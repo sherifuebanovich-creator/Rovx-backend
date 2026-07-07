@@ -23,7 +23,7 @@ export class PremiumService {
   ) {
     const stripeKey = this.config.get('STRIPE_SECRET_KEY');
     if (stripeKey) {
-      this.stripe = new Stripe(stripeKey, { apiVersion: '2026-06-24.dahlia' });
+      this.stripe = new Stripe(stripeKey);
     }
   }
 

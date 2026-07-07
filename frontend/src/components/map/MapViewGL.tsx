@@ -47,6 +47,10 @@ export default function MapViewGL() {
   const darkMode = useMapStore(s => s.darkMode);
   const show3D = useMapStore(s => s.show3D);
 
+  const navigation = useMapStore(s => s.navigation);
+  const isNavigatingRef = useRef(false);
+  isNavigatingRef.current = navigation.isNavigating;
+
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
 
@@ -269,6 +273,7 @@ export default function MapViewGL() {
   const loadObjectsInBounds = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
+      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) return;
 
@@ -306,6 +311,7 @@ export default function MapViewGL() {
   const loadReportsInBounds = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
+      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) return;
 
@@ -381,6 +387,7 @@ export default function MapViewGL() {
   const loadTrafficSignals = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
+      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) {
         cleanupMarkers(trafficMarkersRef.current);
@@ -448,6 +455,21 @@ export default function MapViewGL() {
     loadReportsInBounds(bounds);
     loadTrafficSignals(bounds);
   }, [activeCategories, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
+
+  // Clear markers during navigation (like Yandex Navigation), restore when stopped
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (navigation.isNavigating) {
+      cleanupMarkers(objectMarkersRef.current);
+      cleanupMarkers(reportMarkersRef.current);
+      cleanupMarkers(trafficMarkersRef.current);
+    } else {
+      const bounds = mapRef.current.getBounds();
+      loadObjectsInBounds(bounds);
+      loadReportsInBounds(bounds);
+      loadTrafficSignals(bounds);
+    }
+  }, [navigation.isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals, cleanupMarkers]);
 
   return (
     <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>

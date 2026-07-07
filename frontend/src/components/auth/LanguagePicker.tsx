@@ -48,8 +48,9 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
         onClick={() => setIsOpen(!isOpen)}
         className="input-field flex items-center gap-2 w-full cursor-pointer"
       >
-        <span className="text-lg leading-none">{selected.flag}</span>
+        <span className="text-lg leading-none font-emojiflag">{selected.flag}</span>
         <span className="flex-1 text-left text-sm truncate">{selected.nativeName}</span>
+        <span className="text-[10px] text-gray-500 uppercase ml-1">{selected.code}</span>
         <FaChevronDown size={10} className={`text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
@@ -82,8 +83,9 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                     l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
                   }`}
                 >
-                  <span className="text-lg leading-none">{l.flag}</span>
+                  <span className="text-lg leading-none font-emojiflag">{l.flag}</span>
                   <span>{l.nativeName}</span>
+                  <span className="text-gray-500 text-[10px] uppercase font-mono ml-1">{l.code}</span>
                   <span className="text-gray-600 text-[11px] ml-auto">{l.englishName}</span>
                 </button>
               ))
@@ -104,8 +106,9 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                       l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
                     }`}
                   >
-                    <span className="text-lg leading-none">{l.flag}</span>
+                    <span className="text-lg leading-none font-emojiflag">{l.flag}</span>
                     <span>{l.nativeName}</span>
+                    <span className="text-gray-500 text-[10px] uppercase font-mono ml-1">{l.code}</span>
                   </button>
                 ))}
                 {others.length > 0 && (
@@ -125,8 +128,9 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                           l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
                         }`}
                       >
-                        <span className="text-lg leading-none">{l.flag}</span>
+                        <span className="text-lg leading-none font-emojiflag">{l.flag}</span>
                         <span>{l.nativeName}</span>
+                        <span className="text-gray-500 text-[10px] uppercase font-mono ml-1">{l.code}</span>
                       </button>
                     ))}
                   </>

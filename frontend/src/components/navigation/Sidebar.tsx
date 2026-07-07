@@ -91,7 +91,7 @@ export function Sidebar() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2 mt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
               {stats.map((s) => (
                 <div key={s.label} className="bg-white/5 rounded-xl p-2 text-center">
                   <p className="text-sm font-bold text-white">{s.value}</p>

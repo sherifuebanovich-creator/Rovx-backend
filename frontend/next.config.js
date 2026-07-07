@@ -2,7 +2,7 @@
 
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  output: process.env.VERCEL ? undefined : 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**' },

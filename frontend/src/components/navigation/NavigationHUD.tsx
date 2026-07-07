@@ -303,17 +303,17 @@ export function NavigationHUD() {
             <p className="text-[8px] sm:text-[10px] text-gray-400">{t('navigationHud.destination')}</p>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button onClick={() => setAiCoDriver(!isAiCoDriverEnabled)}
-              className={`w-7 sm:w-8 h-7 sm:h-8 rounded-lg flex items-center justify-center transition-all ${
+              className={`w-9 sm:w-10 h-9 sm:h-10 rounded-xl flex items-center justify-center transition-all ${
                 isAiCoDriverEnabled ? 'bg-primary-600 text-white' : 'bg-white/10 text-gray-400'
               }`}>
-              {isAiCoDriverEnabled ? <FaVolumeUp size={12} /> : <FaVolumeMute size={12} />}
+              {isAiCoDriverEnabled ? <FaVolumeUp size={14} /> : <FaVolumeMute size={14} />}
             </button>
             <button onClick={clearRoute}
-              className="w-7 sm:w-8 h-7 sm:h-8 bg-red-600/20 rounded-lg flex items-center justify-center
+              className="w-9 sm:w-10 h-9 sm:h-10 bg-red-600/20 rounded-xl flex items-center justify-center
                          text-red-400 hover:bg-red-600/40 transition-all">
-              <FaTimes size={12} />
+              <FaTimes size={14} />
             </button>
           </div>
         </div>

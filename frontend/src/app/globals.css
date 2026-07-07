@@ -267,3 +267,8 @@ html {
 button, a {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Emoji flag font fallback for systems without color emoji support */
+.font-emojiflag {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Facebook Emoji', 'Twemoji Mozilla', 'EmojiOne Color', 'Android Emoji', sans-serif;
+}

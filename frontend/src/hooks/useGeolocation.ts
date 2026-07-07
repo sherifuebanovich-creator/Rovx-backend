@@ -2,9 +2,24 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useMapStore } from '@/store/map.store';
 
+const SPEED_SMOOTHING_ALPHA = 0.35;
+const SMOOTHED_SPEED_KEY = 'rovx_smoothedSpeed';
+
+function getInitialSmoothedSpeed(): number {
+  if (typeof window === 'undefined') return 0;
+  const stored = sessionStorage.getItem(SMOOTHED_SPEED_KEY);
+  return stored ? parseFloat(stored) : 0;
+}
+
+function setSmoothedSpeed(v: number) {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(SMOOTHED_SPEED_KEY, v.toString());
+}
+
 export function useGeolocation() {
   const watchIdRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
+  const smoothSpeedRef = useRef(getInitialSmoothedSpeed());
   const { setUserLocation, setLocationError, followUser, setMapCenter } = useMapStore();
   const followUserRef = useRef(followUser);
   followUserRef.current = followUser;
@@ -24,16 +39,25 @@ export function useGeolocation() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const now = Date.now();
-        if (now - lastUpdateRef.current < 3000) return;
+        if (now - lastUpdateRef.current < 1000) return;
         lastUpdateRef.current = now;
 
         const { latitude, longitude, speed, heading } = position.coords;
         const coords = { lat: latitude, lng: longitude };
 
+        const rawSpeed = speed != null ? speed * 3.6 : 0;
+        if (rawSpeed > 0) {
+          smoothSpeedRef.current = SPEED_SMOOTHING_ALPHA * rawSpeed + (1 - SPEED_SMOOTHING_ALPHA) * smoothSpeedRef.current;
+        } else {
+          smoothSpeedRef.current = smoothSpeedRef.current * 0.95;
+          if (smoothSpeedRef.current < 1) smoothSpeedRef.current = 0;
+        }
+        setSmoothedSpeed(smoothSpeedRef.current);
+
         setUserLocation(
           coords,
           heading ?? 0,
-          speed != null ? speed * 3.6 : 0, // m/s to km/h
+          smoothSpeedRef.current,
         );
 
         if (followUserRef.current) {

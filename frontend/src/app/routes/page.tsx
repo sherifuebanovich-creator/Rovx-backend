@@ -93,9 +93,9 @@ export default function RoutesPage() {
               <motion.div key={route.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                 onClick={() => handleSelectRoute(route)}
                 className="card p-4 cursor-pointer hover:bg-white/10 hover:border-primary-500/30 transition-all">
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="font-semibold text-white">{route.name}</h3>
-                  <button onClick={(e) => { e.stopPropagation(); deleteRoute(route.id); }} className="text-gray-600 hover:text-red-400 transition-all p-1">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <h3 className="font-semibold text-white truncate flex-1 min-w-0">{route.name}</h3>
+                  <button onClick={(e) => { e.stopPropagation(); deleteRoute(route.id); }} className="text-gray-600 hover:text-red-400 transition-all p-1.5 flex-shrink-0">
                     <FaTimes size={13} />
                   </button>
                 </div>

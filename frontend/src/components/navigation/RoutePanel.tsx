@@ -331,7 +331,7 @@ export function RoutePanel() {
                         <FaChevronRight size={16} className={isSelected ? 'text-primary-400' : 'text-gray-600'} />
                       </div>
 
-                      <div className="grid grid-cols-4 gap-2 mt-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
                         <StatChip icon={<FaClock size={10} />} value={formatDuration(route.duration)} />
                         <StatChip icon={<FaGasPump size={10} />} value={`${route.fuelEstimate}${t('routePanel.liters')}`} />
                         <StatChip

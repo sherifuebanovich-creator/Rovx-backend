@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { setUser, setTokens } = useAuthStore();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -79,8 +79,8 @@ function LoginPageContent() {
   return (
     <div className="min-h-dvh bg-dark-bg flex flex-col overflow-y-auto safe-bottom safe-top">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary-900/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-accent-900/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[60vw] h-[60vw] max-w-96 max-h-96 bg-primary-900/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-[40vw] h-[40vw] max-w-64 max-h-64 bg-accent-900/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12">
@@ -109,7 +109,7 @@ function LoginPageContent() {
             {/* Language selector for Google sign-in */}
             <div className="mb-3">
               <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.language')}</label>
-              <LanguagePicker value={googleLang} onChange={setGoogleLang} />
+              <LanguagePicker value={googleLang} onChange={(code) => { setGoogleLang(code); i18n.changeLanguage(code); }} />
             </div>
 
             {/* Google OAuth Button */}

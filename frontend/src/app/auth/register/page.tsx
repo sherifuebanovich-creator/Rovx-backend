@@ -135,7 +135,7 @@ const ALL_MAKES = Object.keys(CAR_MAKES).sort((a, b) => a.localeCompare(b));
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { setUser, setTokens } = useAuthStore();
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const years = useMemo(() => Array.from({ length: currentYear - 1969 + 1 }, (_, i) => currentYear - i), [currentYear]);
@@ -251,8 +251,8 @@ export default function RegisterPage() {
   return (
     <div className="min-h-dvh bg-dark-bg flex flex-col overflow-y-auto safe-bottom safe-top">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-primary-900/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/4 w-64 h-64 bg-accent-900/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 left-1/3 w-[50vw] h-[50vw] max-w-80 max-h-80 bg-primary-900/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/3 right-1/4 w-[40vw] h-[40vw] max-w-64 max-h-64 bg-accent-900/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12">
@@ -330,7 +330,7 @@ export default function RegisterPage() {
 
               <div>
                 <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.language')}</label>
-                <LanguagePicker value={form.lang} onChange={(code) => setForm((p) => ({ ...p, lang: code }))} />
+                <LanguagePicker value={form.lang} onChange={(code) => { setForm((p) => ({ ...p, lang: code })); i18n.changeLanguage(code); }} />
               </div>
 
               {/* Vehicle section */}

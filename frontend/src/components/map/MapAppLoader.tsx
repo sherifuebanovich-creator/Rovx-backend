@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Cookies from 'js-cookie';
 import { useAuthStore } from '@/store/auth.store';
@@ -34,56 +33,34 @@ const MapApp = dynamic(() => import('@/components/map/MapApp'), {
 
 export default function MapAppLoader() {
   const { t } = useTranslation();
-  const router = useRouter();
-  const { user, isAuthenticated, isLoading, isInitDone } = useAuthStore();
   const [checking, setChecking] = useState(true);
-  const redirectedRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     const check = () => {
       const hasToken = !!Cookies.get('access_token');
       if (useAuthStore.getState().isAuthenticated || useAuthStore.getState().user || hasToken) {
         setChecking(false);
-        redirectedRef.current = false;
         return true;
       }
       return false;
     };
 
-    if (isLoading || !isInitDone) return;
-
     if (check()) return;
-
-    if (redirectedRef.current) return;
-    redirectedRef.current = true;
 
     const unsub = useAuthStore.subscribe((state) => {
       if (state.isAuthenticated || state.user) {
-        clearTimeout(timerRef.current);
         setChecking(false);
-        redirectedRef.current = false;
         unsub();
       }
     });
 
-    timerRef.current = setTimeout(() => {
-      unsub();
-      if (check()) return;
-      const hasVisited = localStorage.getItem('rovx_hasVisitedBefore');
-      if (!hasVisited) {
-        localStorage.setItem('rovx_hasVisitedBefore', 'true');
-        router.replace('/auth/register');
-      } else {
-        router.replace('/auth/login');
-      }
-    }, 10000);
+    const hasStoredAuth = !!localStorage.getItem('rovx-auth');
+    if (!hasStoredAuth) {
+      setChecking(false);
+    }
 
-    return () => {
-      clearTimeout(timerRef.current);
-      unsub();
-    };
-  }, [isAuthenticated, user, isLoading, isInitDone, router]);
+    return () => { unsub(); };
+  }, []);
 
   if (checking) {
     return (

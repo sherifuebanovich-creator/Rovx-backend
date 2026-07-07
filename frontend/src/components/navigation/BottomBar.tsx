@@ -36,7 +36,7 @@ export function BottomBar() {
             const content = (
               <>
                 {tab.icon}
-                <span className="text-[9px] sm:text-[10px] font-medium leading-none">{tab.label}</span>
+                <span className="text-[10px] sm:text-[11px] font-medium leading-none">{tab.label}</span>
                 {isActive && (
                   <motion.div layoutId="tab-indicator" className="absolute bottom-0.5 sm:bottom-1 w-1 h-1 rounded-full bg-primary-400" />
                 )}

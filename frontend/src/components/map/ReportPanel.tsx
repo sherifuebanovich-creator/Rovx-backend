@@ -278,7 +278,7 @@ export function ReportPanel() {
               <div className="mt-4 space-y-3">
                 <p className="text-xs text-gray-400">{t('reportPanel.whatReporting')}</p>
                 {REPORT_CATEGORIES.map((row, rowI) => (
-                  <div key={rowI} className="grid grid-cols-4 gap-2">
+                  <div key={rowI} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {row.map((cat) => (
                       <button
                         key={cat.type}
