@@ -231,6 +231,30 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     client.leave(`city:${data.city.toLowerCase()}`);
   }
 
+  @SubscribeMessage('city:subscribe')
+  async handleCitySubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { city: string },
+  ) {
+    if (!data?.city) return;
+    const room = `city:${data.city.toLowerCase()}`;
+    client.join(room);
+    this.logger.log(`User subscribed to city room ${room}`);
+    return { subscribed: true, room };
+  }
+
+  @SubscribeMessage('city:unsubscribe')
+  async handleCityUnsubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { city: string },
+  ) {
+    if (!data?.city) return;
+    const room = `city:${data.city.toLowerCase()}`;
+    client.leave(room);
+    this.logger.log(`User unsubscribed from city room ${room}`);
+    return { unsubscribed: true, room };
+  }
+
   @SubscribeMessage('city:message')
   async handleCityMessage(
     @ConnectedSocket() client: Socket,

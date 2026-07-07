@@ -135,20 +135,39 @@ export class ReportsService {
       return { valid: true };
     }
 
+    const model = this.config.get('AI_MODEL', 'llama-3.3-70b-versatile');
+    const visionModels = this.config.get<string>('AI_VISION_MODELS', '');
+    if (visionModels) {
+      const supported = visionModels.split(',').map(m => m.trim());
+      if (!supported.includes(model)) {
+        this.logger.warn(`Model "${model}" not in vision-capable list [${visionModels}], skipping photo validation`);
+        return { valid: true };
+      }
+    } else if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3')) {
+      this.logger.warn(`Model "${model}" may not support vision, skipping photo validation`);
+      return { valid: true };
+    }
+
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
 
     let prompt: string;
     if (description && description.trim()) {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно описанию события.
+      prompt = `Проанализируй это изображение и определи, соответствует ли оно описанию события на российских дорогах.
 
 Описание: "${description}"
 
 Тип события: "${typeLabel}"
 
 Правила проверки:
-- Если на фото видно то, что описано в тексте — ответь valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без дорог) — valid: false
-- Если на фото НЕ то, что описано в тексте (например, в описании "яма", а на фото авария) — valid: false с пояснением
+- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
+- Если на фото видно то, что описано в тексте — valid: true
+- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
+- Если на фото НЕ то, что описано (например, в описании "яма", а на фото авария) — valid: false
+- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
+- Для ICE — на фото должен быть лёд на дороге или гололёд
+- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
+- Для POLICE — на фото должен быть патруль ДПС или полицейская машина
+- Для ROAD_WORKS — на фото должны быть дорожные работы или техника
 
 Ответь JSON:
 {
@@ -156,16 +175,22 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь строгим. Если фото не соответствует описанию — отклоняй.`;
+Будь максимально строгим. Если фото не соответствует описанию или типу — отклоняй.`;
     } else {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события.
+      prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события на российских дорогах.
 
 Заявленный тип события: "${typeLabel}"
 
 Правила проверки:
-- Если на фото видно именно то, что указано в типе события — ответь valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без дорог) — valid: false
-- Если фото связано с дорогой/транспортом, но НЕ соответствует заявленному типу — valid: false с пояснением
+- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
+- Если на фото видно именно то, что указано в типе события — valid: true
+- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
+- Если фото связано с дорогой/транспортом, но НЕ соответствует заявленному типу — valid: false
+- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
+- Для ICE — на фото должен быть лёд на дороге
+- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
+- Для POLICE — на фото должен быть патруль ДПС
+- Для ROAD_WORKS — на фото должны быть дорожные работы
 
 Ответь JSON:
 {
@@ -173,16 +198,16 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь строгим. Если на фото нет явных признаков заявленного типа события — отклоняй.`;
+Будь максимально строгим. Если на фото нет явных признаков заявленного типа — отклоняй.`;
     }
 
     try {
       const response = await axios.post(
         `${this.aiBaseUrl}/chat/completions`,
         {
-          model: this.config.get('AI_MODEL', 'llama-3.3-70b-versatile'),
+          model,
           messages: [
-            { role: 'system', content: 'You are a strict image moderation AI. Analyze images and respond in JSON only.' },
+            { role: 'system', content: 'You are a strict image moderation AI for Russian road reports. Analyze images and respond in JSON only.' },
             { role: 'user', content: [
               { type: 'text', text: prompt },
               { type: 'image_url', image_url: { url: imageUrl } },
@@ -200,7 +225,13 @@ export class ReportsService {
         },
       );
 
-      const result = JSON.parse(response.data.choices[0].message.content);
+      const content = response.data.choices?.[0]?.message?.content;
+      if (!content) {
+        this.logger.warn('Photo validation: empty response from AI');
+        return { valid: true };
+      }
+
+      const result = JSON.parse(content);
       this.logger.log(`Photo validation for ${typeLabel}: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
 
       if (!result.valid) {
@@ -208,7 +239,8 @@ export class ReportsService {
       }
       return { valid: true };
     } catch (error) {
-      this.logger.error('Photo validation failed', error instanceof Error ? error.message : String(error));
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Photo validation error: ${msg}`);
       return { valid: true };
     }
   }
@@ -222,22 +254,31 @@ export class ReportsService {
 
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
 
-    const prompt = `Проанализируй это описание и определи, соответствует ли оно заявленному типу события.
+    const prompt = `Проанализируй описание дорожного события и определи, соответствует ли оно заявленному типу.
 
 Заявленный тип события: "${typeLabel}"
 
 Описание: "${description}"
 
-Правила проверки:
-- Если описание соответствует типу события (например, для "яма на дороге" — описание про яму) — valid: true
-- Если описание не связано с заявленным типом события (например, заявлено "авария", а описано про погоду) — valid: false
+Правила проверки (строгие):
+- Описание должно относиться к российской дорожной ситуации
+- Для POTHOLE/BAD_ROAD — описание про ямы, выбоины, разрушенное покрытие
+- Для ACCIDENT — описание про ДТП, столкновение, аварию
+- Для ICE — описание про лёд, гололёд, скользкую дорогу
+- Для FOG — описание про туман, плохую видимость
+- Для POLICE — описание про патруль ДПС, полицейскую машину, пост ГИБДД
+- Для ROAD_WORKS — описание про ремонт дороги, дорожные работы, строительную технику
+- Если описание не соответствует заявленному типу — valid: false
 - Если описание содержит спам, рекламу или оскорбления — valid: false
+- Если описание не относится к дорожной ситуации — valid: false
 
 Ответь JSON:
 {
   "valid": boolean,
   "reason": "краткое пояснение на русском (до 100 символов)"
-}`;
+}
+
+Будь строгим. Отклоняй несоответствующие и подозрительные описания.`;
 
     try {
       const response = await axios.post(
@@ -245,7 +286,7 @@ export class ReportsService {
         {
           model: this.config.get('AI_MODEL', 'llama-3.3-70b-versatile'),
           messages: [
-            { role: 'system', content: 'You are a strict content moderation AI. Respond in JSON only.' },
+            { role: 'system', content: 'You are a strict content moderation AI for Russian road reports. Respond in JSON only.' },
             { role: 'user', content: prompt },
           ],
           temperature: 0.1,
@@ -260,7 +301,13 @@ export class ReportsService {
         },
       );
 
-      const result = JSON.parse(response.data.choices[0].message.content);
+      const content = response.data.choices?.[0]?.message?.content;
+      if (!content) {
+        this.logger.warn('Description validation: empty response from AI');
+        return { valid: true };
+      }
+
+      const result = JSON.parse(content);
       this.logger.log(`Description validation: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
 
       if (!result.valid) {
@@ -268,7 +315,8 @@ export class ReportsService {
       }
       return { valid: true };
     } catch (error) {
-      this.logger.error('Description validation failed', error instanceof Error ? error.message : String(error));
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Description validation error: ${msg}`);
       return { valid: true };
     }
   }
@@ -276,17 +324,20 @@ export class ReportsService {
   async getUsersInCity(city: string): Promise<string[]> {
     if (!city) return [];
     const lower = city.toLowerCase();
+    const escaped = lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordPattern = new RegExp(`\\b${escaped}\\b`, 'i');
     const users = await this.prisma.user.findMany({
       where: { isActive: true, isBanned: false },
       select: { id: true, homeAddress: true, workAddress: true, city: true },
       take: 1000,
     });
     return users
-      .filter(u =>
-        (u.city && u.city.toLowerCase().includes(lower)) ||
-        (u.homeAddress && u.homeAddress.toLowerCase().includes(lower)) ||
-        (u.workAddress && u.workAddress.toLowerCase().includes(lower))
-      )
+      .filter(u => {
+        const fields = [u.city, u.homeAddress, u.workAddress].filter(Boolean) as string[];
+        if (fields.some(f => wordPattern.test(f))) return true;
+        if (fields.some(f => f.toLowerCase().includes(lower))) return true;
+        return false;
+      })
       .map(u => u.id);
   }
 
@@ -436,31 +487,40 @@ export class ReportsService {
       }).catch(() => {});
     }
 
-    // 4. Send to users in the same city
+    // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)
     const city = reportCity;
     if (city) {
+      const cityRoom = `city:${city.toLowerCase()}`;
+      this.gateway.emitToRoom(cityRoom, 'report:new', {
+        ...report,
+        cityNotification: true,
+        time: timeStr,
+        city,
+      });
+
+      // 5. Send to users in the same city
       const cityUserIds = await this.getUsersInCity(city);
-      for (const uid of cityUserIds) {
-        if (uid === userId || premiumUserIds.includes(uid)) continue;
-        const cityNotif = await this.prisma.notification.create({
-          data: {
+      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumUserIds.includes(uid)))];
+      if (uniqueIds.length > 0) {
+        await this.prisma.notification.createMany({
+          data: uniqueIds.map(uid => ({
             userId: uid,
-            type: 'report',
+            type: 'report' as const,
             title: `⚠️ ${typeLabel} в ${city}`,
             body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
             data: notificationData,
-          },
-        }).catch(() => null);
-        if (cityNotif) {
-          await this.gateway.sendToUser(uid, 'notification:new', cityNotif).catch(() => {});
+          })),
+        }).catch(e => this.logger.error('Failed to batch-create city notifications', e));
+
+        for (const uid of uniqueIds) {
+          await this.gateway.sendToUser(uid, 'report:new', {
+            ...report,
+            cityNotification: true,
+            time: timeStr,
+          }).catch(() => {});
         }
-        await this.gateway.sendToUser(uid, 'report:new', {
-          ...report,
-          cityNotification: true,
-          time: timeStr,
-        }).catch(() => {});
       }
-      this.logger.log(`Sent city notifications to ${cityUserIds.length} users in ${city}`);
+      this.logger.log(`Sent city notifications to ${uniqueIds.length} users in ${city}`);
     }
 
     this.logger.log(`Report created: ${dto.type} by user ${userId}`);

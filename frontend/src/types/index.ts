@@ -19,6 +19,7 @@ export interface User {
   workLat?: number;
   workLng?: number;
   workAddress?: string;
+  phone?: string;
   city?: string;
 }
 

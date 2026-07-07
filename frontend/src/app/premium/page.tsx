@@ -122,7 +122,7 @@ function PremiumPage() {
       <div className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] rounded-full bg-purple-900/10 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[10%] w-[50vw] h-[50vw] rounded-full bg-yellow-900/5 blur-[80px] pointer-events-none" />
 
-      <div className="relative px-3 sm:px-4 pt-12 sm:pt-14 max-w-lg mx-auto z-10">
+      <div className="relative px-3 sm:px-4 md:px-6 pt-12 sm:pt-14 md:pt-16 max-w-5xl mx-auto z-10">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-all">
           <FaArrowLeft size={14} /> {t('common.back')}
         </button>
@@ -156,7 +156,7 @@ function PremiumPage() {
             <div className="w-8 h-8 border-3 border-primary-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
             {tiers.filter((tier: PremiumTier) => tier.tier > 0).map((tier: PremiumTier, idx: number) => {
               const isActive = mySub?.name === tier.name && mySub?.active;
               const isCurrent = mySub?.name === tier.name;
@@ -209,7 +209,7 @@ function PremiumPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2.5 text-xs">
+                  <div className="space-y-1.5 sm:space-y-2.5 text-xs">
                     {tier.tier >= 1 && (
                       <>
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.allRouteTypes')} />
@@ -281,7 +281,7 @@ function PremiumPage() {
 
 function Feature({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex items-center gap-1.5 sm:gap-2.5">
       <div className="w-4 h-4 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { GovernmentDataService } from './government-data.service';
 const MapObjectCategory = {
   GAS_STATION: 'GAS_STATION',
   EV_CHARGER: 'EV_CHARGER',
@@ -103,6 +104,7 @@ export class MapService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private governmentData: GovernmentDataService,
   ) {}
 
   async getObjectsInBounds(query: BoundsQuery) {
@@ -267,7 +269,7 @@ export class MapService {
   }
 
   async getSpeedCameras(lat: number, lng: number, radiusKm = 10) {
-    const cacheKey = `cameras:osm:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `cameras:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -276,12 +278,13 @@ export class MapService {
     const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
     const query = `[out:json];(node["highway"="speed_camera"](${bbox});node["camera:type"](${bbox}););out body;`;
 
+    let osmCameras: any[] = [];
     try {
       const res = await axios.post('https://overpass-api.de/api/interpreter',
         `data=${encodeURIComponent(query)}`,
         { timeout: 15000 },
       );
-      const cameras = (res.data.elements || []).map((el: any) => {
+      osmCameras = (res.data.elements || []).map((el: any) => {
         const tags = el.tags || {};
         const cameraType = this.detectCameraType(tags);
         return {
@@ -294,12 +297,22 @@ export class MapService {
           direction: tags.direction || undefined,
         };
       });
-      await this.redis.set(cacheKey, JSON.stringify(cameras), 600);
-      return cameras;
     } catch (err) {
       this.logger.warn(`Overpass camera API error: ${(err as Error).message}`);
-      return [];
     }
+
+    const govCameras = await this.governmentData.fetchGovernmentSpeedCameras(lat, lng, radiusKm);
+
+    const merged = [...osmCameras];
+    for (const gov of govCameras) {
+      const dup = merged.some(
+        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
+      );
+      if (!dup) merged.push(gov);
+    }
+
+    await this.redis.set(cacheKey, JSON.stringify(merged), 600);
+    return merged;
   }
 
   private detectCameraType(tags: Record<string, string>): string {
@@ -316,7 +329,7 @@ export class MapService {
   }
 
   async getTrafficSignals(lat: number, lng: number, radiusKm = 2) {
-    const cacheKey = `traffic:osm:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `traffic:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -325,24 +338,35 @@ export class MapService {
     const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
     const query = `[out:json];node["highway"="traffic_signals"](${bbox});out body;`;
 
+    let osmSignals: any[] = [];
     try {
       const res = await axios.post('https://overpass-api.de/api/interpreter',
         `data=${encodeURIComponent(query)}`,
         { timeout: 10000 },
       );
-      const signals = (res.data.elements || []).map((el: any) => ({
+      osmSignals = (res.data.elements || []).map((el: any) => ({
         id: `osm-${el.id}`,
         lat: el.lat,
         lng: el.lon,
         name: el.tags?.name || '',
         crossing: el.tags?.crossing || '',
       }));
-      await this.redis.set(cacheKey, JSON.stringify(signals), 300);
-      return signals;
     } catch (err) {
       this.logger.warn(`Overpass API error: ${(err as Error).message}`);
-      return [];
     }
+
+    const govSignals = await this.governmentData.fetchGovernmentTrafficSignals(lat, lng, radiusKm);
+
+    const merged = [...osmSignals];
+    for (const gov of govSignals) {
+      const dup = merged.some(
+        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
+      );
+      if (!dup) merged.push(gov);
+    }
+
+    await this.redis.set(cacheKey, JSON.stringify(merged), 300);
+    return merged;
   }
 
   async getNearby(lat: number, lng: number, radiusKm: number, category?: MapObjectCategory) {

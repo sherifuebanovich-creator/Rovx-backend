@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaArrowLeft, FaRoute, FaMap, FaStar, FaTrophy, FaEdit, FaCrown, FaUser, FaCar, FaTruck, FaTrash, FaPlus, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaArrowLeft, FaRoute, FaMap, FaStar, FaTrophy, FaEdit, FaCrown, FaUser, FaCar, FaTruck, FaTrash, FaPlus, FaCheck, FaTimes, FaPhone, FaHome, FaBriefcase, FaMapMarkerAlt } from 'react-icons/fa';
 import { usersApi } from '@/lib/api';
 import { getFuelType } from '@/lib/fuelMap';
 import { Vehicle } from '@/types';
@@ -39,7 +39,7 @@ export default function ProfilePage() {
 
   // Edit profile state
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ displayName: '', username: '', bio: '' });
+  const [editForm, setEditForm] = useState({ displayName: '', username: '', bio: '', phone: '', city: '', homeAddress: '', workAddress: '' });
   const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
@@ -55,6 +55,10 @@ export default function ProfilePage() {
       displayName: user?.displayName || '',
       username: user?.username || '',
       bio: user?.bio || '',
+      phone: user?.phone || '',
+      city: user?.city || '',
+      homeAddress: user?.homeAddress || '',
+      workAddress: user?.workAddress || '',
     });
     setEditing(true);
   };
@@ -70,9 +74,21 @@ export default function ProfilePage() {
         displayName: editForm.displayName.trim(),
         username: editForm.username.trim(),
         bio: editForm.bio.trim(),
+        phone: editForm.phone.trim(),
+        city: editForm.city.trim(),
+        homeAddress: editForm.homeAddress.trim(),
+        workAddress: editForm.workAddress.trim(),
       });
       const updated = res.data.data || res.data;
-      setUser({ ...user!, displayName: updated.displayName, username: updated.username, bio: updated.bio });
+      setUser({ ...user!,
+        displayName: updated.displayName,
+        username: updated.username,
+        bio: updated.bio,
+        phone: updated.phone,
+        city: updated.city,
+        homeAddress: updated.homeAddress,
+        workAddress: updated.workAddress,
+      });
       setEditing(false);
       toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
@@ -154,27 +170,69 @@ export default function ProfilePage() {
             </button>
           </div>
           {editing ? (
-            <div className="w-full space-y-3 mt-2">
-              <input
-                value={editForm.displayName}
-                onChange={e => setEditForm(p => ({ ...p, displayName: e.target.value }))}
-                className="input-field text-center text-xl font-bold"
-                placeholder={t('profile.displayNamePlaceholder')}
-              />
-              <input
-                value={editForm.username}
-                onChange={e => setEditForm(p => ({ ...p, username: e.target.value }))}
-                className="input-field text-center text-sm"
-                placeholder={t('profile.usernamePlaceholder')}
-              />
-              <textarea
-                value={editForm.bio}
-                onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))}
-                className="input-field text-center text-sm resize-none"
-                rows={2}
-                placeholder={t('profile.bioPlaceholder')}
-              />
-              <div className="flex gap-2 justify-center">
+            <div className="w-full mt-3">
+              <div className="card p-4 space-y-3">
+                <input
+                  value={editForm.displayName}
+                  onChange={e => setEditForm(p => ({ ...p, displayName: e.target.value }))}
+                  className="input-field text-center text-lg font-bold"
+                  placeholder={t('profile.displayNamePlaceholder')}
+                />
+                <input
+                  value={editForm.username}
+                  onChange={e => setEditForm(p => ({ ...p, username: e.target.value }))}
+                  className="input-field text-center text-sm"
+                  placeholder={t('profile.usernamePlaceholder')}
+                />
+                <textarea
+                  value={editForm.bio}
+                  onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))}
+                  className="input-field text-center text-sm resize-none"
+                  rows={2}
+                  placeholder={t('profile.bioPlaceholder')}
+                />
+
+                <div className="border-t border-dark-border pt-3 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <FaPhone size={14} className="text-primary-400 flex-shrink-0" />
+                    <input
+                      value={editForm.phone}
+                      onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+                      placeholder={t('profile.phonePlaceholder') || 'Phone'}
+                      type="tel"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <FaMapMarkerAlt size={14} className="text-primary-400 flex-shrink-0" />
+                    <input
+                      value={editForm.city}
+                      onChange={e => setEditForm(p => ({ ...p, city: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+                      placeholder={t('profile.cityPlaceholder') || 'City'}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <FaHome size={14} className="text-primary-400 flex-shrink-0" />
+                    <input
+                      value={editForm.homeAddress}
+                      onChange={e => setEditForm(p => ({ ...p, homeAddress: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+                      placeholder={t('profile.homeAddressPlaceholder') || 'Home address'}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <FaBriefcase size={14} className="text-primary-400 flex-shrink-0" />
+                    <input
+                      value={editForm.workAddress}
+                      onChange={e => setEditForm(p => ({ ...p, workAddress: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+                      placeholder={t('profile.workAddressPlaceholder') || 'Work address'}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-center mt-3">
                 <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-all flex items-center gap-1">
                   <FaTimes size={12} /> {t('common.cancel')}
                 </button>
@@ -193,6 +251,18 @@ export default function ProfilePage() {
                 <span className={`text-sm font-semibold ${tierColors[user.subscription]}`}>{tierLabels[user.subscription] || user.subscription}</span>
               </div>
               <p className="text-gray-500 text-xs mt-1">{user.email}</p>
+              {(user.phone || user.city) && (
+                <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
+                  {user.phone && <span className="flex items-center gap-1"><FaPhone size={10} /> {user.phone}</span>}
+                  {user.city && <span className="flex items-center gap-1"><FaMapMarkerAlt size={10} /> {user.city}</span>}
+                </div>
+              )}
+              {(user.homeAddress || user.workAddress) && (
+                <div className="flex flex-col items-center gap-1 mt-2 text-xs text-gray-500">
+                  {user.homeAddress && <span className="flex items-center gap-1"><FaHome size={10} /> {user.homeAddress}</span>}
+                  {user.workAddress && <span className="flex items-center gap-1"><FaBriefcase size={10} /> {user.workAddress}</span>}
+                </div>
+              )}
             </>
           )}
         </motion.div>

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MapService } from './map.service';
+import { GovernmentDataService } from './government-data.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 const MapObjectCategory = {
@@ -51,7 +52,10 @@ type MapObjectCategory = (typeof MapObjectCategory)[keyof typeof MapObjectCatego
 @ApiTags('Map')
 @Controller('map')
 export class MapController {
-  constructor(private mapService: MapService) {}
+  constructor(
+    private mapService: MapService,
+    private governmentData: GovernmentDataService,
+  ) {}
 
   @Get('objects')
   @ApiOperation({ summary: 'Get map objects in bounds' })
@@ -123,6 +127,26 @@ export class MapController {
     @Query('radius') radius = 2,
   ) {
     return this.mapService.getTrafficSignals(+lat, +lng, +radius);
+  }
+
+  @Get('government-speed-cameras')
+  @ApiOperation({ summary: 'Get government speed camera data near a point' })
+  async getGovernmentSpeedCameras(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius = 10,
+  ) {
+    return this.governmentData.fetchGovernmentSpeedCameras(+lat, +lng, +radius);
+  }
+
+  @Get('government-traffic-signals')
+  @ApiOperation({ summary: 'Get government traffic signal data near a point' })
+  async getGovernmentTrafficSignals(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius = 2,
+  ) {
+    return this.governmentData.fetchGovernmentTrafficSignals(+lat, +lng, +radius);
   }
 
   @Get('search')

@@ -23,6 +23,14 @@ export class PremiumService {
   ) {
     const stripeKey = this.config.get('STRIPE_SECRET_KEY');
     if (stripeKey) {
+      const isLive = stripeKey.startsWith('sk_live_');
+      const isProd = this.config.get('NODE_ENV') === 'production';
+      if (isProd && !isLive) {
+        throw new Error('Stripe test key (sk_test_) detected in production environment. Set STRIPE_SECRET_KEY to a live key (sk_live_) for production.');
+      }
+      if (!isProd && isLive) {
+        throw new Error('Stripe live key (sk_live_) detected in non-production environment. Use a test key (sk_test_) for development.');
+      }
       this.stripe = new Stripe(stripeKey);
     }
   }
@@ -80,9 +88,21 @@ export class PremiumService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
+    const customers = await this.stripe.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+    let customer = customers.data[0];
+    if (!customer) {
+      customer = await this.stripe.customers.create({
+        email: user.email,
+        metadata: { userId },
+      });
+    }
+
     const session = await this.stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: user.email,
+      mode: 'subscription',
+      customer: customer.id,
       client_reference_id: userId,
       line_items: [
         {
@@ -92,12 +112,16 @@ export class PremiumService {
               name: tier.label_en,
               description: `${tier.label_en} - ${months} month(s)`,
             },
-            unit_amount: Math.round(tier.price * months * 100),
+            unit_amount: Math.round(tier.price * 100),
+            recurring: { interval: 'month', interval_count: 1 },
           },
           quantity: 1,
         },
       ],
       metadata: { userId, tierName, months: String(months) },
+      subscription_data: {
+        metadata: { userId, tierName },
+      },
       success_url: `${this.config.get('FRONTEND_URL', 'http://localhost:3000')}/premium?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.config.get('FRONTEND_URL', 'http://localhost:3000')}/premium?canceled=true`,
     });
@@ -115,18 +139,42 @@ export class PremiumService {
       throw new BadRequestException(`Webhook signature verification failed: ${err.message}`);
     }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.userId;
-      const tierName = session.metadata?.tierName;
-      const months = parseInt(session.metadata?.months || '1', 10);
-      if (userId && tierName) {
-        await this.activateSubscription(userId, tierName, months, session.id);
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.userId;
+        const tierName = session.metadata?.tierName;
+        const months = parseInt(session.metadata?.months || '1', 10);
+        if (userId && tierName && session.subscription) {
+          await this.activateSubscription(
+            userId,
+            tierName,
+            months,
+            session.id,
+            session.subscription as string,
+            session.customer as string,
+          );
+        }
+        break;
+      }
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = invoice.subscription as string;
+        if (subscriptionId) {
+          await this.handleInvoicePaid(subscriptionId);
+        }
+        break;
+      }
+      case 'customer.subscription.deleted':
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription;
+        await this.handleSubscriptionUpdate(subscription);
+        break;
       }
     }
   }
 
-  private async activateSubscription(userId: string, tierName: string, months: number, paymentId: string): Promise<any> {
+  private async activateSubscription(userId: string, tierName: string, months: number, paymentId: string, subscriptionId: string, customerId: string): Promise<any> {
     const tier = PREMIUM_TIERS.find(t => t.name === tierName);
     if (!tier) throw new BadRequestException('Invalid tier');
 
@@ -146,6 +194,9 @@ export class PremiumService {
           status: 'active',
           paymentId,
           currency: 'USD',
+          stripeSubscriptionId: subscriptionId,
+          stripeCustomerId: customerId,
+          autoRenew: true,
         },
       });
     } else {
@@ -159,6 +210,9 @@ export class PremiumService {
           status: 'active',
           paymentId,
           currency: 'USD',
+          stripeSubscriptionId: subscriptionId,
+          stripeCustomerId: customerId,
+          autoRenew: true,
         },
       });
     }
@@ -168,7 +222,69 @@ export class PremiumService {
       data: { subscription: tier.name, subscriptionEnd: endDate },
     });
 
-    this.logger.log(`User ${userId} subscribed to ${tier.name} via Stripe (${paymentId})`);
+    this.logger.log(`User ${userId} subscribed to ${tier.name} via Stripe (sub: ${subscriptionId})`);
+  }
+
+  private async handleInvoicePaid(subscriptionId: string): Promise<void> {
+    const sub = await this.prisma.premiumSubscription.findFirst({
+      where: { stripeSubscriptionId: subscriptionId, status: 'active' },
+    });
+    if (!sub) {
+      this.logger.warn(`No local subscription found for Stripe sub ${subscriptionId}`);
+      return;
+    }
+    const billingMonths = 1;
+    const newEndDate = new Date();
+    newEndDate.setMonth(newEndDate.getMonth() + billingMonths);
+    const endDate = sub.endDate && sub.endDate > new Date()
+      ? new Date(sub.endDate.getTime() + billingMonths * 30 * 24 * 60 * 60 * 1000)
+      : newEndDate;
+
+    await this.prisma.premiumSubscription.update({
+      where: { id: sub.id },
+      data: { endDate, status: 'active' },
+    });
+
+    await this.prisma.user.update({
+      where: { id: sub.userId },
+      data: { subscription: sub.levelName, subscriptionEnd: endDate },
+    });
+
+    this.logger.log(`Subscription ${subscriptionId} renewed via invoice.paid`);
+  }
+
+  private async handleSubscriptionUpdate(subscription: Stripe.Subscription): Promise<void> {
+    const sub = await this.prisma.premiumSubscription.findFirst({
+      where: { stripeSubscriptionId: subscription.id },
+    });
+    if (!sub) {
+      this.logger.warn(`No local subscription for Stripe sub ${subscription.id}`);
+      return;
+    }
+
+    const status = subscription.status;
+    const stripeEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
+      : null;
+
+    if (status === 'canceled' || status === 'incomplete_expired' || status === 'unpaid') {
+      await this.prisma.premiumSubscription.update({
+        where: { id: sub.id },
+        data: { status: 'cancelled', autoRenew: false },
+      });
+      this.logger.log(`Subscription ${subscription.id} cancelled (status: ${status})`);
+    } else if (status === 'active' || status === 'trialing') {
+      await this.prisma.premiumSubscription.update({
+        where: { id: sub.id },
+        data: { status: 'active', autoRenew: true, endDate: stripeEnd || sub.endDate },
+      });
+      if (stripeEnd) {
+        await this.prisma.user.update({
+          where: { id: sub.userId },
+          data: { subscriptionEnd: stripeEnd },
+        });
+      }
+    }
   }
 
   async cancelSubscription(userId: string) {

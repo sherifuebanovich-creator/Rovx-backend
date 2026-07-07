@@ -141,8 +141,12 @@ export const mapApi = {
   getTraffic: (params: any) => api.get('/map/traffic', { params }),
   getSpeedCameras: (lat: number, lng: number, radius = 10) =>
     api.get('/map/speed-cameras', { params: { lat, lng, radius } }),
+  getGovernmentSpeedCameras: (lat: number, lng: number, radius = 10) =>
+    api.get('/map/government-speed-cameras', { params: { lat, lng, radius } }),
   getTrafficSignals: (lat: number, lng: number, radius = 2) =>
     api.get('/map/traffic-signals', { params: { lat, lng, radius } }),
+  getGovernmentTrafficSignals: (lat: number, lng: number, radius = 2) =>
+    api.get('/map/government-traffic-signals', { params: { lat, lng, radius } }),
   search: (q: string, lat?: number, lng?: number) =>
     api.get('/map/search', { params: { q, lat, lng } }),
   suggest: (q: string, lat?: number, lng?: number) =>

@@ -196,13 +196,13 @@ export function ReportPanel() {
       transition={{ type: 'spring', damping: 30, stiffness: 300 }}
       className="absolute bottom-0 left-0 right-0 z-50 max-h-[85vh] flex flex-col"
     >
-      <div className="map-panel rounded-t-3xl overflow-hidden flex flex-col max-h-[85vh] h-full">
+      <div className="map-panel rounded-t-3xl sm:rounded-t-3xl overflow-hidden flex flex-col max-h-[85vh] h-full safe-bottom">
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-600 rounded-full" />
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border">
+        <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-dark-border">
           <div className="flex items-center gap-2">
             <FaExclamationTriangle size={18} className="text-accent-400" />
             <h2 className="font-display font-bold text-lg text-white">{t('reportPanel.reportHazard')}</h2>
@@ -215,7 +215,7 @@ export function ReportPanel() {
           </button>
         </div>
 
-        <div ref={scrollRef} className="overflow-y-auto flex-1 px-4 pb-6 min-h-0">
+        <div ref={scrollRef} className="overflow-y-auto flex-1 px-3 sm:px-4 pb-4 sm:pb-6 min-h-0">
           {submitted ? (
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
@@ -302,13 +302,13 @@ export function ReportPanel() {
               {/* Photo upload */}
               <div className="mt-4">
                 <p className="text-xs text-gray-400 mb-2">{t('reportPanel.photo')}</p>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2 sm:gap-3 flex-wrap">
                   {photos.map((photo, i) => (
-                    <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10">
+                    <div key={i} className="relative w-16 sm:w-20 h-16 sm:h-20 rounded-xl overflow-hidden border border-white/10">
                       <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
                       <button
                         onClick={() => removePhoto(i)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center"
+                        className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center touch-target"
                       >
                         <FaTimes size={8} className="text-white" />
                       </button>
@@ -323,7 +323,7 @@ export function ReportPanel() {
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={photoChecking}
-                      className="w-16 h-16 rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center hover:border-primary-500/50 hover:bg-white/5 transition-all"
+                      className="w-16 sm:w-20 h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center hover:border-primary-500/50 hover:bg-white/5 transition-all"
                     >
                       {photoChecking ? (
                         <FaSpinner size={16} className="text-primary-400 animate-spin" />
@@ -360,12 +360,14 @@ export function ReportPanel() {
                     <button
                       key={s}
                       onClick={() => setSeverity(s)}
-                      className={`flex-1 h-2 rounded-full transition-all ${
+                      className="flex-1 flex items-center justify-center py-2 min-h-[44px]"
+                    >
+                      <div className={`w-full h-2 rounded-full transition-all ${
                         s <= severity
                           ? s <= 2 ? 'bg-green-500' : s <= 3 ? 'bg-yellow-500' : 'bg-red-500'
                           : 'bg-white/10'
-                      }`}
-                    />
+                      }`} />
+                    </button>
                   ))}
                 </div>
                 <div className="flex justify-between mt-1">

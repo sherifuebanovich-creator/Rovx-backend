@@ -506,6 +506,40 @@ export default function MapViewGL() {
         }
         .maplibregl-canvas { outline: none; }
         .maplibregl-map { overflow: hidden; }
+
+        @media (max-width: 640px) {
+          .maplibregl-ctrl-group button {
+            width: 32px !important;
+            height: 32px !important;
+          }
+          .maplibregl-ctrl-group button span {
+            transform: scale(0.75);
+          }
+          .maplibregl-popup-content {
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+            max-width: 240px !important;
+          }
+          .maplibregl-popup-close-button {
+            font-size: 14px !important;
+            padding: 0 6px !important;
+          }
+          .maplibregl-ctrl-attrib {
+            font-size: 8px !important;
+          }
+        }
+
+        @media (min-width: 641px) and (max-width: 1023px) {
+          .maplibregl-popup-content {
+            max-width: 300px !important;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .maplibregl-popup-content {
+            max-width: 360px !important;
+          }
+        }
       `}</style>
     </div>
   );

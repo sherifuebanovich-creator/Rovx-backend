@@ -278,7 +278,7 @@ export function NavigationHUD() {
           {/* Speed */}
           <div className="text-center min-w-0">
             <p className="text-base sm:text-lg font-bold text-white tabular-nums">
-              {userSpeed > 0 ? `${Math.round(userSpeed)}` : '--'}
+              {Math.round(userSpeed)}
             </p>
             <p className="text-[9px] sm:text-[10px] text-gray-400">{t('navigationHud.kmh')}</p>
           </div>
@@ -286,7 +286,7 @@ export function NavigationHUD() {
           {/* ETA */}
           <div className="text-center min-w-0">
             <p className="text-base sm:text-lg font-bold text-white tabular-nums">
-              {remainingMin !== null ? `${remainingMin} ${t('navigationHud.min')}` : '--'}
+              {userSpeed > 0 && remainingMin !== null ? `${remainingMin} ${t('navigationHud.min')}` : '--'}
             </p>
             <p className="text-[9px] sm:text-[10px] text-gray-400">{t('navigationHud.eta')}</p>
           </div>
