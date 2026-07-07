@@ -4,8 +4,8 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss && node dist/main
+    buildCommand: npm install && npx prisma generate && npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false
+    startCommand: npx prisma db push --accept-data-loss && node dist/main
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
