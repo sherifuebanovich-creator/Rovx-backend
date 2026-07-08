@@ -28,6 +28,14 @@ services:
         value: llama-3.3-70b-versatile
       - key: FRONTEND_URL
         value: https://rovx-app-livid.vercel.app
+      - key: BACKEND_URL
+        value: https://rovx-backend-up1u.onrender.com
+      - key: THROTTLE_SHORT_LIMIT
+        value: "10"
+      - key: THROTTLE_MEDIUM_LIMIT
+        value: "50"
+      - key: THROTTLE_LONG_LIMIT
+        value: "200"
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_DIRECT
@@ -48,11 +56,17 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
-      - key: STRIPE_SECRET_KEY
+      - key: MAIL_FROM
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
+      - key: LAVA_API_KEY
+        sync: false
+      - key: LAVA_OFFER_ID
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: GOVERNMENT_API_URL
+        sync: false
+      - key: GOVERNMENT_API_KEY
         sync: false

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { RedisService } from '../redis/redis.service';
 
-interface GovernmentSpeedCamera {
+export interface GovernmentSpeedCamera {
   id: string;
   lat: number;
   lng: number;
@@ -14,7 +14,7 @@ interface GovernmentSpeedCamera {
   source: string;
 }
 
-interface GovernmentTrafficSignal {
+export interface GovernmentTrafficSignal {
   id: string;
   lat: number;
   lng: number;

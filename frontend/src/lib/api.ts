@@ -7,6 +7,7 @@ export const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
+  timeout: 15000,
 });
 
 // Request interceptor - attach access token from cookie

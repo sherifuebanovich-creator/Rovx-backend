@@ -74,20 +74,19 @@ model User {
 }
 
 model PremiumSubscription {
-  id                    String   @id @default(uuid())
-  userId                String   @unique
-  tier                  Int      @default(1)
-  levelName             String   @default("PREMIUM_BASIC")
-  startDate             DateTime @default(now())
-  endDate               DateTime
-  autoRenew             Boolean  @default(true)
-  price                 Float    @default(0)
-  currency              String   @default("USD")
-  paymentId             String?
-  stripeSubscriptionId String?
-  stripeCustomerId      String?
-  status                String   @default("active")
-  createdAt             DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  tier        Int      @default(1)
+  levelName   String   @default("PREMIUM_BASIC")
+  startDate   DateTime @default(now())
+  endDate     DateTime
+  autoRenew   Boolean  @default(false)
+  price       Float    @default(0)
+  currency    String   @default("USD")
+  paymentId   String?
+  provider    String   @default("lava")
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("premium_subscriptions")
 }

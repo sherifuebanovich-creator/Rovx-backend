@@ -22,6 +22,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://rovx-app-livid.vercel.app'),
   title: {
     default: 'ROVX — Навигация для дальнобойщиков | AI маршруты, радары, стоянки',
     template: '%s | ROVX',
@@ -68,9 +69,9 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  verification: {
-    google: 'ВАШ_КОД_ПРОВЕРКИ_SEARCH_CONSOLE',
-  },
+  // verification: {
+  //   google: 'ВАШ_КОД_ПРОВЕРКИ_SEARCH_CONSOLE',
+  // },
   alternates: {
     canonical: 'https://rovx-app-livid.vercel.app',
   },

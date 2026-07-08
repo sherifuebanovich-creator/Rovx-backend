@@ -2,10 +2,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "env": {
-    "NEXTAUTH_URL": "https://rovx-app-livid.vercel.app",
-    "NEXT_PUBLIC_API_URL": "https://rovx-backend-up1u.onrender.com/api/v1",
-    "NEXT_PUBLIC_WS_URL": "wss://rovx-backend-up1u.onrender.com"
-  }
+  "installCommand": "npm install --legacy-peer-deps"
 }

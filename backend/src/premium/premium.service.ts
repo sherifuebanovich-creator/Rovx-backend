@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import Stripe from 'stripe';
+import axios from 'axios';
 
 export const PREMIUM_TIERS = [
   { tier: 0, name: 'FREE', price: 0, maxGroups: 0, canCreateGroups: false, canReceiveReports: false, label_en: 'Free', label_ru: 'Бесплатно' },
@@ -15,24 +15,15 @@ export type PremiumTier = typeof PREMIUM_TIERS[number];
 @Injectable()
 export class PremiumService {
   private readonly logger = new Logger(PremiumService.name);
-  private stripe: Stripe | null = null;
+  private readonly apiKey: string;
+  private readonly offerId: string;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    const stripeKey = this.config.get('STRIPE_SECRET_KEY');
-    if (stripeKey) {
-      const isLive = stripeKey.startsWith('sk_live_');
-      const isProd = this.config.get('NODE_ENV') === 'production';
-      if (isProd && !isLive) {
-        throw new Error('Stripe test key (sk_test_) detected in production environment. Set STRIPE_SECRET_KEY to a live key (sk_live_) for production.');
-      }
-      if (!isProd && isLive) {
-        throw new Error('Stripe live key (sk_live_) detected in non-production environment. Use a test key (sk_test_) for development.');
-      }
-      this.stripe = new Stripe(stripeKey);
-    }
+    this.apiKey = this.config.get('LAVA_API_KEY', '');
+    this.offerId = this.config.get('LAVA_OFFER_ID', '');
   }
 
   getTiers(lang = 'en') {
@@ -57,11 +48,9 @@ export class PremiumService {
       select: { subscription: true, subscriptionEnd: true },
     });
     if (!user) return PREMIUM_TIERS[0];
-
     if (user.subscriptionEnd && user.subscriptionEnd < new Date()) {
       return PREMIUM_TIERS[0];
     }
-
     return this.getTierInfo(user.subscription);
   }
 
@@ -76,222 +65,124 @@ export class PremiumService {
     return { allowed, currentGroups: groupCount, maxGroups: tier.maxGroups, tier: tier.tier, tierRequired: maxTier.label_en };
   }
 
-  async createCheckoutSession(userId: string, tierName: string, months: number = 1): Promise<{ url: string; sessionId: string }> {
+  async createCheckoutSession(userId: string, tierName: string, months: number = 1): Promise<{ url: string; paymentId: string }> {
     const tier = PREMIUM_TIERS.find(t => t.name === tierName);
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
     }
-    if (!this.stripe) {
-      throw new BadRequestException('Stripe is not configured');
+    if (!this.apiKey || !this.offerId) {
+      throw new BadRequestException('Lava payment is not configured');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const customers = await this.stripe.customers.list({
-      email: user.email,
-      limit: 1,
-    });
-    let customer = customers.data[0];
-    if (!customer) {
-      customer = await this.stripe.customers.create({
-        email: user.email,
-        metadata: { userId },
-      });
-    }
+    const amount = +(tier.price * months).toFixed(2);
 
-    const session = await this.stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: customer.id,
-      client_reference_id: userId,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: tier.label_en,
-              description: `${tier.label_en} - ${months} month(s)`,
-            },
-            unit_amount: Math.round(tier.price * 100),
-            recurring: { interval: 'month', interval_count: 1 },
-          },
-          quantity: 1,
-        },
-      ],
-      metadata: { userId, tierName, months: String(months) },
-      subscription_data: {
-        metadata: { userId, tierName },
-      },
-      success_url: `${this.config.get('FRONTEND_URL', 'http://localhost:3000')}/premium?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${this.config.get('FRONTEND_URL', 'http://localhost:3000')}/premium?canceled=true`,
-    });
-
-    return { url: session.url!, sessionId: session.id };
-  }
-
-  async handleStripeWebhook(rawBody: Buffer, signature: string): Promise<void> {
-    if (!this.stripe) throw new BadRequestException('Stripe not configured');
-    const webhookSecret = this.config.get('STRIPE_WEBHOOK_SECRET');
-    let event: Stripe.Event;
     try {
-      event = this.stripe.webhooks.constructEvent(rawBody, signature, webhookSecret!);
-    } catch (err: any) {
-      throw new BadRequestException(`Webhook signature verification failed: ${err.message}`);
-    }
-
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.userId;
-        const tierName = session.metadata?.tierName;
-        const months = parseInt(session.metadata?.months || '1', 10);
-        if (userId && tierName && session.subscription) {
-          await this.activateSubscription(
-            userId,
-            tierName,
-            months,
-            session.id,
-            session.subscription as string,
-            session.customer as string,
-          );
-        }
-        break;
-      }
-      case 'invoice.paid': {
-        const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = invoice.subscription as string;
-        if (subscriptionId) {
-          await this.handleInvoicePaid(subscriptionId);
-        }
-        break;
-      }
-      case 'customer.subscription.deleted':
-      case 'customer.subscription.updated': {
-        const subscription = event.data.object as Stripe.Subscription;
-        await this.handleSubscriptionUpdate(subscription);
-        break;
-      }
-    }
-  }
-
-  private async activateSubscription(userId: string, tierName: string, months: number, paymentId: string, subscriptionId: string, customerId: string): Promise<any> {
-    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
-    if (!tier) throw new BadRequestException('Invalid tier');
-
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + months);
-
-    const existing = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-
-    if (existing) {
-      await this.prisma.premiumSubscription.update({
-        where: { userId },
-        data: {
-          tier: tier.tier,
-          levelName: tier.name,
-          endDate,
-          price: tier.price * months,
-          status: 'active',
-          paymentId,
-          currency: 'USD',
-          stripeSubscriptionId: subscriptionId,
-          stripeCustomerId: customerId,
-          autoRenew: true,
+      const res = await axios.post('https://gate.lava.top/api/v3/invoice',
+        {
+          email: user.email,
+          offerId: this.offerId,
+          currency: 'RUB',
+          amount: amount,
         },
-      });
-    } else {
-      await this.prisma.premiumSubscription.create({
-        data: {
+        {
+          headers: {
+            'X-Api-Key': this.apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          timeout: 15000,
+        },
+      );
+
+      const invoiceId = res.data.id;
+      const paymentUrl = res.data.paymentUrl || '';
+
+      await this.prisma.premiumSubscription.upsert({
+        where: { userId },
+        create: {
           userId,
           tier: tier.tier,
           levelName: tier.name,
-          endDate,
-          price: tier.price * months,
-          status: 'active',
-          paymentId,
-          currency: 'USD',
-          stripeSubscriptionId: subscriptionId,
-          stripeCustomerId: customerId,
-          autoRenew: true,
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          price: amount,
+          currency: 'RUB',
+          status: 'pending',
+          paymentId: invoiceId,
+          provider: 'lava',
+          autoRenew: false,
+        },
+        update: {
+          tier: tier.tier,
+          levelName: tier.name,
+          price: amount,
+          paymentId: invoiceId,
+          status: 'pending',
         },
       });
+
+      this.logger.log(`User ${userId} initiated Lava payment ${invoiceId}`);
+      return { url: paymentUrl, paymentId: invoiceId };
+    } catch (err: any) {
+      this.logger.error(`Lava create payment failed: ${err.message}`);
+      throw new BadRequestException('Payment initiation failed. Please try again.');
     }
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { subscription: tier.name, subscriptionEnd: endDate },
-    });
-
-    this.logger.log(`User ${userId} subscribed to ${tier.name} via Stripe (sub: ${subscriptionId})`);
   }
 
-  private async handleInvoicePaid(subscriptionId: string): Promise<void> {
-    const sub = await this.prisma.premiumSubscription.findFirst({
-      where: { stripeSubscriptionId: subscriptionId, status: 'active' },
-    });
-    if (!sub) {
-      this.logger.warn(`No local subscription found for Stripe sub ${subscriptionId}`);
-      return;
-    }
-    const billingMonths = 1;
-    const newEndDate = new Date();
-    newEndDate.setMonth(newEndDate.getMonth() + billingMonths);
-    const endDate = sub.endDate && sub.endDate > new Date()
-      ? new Date(sub.endDate.getTime() + billingMonths * 30 * 24 * 60 * 60 * 1000)
-      : newEndDate;
+  async handleWebhook(body: any): Promise<void> {
+    const { eventType, contractId } = body;
+    if (!eventType || !contractId) return;
 
-    await this.prisma.premiumSubscription.update({
-      where: { id: sub.id },
-      data: { endDate, status: 'active' },
-    });
+    this.logger.log(`Lava webhook: event=${eventType}, contract=${contractId}`);
 
-    await this.prisma.user.update({
-      where: { id: sub.userId },
-      data: { subscription: sub.levelName, subscriptionEnd: endDate },
-    });
-
-    this.logger.log(`Subscription ${subscriptionId} renewed via invoice.paid`);
-  }
-
-  private async handleSubscriptionUpdate(subscription: Stripe.Subscription): Promise<void> {
-    const sub = await this.prisma.premiumSubscription.findFirst({
-      where: { stripeSubscriptionId: subscription.id },
-    });
-    if (!sub) {
-      this.logger.warn(`No local subscription for Stripe sub ${subscription.id}`);
-      return;
-    }
-
-    const status = subscription.status;
-    const stripeEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000)
-      : null;
-
-    if (status === 'canceled' || status === 'incomplete_expired' || status === 'unpaid') {
-      await this.prisma.premiumSubscription.update({
-        where: { id: sub.id },
-        data: { status: 'cancelled', autoRenew: false },
+    if (eventType === 'payment.success') {
+      const sub = await this.prisma.premiumSubscription.findFirst({
+        where: { paymentId: contractId },
       });
-      this.logger.log(`Subscription ${subscription.id} cancelled (status: ${status})`);
-    } else if (status === 'active' || status === 'trialing') {
-      await this.prisma.premiumSubscription.update({
-        where: { id: sub.id },
-        data: { status: 'active', autoRenew: true, endDate: stripeEnd || sub.endDate },
-      });
-      if (stripeEnd) {
-        await this.prisma.user.update({
+      if (!sub) {
+        this.logger.warn(`No subscription for contract ${contractId}`);
+        return;
+      }
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await this.prisma.$transaction([
+        this.prisma.premiumSubscription.update({
+          where: { id: sub.id },
+          data: { status: 'active', endDate },
+        }),
+        this.prisma.user.update({
           where: { id: sub.userId },
-          data: { subscriptionEnd: stripeEnd },
+          data: { subscription: sub.levelName, subscriptionEnd: endDate },
+        }),
+      ]);
+      this.logger.log(`User ${sub.userId} subscribed to ${sub.levelName} via Lava`);
+    }
+
+    if (eventType === 'payment.failed') {
+      const sub = await this.prisma.premiumSubscription.findFirst({
+        where: { paymentId: contractId },
+      });
+      if (sub) {
+        await this.prisma.premiumSubscription.update({
+          where: { id: sub.id },
+          data: { status: 'cancelled' },
         });
       }
     }
   }
 
   async cancelSubscription(userId: string) {
-    await this.prisma.premiumSubscription.updateMany({
-      where: { userId, status: 'active' },
-      data: { status: 'cancelled', autoRenew: false },
-    });
+    await this.prisma.$transaction([
+      this.prisma.premiumSubscription.updateMany({
+        where: { userId, status: 'active' },
+        data: { status: 'cancelled', autoRenew: false },
+      }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { subscription: 'FREE', subscriptionEnd: null },
+      }),
+    ]);
     return { cancelled: true };
   }
 
@@ -314,6 +205,7 @@ export class PremiumService {
       canReceiveReports: tierInfo.canReceiveReports,
       active: sub?.status === 'active' && (!user?.subscriptionEnd || user.subscriptionEnd > new Date()),
       paymentId: sub?.paymentId,
+      provider: sub?.provider || 'lava',
     };
   }
 }

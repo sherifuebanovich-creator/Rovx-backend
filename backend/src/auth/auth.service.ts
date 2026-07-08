@@ -68,19 +68,21 @@ export class AuthService {
       },
     });
 
-    this.prisma.userPreference.create({
+    await this.prisma.userPreference.create({
       data: { userId: user.id },
     }).catch(err =>
       this.logger.warn(`Failed to create user preferences: ${err.message}`)
     );
 
-    this.verificationService.generateCode(user.email).then(code =>
-      this.mailService.sendVerificationCode(user.email, code).catch(err =>
+    const code = await this.verificationService.generateCode(user.email).catch(err => {
+      this.logger.warn(`Failed to generate verification code: ${err.message}`);
+      return null;
+    });
+    if (code) {
+      await this.mailService.sendVerificationCode(user.email, code).catch(err =>
         this.logger.warn(`Failed to send verification email: ${err.message}`)
-      )
-    ).catch(err =>
-      this.logger.warn(`Failed to generate verification code: ${err.message}`)
-    );
+      );
+    }
 
     this.logger.log(`New user registered: ${user.email}`);
     return {
@@ -111,7 +113,7 @@ export class AuthService {
     }
 
     if (!user.isVerified) {
-      return { needsVerification: true, email: user.email };
+      return { needsVerification: true, message: 'Please verify your email' };
     }
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);
@@ -139,8 +141,10 @@ export class AuthService {
 
   async refresh(refreshToken: string): Promise<TokenPair> {
     try {
+      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+      if (!refreshSecret) throw new UnauthorizedException('Auth configuration error');
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
-        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
+        secret: refreshSecret,
       });
 
       const storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
@@ -216,13 +220,18 @@ export class AuthService {
   private async generateTokens(userId: string, email: string, role: string): Promise<TokenPair> {
     const payload: JwtPayload = { sub: userId, email, role };
 
+    const jwtSecret = this.configService.get<string>('JWT_SECRET');
+    const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    if (!jwtSecret || !jwtRefreshSecret) {
+      throw new UnauthorizedException('Auth configuration error');
+    }
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_SECRET', 'change-me-in-production'),
+        secret: jwtSecret,
         expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
+        secret: jwtRefreshSecret,
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '30d'),
       }),
     ]);
@@ -305,11 +314,8 @@ export class AuthService {
 
   async sendVerification(email: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    if (user.isVerified) {
-      throw new BadRequestException('Email already verified');
+    if (!user || user.isVerified) {
+      return { message: 'Verification code sent' };
     }
 
     const code = await this.verificationService.generateCode(email);
@@ -321,7 +327,7 @@ export class AuthService {
   async verifyEmail(email: string, code: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException('Invalid verification code');
     }
     if (user.isVerified) {
       return { message: 'Email already verified' };

@@ -87,12 +87,13 @@ export class SocialService {
 
   // ── Messages ────────────────────────────────────────────
 
-  async getConversations(userId: string) {
+  async getConversations(userId: string, limit = 50) {
     const messages = await this.prisma.message.findMany({
       where: {
         OR: [{ senderId: userId }, { receiverId: userId }],
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
       include: {
         sender: { select: { id: true, displayName: true, avatar: true } },
         receiver: { select: { id: true, displayName: true, avatar: true } },
@@ -117,7 +118,7 @@ export class SocialService {
       }
     }
 
-    return Array.from(conversations.values());
+    return Array.from(conversations.values()).slice(0, limit);
   }
 
   async getMessages(userId: string, partnerId: string, page = 1, limit = 50) {
@@ -328,9 +329,9 @@ export class SocialService {
     const skip = (page - 1) * limit;
     const where: any = { isPublic: true };
 
-    if (city) where.city = { contains: city };
-    if (region) where.region = { contains: region };
-    if (search) where.name = { contains: search };
+    if (city) where.city = { contains: city, mode: 'insensitive' };
+    if (region) where.region = { contains: region, mode: 'insensitive' };
+    if (search) where.name = { contains: search, mode: 'insensitive' };
 
     const [groups, total] = await Promise.all([
       this.prisma.group.findMany({
@@ -395,9 +396,9 @@ export class SocialService {
   async searchGroups(query: string, city?: string) {
     const where: any = {
       isPublic: true,
-      name: { contains: query },
+      name: { contains: query, mode: 'insensitive' },
     };
-    if (city) where.city = { contains: city };
+    if (city) where.city = { contains: city, mode: 'insensitive' };
 
     const groups = await this.prisma.group.findMany({
       where,

@@ -124,11 +124,32 @@ export class ReportsService {
     }
   }
 
+  private isPrivateOrInternalUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.toLowerCase();
+      if (parsed.protocol === 'file:' || parsed.protocol === 'ftp:') return true;
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') return true;
+      if (hostname.startsWith('10.') || hostname.startsWith('192.168.') || hostname.startsWith('172.16.')) return true;
+      if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
+      if (hostname === '[::1]') return true;
+      if (hostname === '169.254.169.254') return true;
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
   async validatePhoto(
     imageUrl: string,
     reportType?: string,
     description?: string,
   ): Promise<{ valid: boolean; reason?: string }> {
+    if (this.isPrivateOrInternalUrl(imageUrl)) {
+      this.logger.warn(`Blocked SSRF attempt: ${imageUrl.slice(0, 100)}`);
+      return { valid: false, reason: 'Недопустимый URL изображения' };
+    }
+
     const apiKey = this.config.get('OPENAI_API_KEY');
     if (!apiKey) {
       this.logger.warn('No AI API key, skipping photo validation');
@@ -275,19 +296,20 @@ export class ReportsService {
 
   async getUsersInCity(city: string): Promise<string[]> {
     if (!city) return [];
-    const lower = city.toLowerCase();
     const users = await this.prisma.user.findMany({
-      where: { isActive: true, isBanned: false },
-      select: { id: true, homeAddress: true, workAddress: true, city: true },
-      take: 1000,
+      where: {
+        isActive: true,
+        isBanned: false,
+        OR: [
+          { city: { contains: city, mode: 'insensitive' } },
+          { homeAddress: { contains: city, mode: 'insensitive' } },
+          { workAddress: { contains: city, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+      take: 500,
     });
-    return users
-      .filter(u =>
-        (u.city && u.city.toLowerCase().includes(lower)) ||
-        (u.homeAddress && u.homeAddress.toLowerCase().includes(lower)) ||
-        (u.workAddress && u.workAddress.toLowerCase().includes(lower))
-      )
-      .map(u => u.id);
+    return users.map(u => u.id);
   }
 
   async getPremiumUsers(): Promise<string[]> {
@@ -399,8 +421,8 @@ export class ReportsService {
       userDisplayName: report.user?.displayName,
     });
 
-    // 3. Send to all Premium users (tier 1+)
-    const premiumUserIds = await this.getPremiumUsers();
+    // 3. Notify all Premium users (bulk)
+    const premiumUserIds = (await this.getPremiumUsers()).filter(id => id !== userId);
 
     const notificationData = JSON.stringify({
       reportId: report.id,
@@ -415,52 +437,52 @@ export class ReportsService {
       description: dto.description,
     });
 
-    for (const uid of premiumUserIds) {
-      if (uid === userId) continue;
-      const premiumNotif = await this.prisma.notification.create({
-        data: {
+    if (premiumUserIds.length > 0) {
+      await this.prisma.notification.createMany({
+        data: premiumUserIds.map(uid => ({
           userId: uid,
           type: 'report_premium',
           title: `⚠️ ${typeLabel}`,
           body: dto.description || `Новый репорт: ${typeLabel}`,
           data: notificationData,
-        },
-      }).catch(() => null);
-      if (premiumNotif) {
-        await this.gateway.sendToUser(uid, 'notification:new', premiumNotif).catch(() => {});
+        })),
+      }).catch(err => this.logger.warn(`Failed to create premium notifications: ${err.message}`));
+
+      for (const uid of premiumUserIds) {
+        await this.gateway.sendToUser(uid, 'report:new', {
+          ...report,
+          premiumNotification: true,
+          time: timeStr,
+        }).catch(() => {});
       }
-      await this.gateway.sendToUser(uid, 'report:new', {
-        ...report,
-        premiumNotification: true,
-        time: timeStr,
-      }).catch(() => {});
     }
 
-    // 4. Send to users in the same city
+    // 4. Notify users in the same city (bulk)
     const city = reportCity;
     if (city) {
-      const cityUserIds = await this.getUsersInCity(city);
-      for (const uid of cityUserIds) {
-        if (uid === userId || premiumUserIds.includes(uid)) continue;
-        const cityNotif = await this.prisma.notification.create({
-          data: {
+      const cityUserIds = (await this.getUsersInCity(city)).filter(
+        id => id !== userId && !premiumUserIds.includes(id)
+      );
+      if (cityUserIds.length > 0) {
+        await this.prisma.notification.createMany({
+          data: cityUserIds.map(uid => ({
             userId: uid,
             type: 'report',
             title: `⚠️ ${typeLabel} в ${city}`,
             body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
             data: notificationData,
-          },
-        }).catch(() => null);
-        if (cityNotif) {
-          await this.gateway.sendToUser(uid, 'notification:new', cityNotif).catch(() => {});
+          })),
+        }).catch(err => this.logger.warn(`Failed to create city notifications: ${err.message}`));
+
+        for (const uid of cityUserIds) {
+          await this.gateway.sendToUser(uid, 'report:new', {
+            ...report,
+            cityNotification: true,
+            time: timeStr,
+          }).catch(() => {});
         }
-        await this.gateway.sendToUser(uid, 'report:new', {
-          ...report,
-          cityNotification: true,
-          time: timeStr,
-        }).catch(() => {});
+        this.logger.log(`Sent city notifications to ${cityUserIds.length} users in ${city}`);
       }
-      this.logger.log(`Sent city notifications to ${cityUserIds.length} users in ${city}`);
     }
 
     this.logger.log(`Report created: ${dto.type} by user ${userId}`);

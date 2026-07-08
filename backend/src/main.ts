@@ -5,8 +5,6 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import helmet from 'helmet';
-import * as express from 'express';
-import { execSync } from 'child_process';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -19,21 +17,6 @@ async function bootstrap() {
   console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
   // eslint-disable-next-line no-console
   console.log('DATABASE_URL_DIRECT exists:', !!process.env.DATABASE_URL_DIRECT);
-
-  // Push Prisma schema before any DB access
-  try {
-    // eslint-disable-next-line no-console
-    console.log('Running prisma db push...');
-    const pushResult = execSync(
-      'npx prisma db push --accept-data-loss 2>&1',
-      { encoding: 'utf-8', timeout: 120000 },
-    ).trim();
-    // eslint-disable-next-line no-console
-    console.log('prisma db push result:', pushResult.split('\n').slice(-3).join('\n'));
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.log('prisma db push error:', err.message?.split('\n')[0]);
-  }
 
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -66,9 +49,6 @@ async function bootstrap() {
 
   // Global prefix
   app.setGlobalPrefix(apiPrefix);
-
-  // Raw body for Stripe webhooks (must be after global prefix)
-  app.use(`/${apiPrefix}/premium/webhook`, express.raw({ type: 'application/json' }));
 
   // Global pipes
   app.useGlobalPipes(

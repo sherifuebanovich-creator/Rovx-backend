@@ -5,7 +5,6 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import helmet from 'helmet';
-import * as express from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -36,7 +35,6 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix(apiPrefix);
-  app.use(`/${apiPrefix}/premium/webhook`, express.raw({ type: 'application/json' }));
 
   app.useGlobalPipes(
     new ValidationPipe({

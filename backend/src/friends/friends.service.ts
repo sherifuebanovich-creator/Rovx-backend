@@ -155,10 +155,9 @@ export class FriendsService {
     const users = await this.prisma.user.findMany({
       where: {
         OR: [
-          { username: { contains: query } },
-          { displayName: { contains: query } },
+          { displayName: { contains: query, mode: 'insensitive' } },
+          { username: { contains: query, mode: 'insensitive' } },
         ],
-        id: { not: currentUserId },
         isActive: true,
         isBanned: false,
       },

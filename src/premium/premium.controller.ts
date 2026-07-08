@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req, Headers, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { PremiumService } from './premium.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -27,7 +27,7 @@ export class PremiumController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('create-checkout')
-  @ApiOperation({ summary: 'Create Stripe checkout session' })
+  @ApiOperation({ summary: 'Create Lava checkout session' })
   createCheckout(
     @CurrentUser('id') userId: string,
     @Body() body: { tierName: string; months?: number },
@@ -54,11 +54,8 @@ export class PremiumController {
   @Public()
   @Post('webhook')
   @ApiExcludeEndpoint()
-  async webhook(
-    @Req() req: any,
-    @Headers('stripe-signature') signature: string,
-  ) {
-    await this.premiumService.handleStripeWebhook(req.rawBody, signature);
+  async webhook(@Body() body: any) {
+    await this.premiumService.handleWebhook(body);
     return { received: true };
   }
 }

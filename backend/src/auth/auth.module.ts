@@ -18,12 +18,16 @@ import { MailModule } from '../mail/mail.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'change-me-in-production'),
-        signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN', '15m'),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET is not configured');
+        return {
+          secret,
+          signOptions: {
+            expiresIn: config.get<string>('JWT_EXPIRES_IN', '15m'),
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
