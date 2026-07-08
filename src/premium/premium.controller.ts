@@ -59,29 +59,4 @@ export class PremiumController {
     return { received: true };
   }
 
-  @Public()
-  @Get('test-lava')
-  @ApiExcludeEndpoint()
-  async testLava() {
-    const axios = require('axios');
-    const apiKey = process.env.LAVA_API_KEY || 'not-set';
-    try {
-      const res = await axios.post('https://gate.lava.top/api/v3/invoice', {
-        email: 'test@lava.top',
-        offerId: 'af64d6fe-b677-47e1-a9a3-9777fb2e6b58',
-        currency: 'USD',
-        amount: 4.99,
-      }, {
-        headers: {
-          'X-Api-Key': apiKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        timeout: 15000,
-      });
-      return { success: true, data: res.data, apiKeyPrefix: apiKey.substring(0, 8) + '...' };
-    } catch (err: any) {
-      return { success: false, error: err.message, details: err.response?.data, apiKeyPrefix: apiKey.substring(0, 8) + '...' };
-    }
-  }
 }
