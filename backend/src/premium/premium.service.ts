@@ -23,7 +23,7 @@ export class PremiumService {
     private config: ConfigService,
   ) {
     this.apiKey = this.config.get('LAVA_API_KEY', '');
-    this.offerId = this.config.get('LAVA_OFFER_ID', '');
+    this.offerId = this.config.get('LAVA_OFFER_ID_V2', 'af64d6fe-b677-47e1-a9a3-9777fb2e6b58');
   }
 
   getTiers(lang = 'en') {
