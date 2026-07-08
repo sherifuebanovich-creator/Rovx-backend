@@ -84,7 +84,7 @@ export class PremiumService {
         {
           email: user.email,
           offerId: this.offerId,
-          currency: 'RUB',
+          currency: 'USD',
           amount: amount,
         },
         {

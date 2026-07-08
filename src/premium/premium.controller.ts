@@ -69,8 +69,8 @@ export class PremiumController {
       const res = await axios.post('https://gate.lava.top/api/v3/invoice', {
         email: 'test@lava.top',
         offerId: 'af64d6fe-b677-47e1-a9a3-9777fb2e6b58',
-        currency: 'RUB',
-        amount: 10,
+        currency: 'USD',
+        amount: 4.99,
       }, {
         headers: {
           'X-Api-Key': apiKey,
