@@ -75,12 +75,16 @@ function PremiumPage() {
 
   const fetchData = async () => {
     try {
-      const [tiersRes, subRes] = await Promise.all([
+      const [tiersRes, subRes] = await Promise.allSettled([
         premiumApi.getTiers(i18n.language),
         premiumApi.getMy(),
       ]);
-      setTiers(tiersRes.data?.data || tiersRes.data);
-      setMySub(subRes.data?.data || subRes.data);
+      if (tiersRes.status === 'fulfilled') {
+        setTiers(tiersRes.value.data?.data || tiersRes.value.data);
+      }
+      if (subRes.status === 'fulfilled') {
+        setMySub(subRes.value.data?.data || subRes.value.data);
+      }
     } catch {
       // ignore
     } finally {
