@@ -75,6 +75,14 @@ function AuthInit() {
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(() => queryClient);
 
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      });
+    }
+  }, []);
+
   return (
     <AuthProvider>
       <QueryClientProvider client={client}>
