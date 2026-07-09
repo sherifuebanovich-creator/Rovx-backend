@@ -48,34 +48,31 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
    - Only Report and Chats tabs remain
    - `activeTab` default changed to `'report'`
 
+10. **Bot commands**
+    - `/stats` — полная статистика
+    - `/reports` — выбор страны → города → репорт с фото/описанием/координатами/временем
+    - `/online` — кто сейчас онлайн (с городом)
+    - `/premium` — продажи премиума
+    - `/server` — нагрузка CPU/RAM
+    - `/start` — приветствие со списком команд
+    - `sendPhotoToChat()` добавлен в TelegramService
+
+11. **Map: user marker → dot**
+    - Треугольник (стрелка) заменён на синий кружок с маленькой стрелкой направления
+    - Кнопка центрирования снизу справа удалена (дублирует кнопку в TopBar)
+
 ## Current Issues
 - Xsolla PayStation returns error — user needs to configure payment methods in Xsolla Publisher Account (Projects → Rovx → Payment methods → add test card)
-
-## Last Session Additions
-- `GET /admin/stats` — reports per hour/day/week/month, premium sales, online users with names, server CPU/RAM
-- `POST /telegram/webhook` — Telegram bot `/stats` command with inline buttons for premium details
-- `GET /admin/stats/premium/:id` — premium purchase details (buyer, price, date)
-- BottomBar compacted to rounded pill with 2 buttons (report + chats)
-- Auto-redirect to `/auth/login` when refresh token fails
-- All errors localized via `Accept-Language` header (RU/EN)
 
 ## This Session (Jul 2026)
 
 ### Changes Made
-1. **AI photo validation: default to reject**
-   - Prompt changed from "В остальных случаях — valid: true" to "Если не уверен — valid: false"
-   - Both prompts (with/without description) updated
-
-2. **Bot /stats: only count active premium**
-   - `admin.service.ts`: all premium count queries filter by `status: 'active'`
-   - No longer counts pending/incomplete purchases as real sales
-
-3. **New bot command: /reports**
-   - `/reports Москва` — shows up to 20 recent reports for the city
-   - `/reports` without args — inline buttons with 8 popular cities
-   - City selection callback handled in webhook
-   - Reports displayed with emoji, type, time, description, author
-   - Circular dependency `ReportsModule ↔ TelegramModule` resolved with `forwardRef`
+1. **AI photo validation: default to reject** — prompt defaults to `valid: false` when unsure
+2. **Bot /stats: only count active** — `status: 'active'` filter on premium counts
+3. **Bot commands refactored** — `/premium`, `/server`, `/online` as separate commands; `/start` shows full list
+4. **/reports with country→city flow** — 3 countries, 30+ cities, reports sent as individual messages with photo
+5. **User marker → dot** — triangle replaced with blue circle + heading arrow
+6. **Duplicate recenter button removed** from MapApp bottom-right (TopBar has one)
 
 ## Env Vars
 | Key | Value |

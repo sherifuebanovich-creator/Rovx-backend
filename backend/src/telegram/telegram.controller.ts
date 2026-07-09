@@ -6,8 +6,16 @@ import { ReportsService } from '../reports/reports.service';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
-  'Казахстан': ['Алматы', 'Астана', 'Шымкент', 'Караганда'],
-  'Беларусь': ['Минск', 'Гомель', 'Брест', 'Витебск', 'Гродно'],
+  'Узбекистан': ['Ташкент', 'Самарканд', 'Бухара', 'Наманган', 'Андижан', 'Фергана', 'Нукус', 'Карши', 'Джизак', 'Ургенч'],
+  'Казахстан': ['Алматы', 'Астана', 'Шымкент', 'Караганда', 'Актау', 'Атырау'],
+  'Украина': ['Киев', 'Харьков', 'Одесса', 'Днепр', 'Львов', 'Запорожье'],
+  'Беларусь': ['Минск', 'Гомель', 'Брест', 'Витебск', 'Гродно', 'Могилёв'],
+  'Азербайджан': ['Баку', 'Гянджа', 'Сумгаит', 'Мингечаур'],
+  'Армения': ['Ереван', 'Гюмри', 'Ванадзор', 'Раздан'],
+  'Кыргызстан': ['Бишкек', 'Ош', 'Джалал-Абад', 'Каракол'],
+  'Таджикистан': ['Душанбе', 'Худжанд', 'Куляб', 'Бохтар'],
+  'Туркменистан': ['Ашхабад', 'Туркменабад', 'Дашогуз'],
+  'Молдова': ['Кишинёв', 'Бельцы', 'Тирасполь'],
 };
 
 const TYPE_EMOJI: Record<string, string> = {
@@ -42,16 +50,10 @@ export class TelegramController {
         if (cmd === '/start') {
           await this.telegram.sendMessageToChat(chatId,
             '🤖 <b>ROVX Bot</b>\n\n' +
-            '📊 /stats — полная статистика системы\n' +
             '📋 /reports — репорты по городам\n' +
             '🟢 /online — кто сейчас онлайн\n' +
             '💎 /premium — продажи премиума\n' +
             '🖥 /server — нагрузка сервера');
-          return { ok: true };
-        }
-
-        if (cmd === '/stats') {
-          await this.sendStats(chatId);
           return { ok: true };
         }
 
@@ -230,45 +232,6 @@ export class TelegramController {
     } catch (error) {
       this.logger.error('Failed to send online', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении списка онлайн');
-    }
-  }
-
-  private async sendStats(chatId: number) {
-    try {
-      const stats = await this.admin.getStats();
-
-      const reportsLine = `📊 <b>РЕПОРТЫ</b>\n` +
-        `За час: ${stats.reports.hour}\n` +
-        `За день: ${stats.reports.day}\n` +
-        `За неделю: ${stats.reports.week}\n` +
-        `За месяц: ${stats.reports.month}\n`;
-
-      const premiumLine = `💎 <b>PREMIUM (продаж)</b>\n` +
-        `Сегодня: ${stats.premium.today}\n` +
-        `За неделю: ${stats.premium.week}\n` +
-        `За месяц: ${stats.premium.month}\n`;
-
-      const onlineLine = `🟢 <b>ОНЛАЙН</b>\n` +
-        `Всего: ${stats.online.count}\n` +
-        (stats.online.users.length > 0
-          ? stats.online.users.map((u: any) => `• ${u.displayName || u.username}`).join('\n')
-          : '—') + '\n';
-
-      const serverLine = `🖥 <b>СЕРВЕР</b>\n` +
-        `CPU: ${stats.server.cpu}%\n` +
-        `RAM: ${stats.server.memory}%\n`;
-
-      const msg = `${reportsLine}\n${premiumLine}\n${onlineLine}\n${serverLine}`;
-
-      const buttons = stats.premium.details.slice(0, 10).map((sub: any) => ({
-        text: `📦 ${sub.user.displayName || sub.user.username} — $${sub.price}`,
-        callback_data: `premium_${sub.id}`,
-      }));
-
-      await this.telegram.sendMessageToChat(chatId, msg, buttons);
-    } catch (error) {
-      this.logger.error('Failed to send stats', error instanceof Error ? error.message : String(error));
-      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении статистики');
     }
   }
 }
