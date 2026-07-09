@@ -58,11 +58,13 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
-      - key: LAVA_API_KEY
+      - key: XSOLLA_MERCHANT_ID
         sync: false
-      - key: LAVA_OFFER_ID_V2
+      - key: XSOLLA_API_KEY
         sync: false
-      - key: LAVA_WEBHOOK_SECRET
+      - key: XSOLLA_PROJECT_ID
+        sync: false
+      - key: XSOLLA_WEBHOOK_SECRET
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false

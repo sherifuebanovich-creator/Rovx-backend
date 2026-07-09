@@ -1,26 +1,24 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FaMap, FaCompass, FaExclamationTriangle, FaCommentDots } from 'react-icons/fa';
+import { FaMap, FaExclamationTriangle, FaCommentDots } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Tab = 'map' | 'route' | 'report' | 'chats';
+type Tab = 'map' | 'report' | 'chats';
 
 export function BottomBar() {
   const router = useRouter();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('map');
-  const toggleRoutesPanel = useMapStore(s => s.toggleRoutesPanel);
   const toggleReportPanel = useMapStore(s => s.toggleReportPanel);
   const followUser = useMapStore(s => s.followUser);
   const setFollowUser = useMapStore(s => s.setFollowUser);
 
   const tabs: { id: Tab; icon: React.ReactNode; label: string; action?: () => void; href?: string }[] = [
     { id: 'map', icon: <FaMap size={20} />, label: t('bottombar.map'), action: () => { if (!followUser) setFollowUser(true); } },
-    { id: 'route', icon: <FaCompass size={20} />, label: t('bottombar.route'), action: toggleRoutesPanel },
     { id: 'report', icon: <FaExclamationTriangle size={20} />, label: t('bottombar.report'), action: toggleReportPanel },
     { id: 'chats', icon: <FaCommentDots size={20} />, label: t('bottombar.social'), href: '/chats' },
   ];

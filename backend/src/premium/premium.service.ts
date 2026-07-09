@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import axios from 'axios';
+import { XsollaService } from './xsolla.service';
 
 export const PREMIUM_TIERS = [
   { tier: 0, name: 'FREE', price: 0, maxGroups: 0, canCreateGroups: false, canReceiveReports: false, label_en: 'Free', label_ru: 'Бесплатно' },
@@ -15,16 +15,12 @@ export type PremiumTier = typeof PREMIUM_TIERS[number];
 @Injectable()
 export class PremiumService {
   private readonly logger = new Logger(PremiumService.name);
-  private readonly apiKey: string;
-  private readonly offerId: string;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
-  ) {
-    this.apiKey = this.config.get('LAVA_API_KEY', '');
-    this.offerId = this.config.get('LAVA_OFFER_ID_V2', 'af64d6fe-b677-47e1-a9a3-9777fb2e6b58');
-  }
+    private xsolla: XsollaService,
+  ) {}
 
   getTiers(lang = 'en') {
     return PREMIUM_TIERS.map(t => ({
@@ -70,8 +66,9 @@ export class PremiumService {
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
     }
-    if (!this.apiKey || !this.offerId) {
-      throw new BadRequestException('Lava payment is not configured');
+
+    if (!this.xsolla.configured) {
+      throw new BadRequestException('Xsolla payment is not configured');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -80,25 +77,14 @@ export class PremiumService {
     const amount = +(tier.price * months).toFixed(2);
 
     try {
-      const res = await axios.post('https://gate.lava.top/api/v3/invoice',
-        {
-          email: user.email,
-          offerId: this.offerId,
-          currency: 'USD',
-          amount: amount,
-        },
-        {
-          headers: {
-            'X-Api-Key': this.apiKey,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          timeout: 15000,
-        },
-      );
-
-      const invoiceId = res.data.id;
-      const paymentUrl = res.data.paymentUrl || '';
+      const { token, url } = await this.xsolla.createPaymentToken({
+        userId,
+        email: user.email,
+        userName: user.name || user.email,
+        tierName,
+        tierPrice: tier.price,
+        months,
+      });
 
       await this.prisma.premiumSubscription.upsert({
         where: { userId },
@@ -108,68 +94,118 @@ export class PremiumService {
           levelName: tier.name,
           endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           price: amount,
-          currency: 'RUB',
+          currency: 'USD',
           status: 'pending',
-          paymentId: invoiceId,
-          provider: 'lava',
+          paymentId: token,
+          provider: 'xsolla',
           autoRenew: false,
         },
         update: {
           tier: tier.tier,
           levelName: tier.name,
           price: amount,
-          paymentId: invoiceId,
+          paymentId: token,
           status: 'pending',
         },
       });
 
-      this.logger.log(`User ${userId} initiated Lava payment ${invoiceId}`);
-      return { url: paymentUrl, paymentId: invoiceId };
+      this.logger.log(`User ${userId} initiated Xsolla payment token=${token}`);
+      return { url, paymentId: token };
     } catch (err: any) {
-      this.logger.error(`Lava create payment failed: ${err.message}`);
+      this.logger.error(`Xsolla create checkout failed: ${err.message}`);
       throw new BadRequestException('Payment initiation failed. Please try again.');
     }
   }
 
-  async handleWebhook(body: any): Promise<void> {
-    const { eventType, contractId } = body;
-    if (!eventType || !contractId) return;
+  async handleWebhook(rawBody: string, authHeader: string): Promise<any> {
+    const xsollaService = this.xsolla;
 
-    this.logger.log(`Lava webhook: event=${eventType}, contract=${contractId}`);
-
-    if (eventType === 'payment.success') {
-      const sub = await this.prisma.premiumSubscription.findFirst({
-        where: { paymentId: contractId },
-      });
-      if (!sub) {
-        this.logger.warn(`No subscription for contract ${contractId}`);
-        return;
-      }
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      await this.prisma.$transaction([
-        this.prisma.premiumSubscription.update({
-          where: { id: sub.id },
-          data: { status: 'active', endDate },
-        }),
-        this.prisma.user.update({
-          where: { id: sub.userId },
-          data: { subscription: sub.levelName, subscriptionEnd: endDate },
-        }),
-      ]);
-      this.logger.log(`User ${sub.userId} subscribed to ${sub.levelName} via Lava`);
+    if (!xsollaService.verifyWebhookSignature(rawBody, authHeader)) {
+      this.logger.error('Xsolla webhook signature verification failed — rejecting event');
+      throw new BadRequestException('Invalid webhook signature');
     }
 
-    if (eventType === 'payment.failed') {
-      const sub = await this.prisma.premiumSubscription.findFirst({
-        where: { paymentId: contractId },
-      });
-      if (sub) {
-        await this.prisma.premiumSubscription.update({
-          where: { id: sub.id },
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      this.logger.error('Failed to parse webhook body as JSON');
+      return { received: true };
+    }
+
+    const notificationType = body.notification_type;
+    this.logger.log(`Xsolla webhook: notification_type=${notificationType}`);
+
+    if (notificationType === 'user_validation') {
+      return {
+        notification_type: 'user_validation',
+        user: body.user,
+        hasUser: true,
+      };
+    }
+
+    if (notificationType === 'payment') {
+      const userId = body.user?.id?.value;
+      const status = body.payment?.status;
+      const transactionId = body.transaction?.id;
+      const customTier = body.custom_parameters?.tier;
+
+      if (!userId || !status) {
+        this.logger.warn('Xsolla payment webhook missing userId or status');
+        return { received: true };
+      }
+
+      if (status === 'done') {
+        const tierName = customTier || 'PREMIUM_BASIC';
+        const tier = this.getTierInfo(tierName);
+        const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+
+        if (sub?.status === 'active') {
+          this.logger.log(`Xsolla payment ${transactionId} already processed — skipping`);
+          return { received: true };
+        }
+
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.upsert({
+            where: { userId },
+            create: {
+              userId,
+              tier: tier.tier,
+              levelName: tierName,
+              endDate,
+              price: body.purchase?.checkout?.amount || tier.price,
+              currency: 'USD',
+              status: 'active',
+              paymentId: transactionId,
+              provider: 'xsolla',
+              autoRenew: false,
+            },
+            update: {
+              status: 'active',
+              tier: tier.tier,
+              levelName: tierName,
+              endDate,
+              paymentId: transactionId,
+            },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: tierName, subscriptionEnd: endDate },
+          }),
+        ]);
+
+        this.logger.log(`User ${userId} subscribed to ${tierName} via Xsolla`);
+      } else if (status === 'canceled' || status === 'failed') {
+        await this.prisma.premiumSubscription.updateMany({
+          where: { userId, paymentId: transactionId },
           data: { status: 'cancelled' },
         });
       }
     }
+
+    return { received: true };
   }
 
   async cancelSubscription(userId: string) {
@@ -205,7 +241,7 @@ export class PremiumService {
       canReceiveReports: tierInfo.canReceiveReports,
       active: sub?.status === 'active' && (!user?.subscriptionEnd || user.subscriptionEnd > new Date()),
       paymentId: sub?.paymentId,
-      provider: sub?.provider || 'lava',
+      provider: sub?.provider || 'xsolla',
     };
   }
 }

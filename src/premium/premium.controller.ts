@@ -28,7 +28,7 @@ export class PremiumController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('create-checkout')
-  @ApiOperation({ summary: 'Create Lava checkout session' })
+  @ApiOperation({ summary: 'Create Xsolla checkout session' })
   createCheckout(
     @CurrentUser('id') userId: string,
     @Body() body: { tierName: string; months?: number },
@@ -56,10 +56,8 @@ export class PremiumController {
   @Post('webhook')
   @ApiExcludeEndpoint()
   async webhook(@Req() req: Request) {
-    const signature = req.headers['x-signature'] as string || req.headers['x-hub-signature-256'] as string || '';
+    const authHeader = req.headers['authorization'] as string || '';
     const rawBody = (req as any).rawBody || '';
-    await this.premiumService.handleWebhook(rawBody, signature);
-    return { received: true };
+    return this.premiumService.handleWebhook(rawBody, authHeader);
   }
-
 }

@@ -84,7 +84,7 @@ model PremiumSubscription {
   price         Float    @default(0)
   currency      String   @default("USD")
   paymentId     String?
-  provider      String   @default("lava")
+  provider      String   @default("xsolla")
   status        String   @default("pending")
   createdAt     DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

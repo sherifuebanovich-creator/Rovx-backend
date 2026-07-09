@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { PremiumService } from './premium.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -27,7 +28,7 @@ export class PremiumController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('create-checkout')
-  @ApiOperation({ summary: 'Create Lava checkout session' })
+  @ApiOperation({ summary: 'Create Xsolla checkout session' })
   createCheckout(
     @CurrentUser('id') userId: string,
     @Body() body: { tierName: string; months?: number },
@@ -54,8 +55,9 @@ export class PremiumController {
   @Public()
   @Post('webhook')
   @ApiExcludeEndpoint()
-  async webhook(@Body() body: any) {
-    await this.premiumService.handleWebhook(body);
-    return { received: true };
+  async webhook(@Req() req: Request) {
+    const authHeader = req.headers['authorization'] as string || '';
+    const rawBody = (req as any).rawBody || '';
+    return this.premiumService.handleWebhook(rawBody, authHeader);
   }
 }
