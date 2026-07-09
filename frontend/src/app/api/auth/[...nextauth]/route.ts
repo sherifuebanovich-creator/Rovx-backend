@@ -11,6 +11,17 @@ const authOptions: NextAuthOptions = {
   ],
   secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: 'jwt' },
+  cookies: {
+    sessionToken: {
+      name: 'rovx-session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
   pages: {
     signIn: '/auth/login',
     error: '/auth/login',
@@ -44,7 +55,6 @@ const authOptions: NextAuthOptions = {
             if (data.data?.accessToken) {
               (user as any).accessToken = data.data.accessToken;
               (user as any).refreshToken = data.data.refreshToken;
-              (user as any).rovxUser = data.data.user;
             } else {
               console.warn('[Auth] Backend returned OK but no accessToken — proceeding without backend sync');
             }
@@ -62,14 +72,12 @@ const authOptions: NextAuthOptions = {
       if (user) {
         token.accessToken = (user as any).accessToken ?? token.accessToken;
         token.refreshToken = (user as any).refreshToken ?? token.refreshToken;
-        token.rovxUser = (user as any)?.rovxUser ?? token.rovxUser;
       }
       return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken;
       session.refreshToken = token.refreshToken;
-      session.rovxUser = token.rovxUser;
       return session;
     },
   },

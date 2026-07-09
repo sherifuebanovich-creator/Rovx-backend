@@ -20,6 +20,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { PremiumModule } from './premium/premium.module';
 import { FuelModule } from './fuel/fuel.module';
 import { FriendsModule } from './friends/friends.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   controllers: [HealthController],
@@ -72,6 +73,7 @@ import { FriendsModule } from './friends/friends.module';
     PremiumModule,
     FuelModule,
     FriendsModule,
+    TasksModule,
   ],
 })
 export class AppModule {}
