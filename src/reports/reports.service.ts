@@ -148,7 +148,7 @@ export class ReportsService {
       return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
     }
 
-    if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3') && !model.includes('gpt-4.1')) {
+    if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3') && !model.includes('gpt-4.1') && !model.includes('llama')) {
       this.logger.warn(`Model "${model}" may not support vision, rejecting photo validation`);
       return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
     }
@@ -180,7 +180,7 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь максимально строгим. Если фото не соответствует описанию или типу — отклоняй.`;
+Если сомневаешься — пропускай (valid: true).`;
     } else {
       prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события на российских дорогах.
 
@@ -203,7 +203,7 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь максимально строгим. Если на фото нет явных признаков заявленного типа — отклоняй.`;
+Если сомневаешься — пропускай (valid: true).`;
     }
 
     try {

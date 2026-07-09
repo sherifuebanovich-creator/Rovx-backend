@@ -124,52 +124,55 @@ export class ReportsService {
     }
   }
 
-  private isPrivateOrInternalUrl(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      const hostname = parsed.hostname.toLowerCase();
-      if (parsed.protocol === 'file:' || parsed.protocol === 'ftp:') return true;
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') return true;
-      if (hostname.startsWith('10.') || hostname.startsWith('192.168.') || hostname.startsWith('172.16.')) return true;
-      if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
-      if (hostname === '[::1]') return true;
-      if (hostname === '169.254.169.254') return true;
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
   async validatePhoto(
     imageUrl: string,
     reportType?: string,
     description?: string,
   ): Promise<{ valid: boolean; reason?: string }> {
-    if (this.isPrivateOrInternalUrl(imageUrl)) {
-      this.logger.warn(`Blocked SSRF attempt: ${imageUrl.slice(0, 100)}`);
-      return { valid: false, reason: 'Недопустимый URL изображения' };
-    }
-
     const apiKey = this.config.get('OPENAI_API_KEY');
     if (!apiKey) {
       this.logger.warn('No AI API key, skipping photo validation');
       return { valid: true };
     }
 
+    const visionModel = this.config.get('AI_VISION_MODEL', '');
+    const model = visionModel || this.config.get('AI_MODEL', 'llama-3.3-70b-versatile');
+
+    const supported = [
+      ...(this.config.get<string>('AI_VISION_MODELS', '') || '').split(',').map(m => m.trim()).filter(Boolean),
+      visionModel,
+    ].filter(Boolean);
+
+    if (supported.length > 0 && !supported.some(m => m === model || m.includes(model))) {
+      this.logger.warn(`Model "${model}" not in vision-capable list [${supported.join(',')}], rejecting photo validation`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
+    }
+
+    if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3') && !model.includes('gpt-4.1') && !model.includes('llama')) {
+      this.logger.warn(`Model "${model}" may not support vision, rejecting photo validation`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
+    }
+
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
 
     let prompt: string;
     if (description && description.trim()) {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно описанию события.
+      prompt = `Проанализируй это изображение и определи, соответствует ли оно описанию события на российских дорогах.
 
 Описание: "${description}"
 
 Тип события: "${typeLabel}"
 
 Правила проверки:
-- Если на фото видно то, что описано в тексте — ответь valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без дорог) — valid: false
-- Если на фото НЕ то, что описано в тексте (например, в описании "яма", а на фото авария) — valid: false с пояснением
+- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
+- Если на фото видно то, что описано в тексте — valid: true
+- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
+- Если на фото НЕ то, что описано (например, в описании "яма", а на фото авария) — valid: false
+- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
+- Для ICE — на фото должен быть лёд на дороге или гололёд
+- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
+- Для POLICE — на фото должен быть патруль ДПС или полицейская машина
+- Для ROAD_WORKS — на фото должны быть дорожные работы или техника
 
 Ответь JSON:
 {
@@ -177,16 +180,22 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь строгим. Если фото не соответствует описанию — отклоняй.`;
+Если сомневаешься — пропускай (valid: true).`;
     } else {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события.
+      prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события на российских дорогах.
 
 Заявленный тип события: "${typeLabel}"
 
 Правила проверки:
-- Если на фото видно именно то, что указано в типе события — ответь valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без дорог) — valid: false
-- Если фото связано с дорогой/транспортом, но НЕ соответствует заявленному типу — valid: false с пояснением
+- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
+- Если на фото видно именно то, что указано в типе события — valid: true
+- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
+- Если фото связано с дорогой/транспортом, но НЕ соответствует заявленному типу — valid: false
+- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
+- Для ICE — на фото должен быть лёд на дороге
+- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
+- Для POLICE — на фото должен быть патруль ДПС
+- Для ROAD_WORKS — на фото должны быть дорожные работы
 
 Ответь JSON:
 {
@@ -194,16 +203,16 @@ export class ReportsService {
   "reason": "краткое пояснение на русском (до 100 символов)"
 }
 
-Будь строгим. Если на фото нет явных признаков заявленного типа события — отклоняй.`;
+Если сомневаешься — пропускай (valid: true).`;
     }
 
     try {
       const response = await axios.post(
         `${this.aiBaseUrl}/chat/completions`,
         {
-          model: this.config.get('AI_MODEL', 'llama-3.3-70b-versatile'),
+          model,
           messages: [
-            { role: 'system', content: 'You are a strict image moderation AI. Analyze images and respond in JSON only.' },
+            { role: 'system', content: 'You are a strict image moderation AI for Russian road reports. Analyze images and respond in JSON only.' },
             { role: 'user', content: [
               { type: 'text', text: prompt },
               { type: 'image_url', image_url: { url: imageUrl } },
@@ -221,7 +230,13 @@ export class ReportsService {
         },
       );
 
-      const result = JSON.parse(response.data.choices[0].message.content);
+      const content = response.data.choices?.[0]?.message?.content;
+      if (!content) {
+        this.logger.warn('Photo validation: empty response from AI');
+        return { valid: true };
+      }
+
+      const result = JSON.parse(content);
       this.logger.log(`Photo validation for ${typeLabel}: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
 
       if (!result.valid) {
@@ -229,7 +244,8 @@ export class ReportsService {
       }
       return { valid: true };
     } catch (error) {
-      this.logger.error('Photo validation failed', error instanceof Error ? error.message : String(error));
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Photo validation error: ${msg}`);
       return { valid: true };
     }
   }
@@ -243,22 +259,31 @@ export class ReportsService {
 
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
 
-    const prompt = `Проанализируй это описание и определи, соответствует ли оно заявленному типу события.
+    const prompt = `Проанализируй описание дорожного события и определи, соответствует ли оно заявленному типу.
 
 Заявленный тип события: "${typeLabel}"
 
 Описание: "${description}"
 
-Правила проверки:
-- Если описание соответствует типу события (например, для "яма на дороге" — описание про яму) — valid: true
-- Если описание не связано с заявленным типом события (например, заявлено "авария", а описано про погоду) — valid: false
+Правила проверки (строгие):
+- Описание должно относиться к российской дорожной ситуации
+- Для POTHOLE/BAD_ROAD — описание про ямы, выбоины, разрушенное покрытие
+- Для ACCIDENT — описание про ДТП, столкновение, аварию
+- Для ICE — описание про лёд, гололёд, скользкую дорогу
+- Для FOG — описание про туман, плохую видимость
+- Для POLICE — описание про патруль ДПС, полицейскую машину, пост ГИБДД
+- Для ROAD_WORKS — описание про ремонт дороги, дорожные работы, строительную технику
+- Если описание не соответствует заявленному типу — valid: false
 - Если описание содержит спам, рекламу или оскорбления — valid: false
+- Если описание не относится к дорожной ситуации — valid: false
 
 Ответь JSON:
 {
   "valid": boolean,
   "reason": "краткое пояснение на русском (до 100 символов)"
-}`;
+}
+
+Будь строгим. Отклоняй несоответствующие и подозрительные описания.`;
 
     try {
       const response = await axios.post(
@@ -266,7 +291,7 @@ export class ReportsService {
         {
           model: this.config.get('AI_MODEL', 'llama-3.3-70b-versatile'),
           messages: [
-            { role: 'system', content: 'You are a strict content moderation AI. Respond in JSON only.' },
+            { role: 'system', content: 'You are a strict content moderation AI for Russian road reports. Respond in JSON only.' },
             { role: 'user', content: prompt },
           ],
           temperature: 0.1,
@@ -281,7 +306,13 @@ export class ReportsService {
         },
       );
 
-      const result = JSON.parse(response.data.choices[0].message.content);
+      const content = response.data.choices?.[0]?.message?.content;
+      if (!content) {
+        this.logger.warn('Description validation: empty response from AI');
+        return { valid: true };
+      }
+
+      const result = JSON.parse(content);
       this.logger.log(`Description validation: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
 
       if (!result.valid) {
@@ -289,27 +320,30 @@ export class ReportsService {
       }
       return { valid: true };
     } catch (error) {
-      this.logger.error('Description validation failed', error instanceof Error ? error.message : String(error));
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Description validation error: ${msg}`);
       return { valid: true };
     }
   }
 
   async getUsersInCity(city: string): Promise<string[]> {
     if (!city) return [];
+    const lower = city.toLowerCase();
+    const escaped = lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordPattern = new RegExp(`\\b${escaped}\\b`, 'i');
     const users = await this.prisma.user.findMany({
-      where: {
-        isActive: true,
-        isBanned: false,
-        OR: [
-          { city: { contains: city, mode: 'insensitive' } },
-          { homeAddress: { contains: city, mode: 'insensitive' } },
-          { workAddress: { contains: city, mode: 'insensitive' } },
-        ],
-      },
-      select: { id: true },
-      take: 500,
+      where: { isActive: true, isBanned: false },
+      select: { id: true, homeAddress: true, workAddress: true, city: true },
+      take: 1000,
     });
-    return users.map(u => u.id);
+    return users
+      .filter(u => {
+        const fields = [u.city, u.homeAddress, u.workAddress].filter(Boolean) as string[];
+        if (fields.some(f => wordPattern.test(f))) return true;
+        if (fields.some(f => f.toLowerCase().includes(lower))) return true;
+        return false;
+      })
+      .map(u => u.id);
   }
 
   async getPremiumUsers(): Promise<string[]> {
@@ -396,94 +430,18 @@ export class ReportsService {
       data: { reputation: { increment: 5 } },
     });
 
-    // 1. Broadcast via WebSocket to nearby area
-    await this.gateway.broadcastReport(report);
-
     // --- Common data for notifications ---
     const timeStr = new Date().toLocaleString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
     const typeLabel = REPORT_TYPE_LABELS[dto.type] || dto.type;
-    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng));
+    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng).catch(() => null));
 
-    // 2. Send to Telegram bot
-    await this.telegram.sendReportNotification({
-      type: dto.type,
-      description: dto.description,
-      lat: dto.lat,
-      lng: dto.lng,
-      severity: dto.severity || 3,
-      images: dto.images,
-      address: dto.address,
-      city: reportCity || undefined,
-      time: timeStr,
-      userDisplayName: report.user?.displayName,
-    });
-
-    // 3. Notify all Premium users (bulk)
-    const premiumUserIds = (await this.getPremiumUsers()).filter(id => id !== userId);
-
-    const notificationData = JSON.stringify({
-      reportId: report.id,
-      lat: dto.lat,
-      lng: dto.lng,
-      type: dto.type,
-      images: dto.images,
-      time: timeStr,
-      address: dto.address,
-      city: reportCity,
-      severity: dto.severity || 3,
-      description: dto.description,
-    });
-
-    if (premiumUserIds.length > 0) {
-      await this.prisma.notification.createMany({
-        data: premiumUserIds.map(uid => ({
-          userId: uid,
-          type: 'report_premium',
-          title: `⚠️ ${typeLabel}`,
-          body: dto.description || `Новый репорт: ${typeLabel}`,
-          data: notificationData,
-        })),
-      }).catch(err => this.logger.warn(`Failed to create premium notifications: ${err.message}`));
-
-      for (const uid of premiumUserIds) {
-        await this.gateway.sendToUser(uid, 'report:new', {
-          ...report,
-          premiumNotification: true,
-          time: timeStr,
-        }).catch(() => {});
-      }
-    }
-
-    // 4. Notify users in the same city (bulk)
-    const city = reportCity;
-    if (city) {
-      const cityUserIds = (await this.getUsersInCity(city)).filter(
-        id => id !== userId && !premiumUserIds.includes(id)
-      );
-      if (cityUserIds.length > 0) {
-        await this.prisma.notification.createMany({
-          data: cityUserIds.map(uid => ({
-            userId: uid,
-            type: 'report',
-            title: `⚠️ ${typeLabel} в ${city}`,
-            body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
-            data: notificationData,
-          })),
-        }).catch(err => this.logger.warn(`Failed to create city notifications: ${err.message}`));
-
-        for (const uid of cityUserIds) {
-          await this.gateway.sendToUser(uid, 'report:new', {
-            ...report,
-            cityNotification: true,
-            time: timeStr,
-          }).catch(() => {});
-        }
-        this.logger.log(`Sent city notifications to ${cityUserIds.length} users in ${city}`);
-      }
-    }
+    // Background notifications (don't block response)
+    this.sendReportNotifications(report, dto, userId, typeLabel, timeStr, reportCity).catch(e =>
+      this.logger.error('Background notifications failed', e),
+    );
 
     this.logger.log(`Report created: ${dto.type} by user ${userId}`);
     return this.formatReport(report);
@@ -627,5 +585,97 @@ export class ReportsService {
       data: { status: ReportStatus.EXPIRED },
     });
     this.logger.log(`Expired ${count.count} reports`);
+  }
+
+  private async sendReportNotifications(report: any, dto: CreateReportDto, userId: string, typeLabel: string, timeStr: string, reportCity: string | null) {
+    // 1. Broadcast via WebSocket to nearby area
+    await this.gateway.broadcastReport(report).catch(() => {});
+
+    // 2. Send to Telegram bot
+    await this.telegram.sendReportNotification({
+      type: dto.type,
+      description: dto.description,
+      lat: dto.lat,
+      lng: dto.lng,
+      severity: dto.severity || 3,
+      images: dto.images,
+      address: dto.address,
+      city: reportCity || undefined,
+      time: timeStr,
+      userDisplayName: report.user?.displayName,
+    }).catch(() => {});
+
+    // 3. Send to all Premium users (tier 1+)
+    const premiumUserIds = await this.getPremiumUsers().catch(() => []);
+
+    const notificationData = JSON.stringify({
+      reportId: report.id,
+      lat: dto.lat,
+      lng: dto.lng,
+      type: dto.type,
+      images: dto.images,
+      time: timeStr,
+      address: dto.address,
+      city: reportCity,
+      severity: dto.severity || 3,
+      description: dto.description,
+    });
+
+    for (const uid of premiumUserIds) {
+      if (uid === userId) continue;
+      const premiumNotif = await this.prisma.notification.create({
+        data: {
+          userId: uid,
+          type: 'report_premium',
+          title: `⚠️ ${typeLabel}`,
+          body: dto.description || `Новый репорт: ${typeLabel}`,
+          data: notificationData,
+        },
+      }).catch(() => null);
+      if (premiumNotif) {
+        await this.gateway.sendToUser(uid, 'notification:new', premiumNotif).catch(() => {});
+      }
+      await this.gateway.sendToUser(uid, 'report:new', {
+        ...report,
+        premiumNotification: true,
+        time: timeStr,
+      }).catch(() => {});
+    }
+
+    // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)
+    const city = reportCity;
+    if (city) {
+      const cityRoom = `city:${city.toLowerCase()}`;
+      this.gateway.emitToRoom(cityRoom, 'report:new', {
+        ...report,
+        cityNotification: true,
+        time: timeStr,
+        city,
+      });
+
+      // 5. Send to users in the same city
+      const cityUserIds = await this.getUsersInCity(city).catch(() => []);
+      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumUserIds.includes(uid)))];
+      if (uniqueIds.length > 0) {
+        await this.prisma.notification.createMany({
+          data: uniqueIds.map(uid => ({
+            userId: uid,
+            type: 'report' as const,
+            title: `⚠️ ${typeLabel} в ${city}`,
+            body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
+            data: notificationData,
+          })),
+        }).catch(e => this.logger.error('Failed to batch-create city notifications', e));
+
+        for (const uid of uniqueIds) {
+          await this.gateway.sendToUser(uid, 'report:new', {
+            ...report,
+            cityNotification: true,
+            time: timeStr,
+          }).catch(() => {});
+        }
+      }
+      this.logger.log(`Sent city notifications to ${uniqueIds.length} users in ${city}`);
+    }
   }
 }
