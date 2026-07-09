@@ -34,6 +34,20 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
 6. **Photo validation overlay fix**
    - Remove photo button moved after validation overlay + `z-10`
 
+7. **Refresh token Redis → DB fallback**
+   - `auth.service.ts:141-149`: if Redis is cleared (deploy), falls back to DB stored token
+   - Fixes "Unauthorized everywhere" after Render redeploy
+
+8. **Localized error messages**
+   - Frontend sends `Accept-Language` header from i18next language (`api.ts`)
+   - Backend `http-exception.filter.ts` translates common errors (Unauthorized, Invalid tier, etc.) to Russian
+   - Premium `createCheckout` uses `Accept-Language` for Xsolla language selection
+
+9. **BottomBar cleaned up**
+   - "Map" button (recenter) removed from bottom bar
+   - Only Report and Chats tabs remain
+   - `activeTab` default changed to `'report'`
+
 ## Current Issues
 - Xsolla sandbox returns error 0004-0002 — user needs to configure payment methods in Xsolla Publisher Account
 

@@ -85,6 +85,9 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         Cookies.remove('access_token', { path: '/' });
         Cookies.remove('refresh_token', { path: '/' });
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

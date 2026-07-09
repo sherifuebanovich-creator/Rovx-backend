@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import * as os from 'os';
 
 @Injectable()
 export class AdminService {
@@ -138,6 +139,81 @@ export class AdminService {
   }
 
   // ─── ANALYTICS ────────────────────────────────────────────────────────────
+
+  async getStats() {
+    const now = new Date();
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      reportsPerHour,
+      reportsPerDay,
+      reportsPerWeek,
+      reportsPerMonth,
+      premiumToday,
+      premiumWeek,
+      premiumMonth,
+      onlineIds,
+    ] = await Promise.all([
+      this.prisma.report.count({ where: { createdAt: { gte: hourAgo } } }),
+      this.prisma.report.count({ where: { createdAt: { gte: dayAgo } } }),
+      this.prisma.report.count({ where: { createdAt: { gte: weekAgo } } }),
+      this.prisma.report.count({ where: { createdAt: { gte: monthAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: dayAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: weekAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: monthAgo } } }),
+      this.redis.smembers('online:users'),
+    ]);
+
+    // Online users with names
+    const onlineUsers = onlineIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: onlineIds as string[] } },
+          select: { id: true, username: true, displayName: true, avatar: true },
+        })
+      : [];
+
+    // Premium purchases with details
+    const premiumDetails = await this.prisma.premiumSubscription.findMany({
+      where: { createdAt: { gte: monthAgo } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, username: true, displayName: true, email: true } },
+      },
+    });
+
+    // Server load
+    let cpu = 0; let mem = 0;
+    try {
+      const cpus = os.cpus();
+      let totalIdle = 0; let totalTick = 0;
+      for (const c of cpus) {
+        const sum = Object.values(c.times) as number[];
+        totalTick += sum.reduce((a, b) => a + b, 0);
+        totalIdle += c.times.idle;
+      }
+      cpu = totalTick > 0 ? Math.round((1 - totalIdle / totalTick) * 100) : 0;
+      mem = Math.round((1 - os.freemem() / os.totalmem()) * 100);
+    } catch {}
+
+    return {
+      reports: { hour: reportsPerHour, day: reportsPerDay, week: reportsPerWeek, month: reportsPerMonth },
+      premium: { today: premiumToday, week: premiumWeek, month: premiumMonth, details: premiumDetails },
+      online: { count: onlineUsers.length, users: onlineUsers },
+      server: { cpu, memory: mem },
+    };
+  }
+
+  async getPremiumDetail(id: string) {
+    const sub = await this.prisma.premiumSubscription.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, username: true, displayName: true, email: true } } },
+    });
+    if (!sub) throw new NotFoundException('Premium subscription not found');
+    return sub;
+  }
 
   async getDashboardStats() {
     const now = new Date();

@@ -90,6 +90,19 @@ export class AdminController {
     return this.adminService.deleteMapObject(id);
   }
 
+  // Stats
+  @Get('stats')
+  @ApiOperation({ summary: 'Detailed stats for bot: reports, premium, online, server load' })
+  async getStats() {
+    return this.adminService.getStats();
+  }
+
+  @Get('stats/premium/:id')
+  @ApiOperation({ summary: 'Premium purchase detail' })
+  async getPremiumDetail(@Param('id') id: string) {
+    return this.adminService.getPremiumDetail(id);
+  }
+
   // Analytics
   @Get('analytics/subscriptions')
   async getSubscriptionStats() {

@@ -13,6 +13,23 @@ export class TelegramService {
     this.chatId = this.config.get('TELEGRAM_CHAT_ID', '');
   }
 
+  get isConfigured() {
+    return !!this.botToken && !!this.chatId;
+  }
+
+  async sendMessage(text: string, parseMode: 'HTML' | 'Markdown' = 'HTML') {
+    if (!this.isConfigured) return;
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        chat_id: this.chatId,
+        text,
+        parse_mode: parseMode,
+      }, { timeout: 10000 });
+    } catch (error) {
+      this.logger.error('Failed to send Telegram message', error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async sendReportNotification(report: {
     type: string;
     description?: string;
@@ -25,7 +42,7 @@ export class TelegramService {
     time?: string;
     userDisplayName?: string;
   }) {
-    if (!this.botToken || !this.chatId) {
+    if (!this.isConfigured) {
       this.logger.warn('Telegram not configured, skipping notification');
       return;
     }
@@ -65,6 +82,70 @@ export class TelegramService {
       this.logger.log(`Report sent to Telegram: ${report.type}`);
     } catch (error) {
       this.logger.error('Failed to send Telegram notification', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async sendStatsMessage(statsText: string) {
+    if (!this.isConfigured) return;
+
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        chat_id: this.chatId,
+        text: statsText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }, { timeout: 15000 });
+    } catch (error) {
+      this.logger.error('Failed to send stats', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async sendStatsWithButtons(statsText: string, buttons: Array<{ text: string; callback_data: string }>) {
+    if (!this.isConfigured) return;
+
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        chat_id: this.chatId,
+        text: statsText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: {
+          inline_keyboard: buttons.map(b => [b]),
+        },
+      }, { timeout: 15000 });
+    } catch (error) {
+      this.logger.error('Failed to send stats with buttons', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text: string) {
+    if (!this.isConfigured) return;
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`, {
+        callback_query_id: callbackQueryId,
+        text,
+        show_alert: true,
+      }, { timeout: 10000 });
+    } catch (error) {
+      this.logger.error('Failed to answer callback', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async sendMessageToChat(chatId: number, text: string, buttons?: Array<{ text: string; callback_data: string }>) {
+    if (!this.botToken) return;
+    try {
+      const payload: any = {
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      };
+      if (buttons && buttons.length > 0) {
+        payload.reply_markup = { inline_keyboard: buttons.map(b => [b]) };
+      }
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, payload, { timeout: 15000 });
+    } catch (error) {
+      this.logger.error('Failed to send message to chat', error instanceof Error ? error.message : String(error));
     }
   }
 }

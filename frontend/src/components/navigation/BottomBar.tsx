@@ -16,24 +16,24 @@ export function BottomBar() {
   const toggleReportPanel = useMapStore(s => s.toggleReportPanel);
 
   const tabs: { id: Tab; icon: React.ReactNode; label: string; action?: () => void; href?: string }[] = [
-    { id: 'report', icon: <FaExclamationTriangle size={20} />, label: t('bottombar.report'), action: toggleReportPanel },
-    { id: 'chats', icon: <FaCommentDots size={20} />, label: t('bottombar.social'), href: '/chats' },
+    { id: 'report', icon: <FaExclamationTriangle size={16} />, label: t('bottombar.report'), action: toggleReportPanel },
+    { id: 'chats', icon: <FaCommentDots size={16} />, label: t('bottombar.social'), href: '/chats' },
   ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute bottom-0 left-0 right-0 z-40 safe-bottom flex justify-center">
-      <div className="mx-2 sm:mx-4 mb-2 sm:mb-4 w-full max-w-lg">
-        <div className="glass-dark rounded-xl sm:rounded-2xl px-1 sm:px-2 py-1.5 sm:py-2 flex items-center justify-around">
+      <div className="mx-6 mb-3 w-auto">
+        <div className="glass-dark rounded-full px-1 py-1 flex items-center gap-1">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
-            const classes = `flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all relative ${
+            const classes = `flex items-center gap-1.5 px-3 py-2 rounded-full transition-all text-xs font-medium ${
               isActive ? 'bg-primary-600/30 text-primary-400' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`;
             const content = (
               <>
                 {tab.icon}
-                <span className="text-[10px] sm:text-[11px] font-medium leading-none">{tab.label}</span>
+                <span>{tab.label}</span>
                 {isActive && (
-                  <motion.div layoutId="tab-indicator" className="absolute bottom-0.5 sm:bottom-1 w-1 h-1 rounded-full bg-primary-400" />
+                  <motion.div layoutId="tab-indicator" className="w-1 h-1 rounded-full bg-primary-400" />
                 )}
               </>
             );
