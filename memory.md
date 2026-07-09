@@ -50,7 +50,6 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
 
 ## Current Issues
 - Xsolla PayStation returns error — user needs to configure payment methods in Xsolla Publisher Account (Projects → Rovx → Payment methods → add test card)
-- Backend 401 after redeploy fixed (refresh token DB fallback) — user may need to re-login once
 
 ## Last Session Additions
 - `GET /admin/stats` — reports per hour/day/week/month, premium sales, online users with names, server CPU/RAM
@@ -59,6 +58,24 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
 - BottomBar compacted to rounded pill with 2 buttons (report + chats)
 - Auto-redirect to `/auth/login` when refresh token fails
 - All errors localized via `Accept-Language` header (RU/EN)
+
+## This Session (Jul 2026)
+
+### Changes Made
+1. **AI photo validation: default to reject**
+   - Prompt changed from "В остальных случаях — valid: true" to "Если не уверен — valid: false"
+   - Both prompts (with/without description) updated
+
+2. **Bot /stats: only count active premium**
+   - `admin.service.ts`: all premium count queries filter by `status: 'active'`
+   - No longer counts pending/incomplete purchases as real sales
+
+3. **New bot command: /reports**
+   - `/reports Москва` — shows up to 20 recent reports for the city
+   - `/reports` without args — inline buttons with 8 popular cities
+   - City selection callback handled in webhook
+   - Reports displayed with emoji, type, time, description, author
+   - Circular dependency `ReportsModule ↔ TelegramModule` resolved with `forwardRef`
 
 ## Env Vars
 | Key | Value |

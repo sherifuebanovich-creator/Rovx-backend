@@ -25,6 +25,17 @@ export class TelegramController {
         const chatId = body.message.chat.id;
         const [cmd, ...args] = text.split(' ');
 
+        if (cmd === '/start') {
+          await this.telegram.sendMessageToChat(chatId,
+            '🤖 <b>ROVX Bot</b>\n\n' +
+            '📊 /stats — полная статистика системы\n' +
+            '📋 /reports — репорты по городу\n' +
+            '🟢 /online — кто сейчас онлайн\n' +
+            '💎 /premium — продажи премиума\n' +
+            '🖥 /server — нагрузка сервера');
+          return { ok: true };
+        }
+
         if (cmd === '/stats') {
           await this.sendStats(chatId);
           return { ok: true };
@@ -42,9 +53,18 @@ export class TelegramController {
           return { ok: true };
         }
 
-        if (cmd === '/start') {
-          await this.telegram.sendMessageToChat(chatId,
-            '🤖 <b>ROVX Bot</b>\n\n/stats — статистика системы\n/reports — репорты по городу');
+        if (cmd === '/online') {
+          await this.sendOnline(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/premium') {
+          await this.sendPremium(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/server') {
+          await this.sendServer(chatId);
           return { ok: true };
         }
       }
@@ -85,6 +105,37 @@ export class TelegramController {
     return { ok: true };
   }
 
+  private async sendPremium(chatId: number) {
+    try {
+      const stats = await this.admin.getStats();
+      const msg = `💎 <b>PREMIUM (продаж)</b>\n` +
+        `Сегодня: ${stats.premium.today}\n` +
+        `За неделю: ${stats.premium.week}\n` +
+        `За месяц: ${stats.premium.month}\n`;
+      const buttons = stats.premium.details.slice(0, 10).map((sub: any) => ({
+        text: `📦 ${sub.user.displayName || sub.user.username} — $${sub.price}`,
+        callback_data: `premium_${sub.id}`,
+      }));
+      await this.telegram.sendMessageToChat(chatId, msg, buttons);
+    } catch (error) {
+      this.logger.error('Failed to send premium', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении статистики премиума');
+    }
+  }
+
+  private async sendServer(chatId: number) {
+    try {
+      const stats = await this.admin.getStats();
+      const msg = `🖥 <b>СЕРВЕР</b>\n` +
+        `CPU: ${stats.server.cpu}%\n` +
+        `RAM: ${stats.server.memory}%\n`;
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to send server', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении данных сервера');
+    }
+  }
+
   private async sendCityReports(chatId: number, city: string) {
     try {
       const res = await this.reports.getReportsForCity(city, 1, 20);
@@ -117,6 +168,27 @@ export class TelegramController {
     } catch (error) {
       this.logger.error('Failed to send city reports', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, `❌ Ошибка при получении репортов для ${city}`);
+    }
+  }
+
+  private async sendOnline(chatId: number) {
+    try {
+      const stats = await this.admin.getStats();
+      const users = stats.online.users || [];
+      let msg = `🟢 <b>ОНЛАЙН (${stats.online.count})</b>\n━━━━━━━━━━━━━━━\n`;
+      if (users.length === 0) {
+        msg += 'Никого нет онлайн';
+      } else {
+        for (const u of users) {
+          const name = u.displayName || u.username || '—';
+          const city = u.city ? ` 🏙 ${u.city}` : '';
+          msg += `• ${name}${city}\n`;
+        }
+      }
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to send online', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении списка онлайн');
     }
   }
 

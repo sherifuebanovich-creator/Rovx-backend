@@ -21,8 +21,6 @@ export default function MapApp() {
   const selectedObject = useMapStore(s => s.selectedObject);
   const isReportPanelOpen = useMapStore(s => s.isReportPanelOpen);
   const navigation = useMapStore(s => s.navigation);
-  const setFollowUser = useMapStore(s => s.setFollowUser);
-  const userLocation = useMapStore(s => s.userLocation);
 
   const { user } = useAuthStore();
   useGeolocation();
@@ -43,20 +41,7 @@ export default function MapApp() {
       {isReportPanelOpen && <ReportPanel />}
       {isSidebarOpen && <Sidebar />}
 
-      {userLocation && !navigation.isNavigating && (
-        <button
-          onClick={() => setFollowUser(true)}
-          className="absolute right-4 bottom-28 z-40 w-10 h-10 rounded-xl bg-dark-card/90 backdrop-blur border border-dark-border
-                     flex items-center justify-center shadow-lg hover:bg-dark-card transition-all"
-          title="Центрировать на мне"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" strokeWidth="2"
-               strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-          </svg>
-        </button>
-      )}
+
     </div>
   );
 }

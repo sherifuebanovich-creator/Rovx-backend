@@ -171,7 +171,7 @@ export class AdminService {
     const onlineUsers = onlineIds.length > 0
       ? await this.prisma.user.findMany({
           where: { id: { in: onlineIds as string[] } },
-          select: { id: true, username: true, displayName: true, avatar: true },
+          select: { id: true, username: true, displayName: true, avatar: true, city: true },
         })
       : [];
 
