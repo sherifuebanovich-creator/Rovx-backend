@@ -16,10 +16,10 @@ fi
 # Apply database schema via direct connection (PgBouncer blocks DDL)
 if [ -n "$DATABASE_URL_DIRECT" ]; then
   echo "=== Running prisma db push (via DATABASE_URL_DIRECT) ==="
-  DATABASE_URL="$DATABASE_URL_DIRECT" npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1
+  DATABASE_URL="$DATABASE_URL_DIRECT" npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1 || echo "WARN: prisma db push failed (non-fatal)"
 else
   echo "=== Running prisma db push (via DATABASE_URL) ==="
-  npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1
+  npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss 2>&1 || echo "WARN: prisma db push failed (non-fatal)"
 fi
 echo "=== Prisma db push done ==="
 
