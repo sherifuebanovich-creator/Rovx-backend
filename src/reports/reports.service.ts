@@ -135,17 +135,22 @@ export class ReportsService {
       return { valid: true };
     }
 
-    const model = this.config.get('AI_MODEL', 'llama-3.3-70b-versatile');
-    const visionModels = this.config.get<string>('AI_VISION_MODELS', '');
-    if (visionModels) {
-      const supported = visionModels.split(',').map(m => m.trim());
-      if (!supported.includes(model)) {
-        this.logger.warn(`Model "${model}" not in vision-capable list [${visionModels}], skipping photo validation`);
-        return { valid: true };
-      }
-    } else if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3')) {
-      this.logger.warn(`Model "${model}" may not support vision, skipping photo validation`);
-      return { valid: true };
+    const visionModel = this.config.get('AI_VISION_MODEL', '');
+    const model = visionModel || this.config.get('AI_MODEL', 'llama-3.3-70b-versatile');
+
+    const supported = [
+      ...(this.config.get<string>('AI_VISION_MODELS', '') || '').split(',').map(m => m.trim()).filter(Boolean),
+      visionModel,
+    ].filter(Boolean);
+
+    if (supported.length > 0 && !supported.some(m => m === model || m.includes(model))) {
+      this.logger.warn(`Model "${model}" not in vision-capable list [${supported.join(',')}], rejecting photo validation`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
+    }
+
+    if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3') && !model.includes('gpt-4.1')) {
+      this.logger.warn(`Model "${model}" may not support vision, rejecting photo validation`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
     }
 
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';

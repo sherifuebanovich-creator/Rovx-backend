@@ -26,6 +26,8 @@ services:
         value: https://api.groq.com/openai/v1
       - key: AI_MODEL
         value: llama-3.3-70b-versatile
+      - key: AI_VISION_MODEL
+        value: llama-3.2-11b-vision-preview
       - key: FRONTEND_URL
         value: https://rovx-app-livid.vercel.app
       - key: BACKEND_URL
