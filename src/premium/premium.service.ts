@@ -4,10 +4,34 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 
 export const PREMIUM_TIERS = [
-  { tier: 0, name: 'FREE', price: 0, maxGroups: 0, canCreateGroups: false, canReceiveReports: false, label_en: 'Free', label_ru: 'Бесплатно' },
-  { tier: 1, name: 'PREMIUM_BASIC', price: 5, maxGroups: 1, canCreateGroups: false, canReceiveReports: true, label_en: 'Premium Basic', label_ru: 'Premium Basic' },
-  { tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3, canCreateGroups: false, canReceiveReports: true, label_en: 'Premium Standard', label_ru: 'Premium Standard' },
-  { tier: 3, name: 'PREMIUM_MAX', price: 20, maxGroups: 10, canCreateGroups: true, canReceiveReports: true, label_en: 'Premium Max', label_ru: 'Premium Max' },
+  {
+    tier: 0, name: 'FREE', price: 0, maxGroups: 0,
+    canCreateGroups: false, canReceiveReports: false,
+    label_en: 'Free', label_ru: 'Бесплатно',
+    desc_en: 'Basic navigation with no additional features',
+    desc_ru: 'Базовая навигация без дополнительных функций',
+  },
+  {
+    tier: 1, name: 'PREMIUM_BASIC', price: 5, maxGroups: 1,
+    canCreateGroups: false, canReceiveReports: true,
+    label_en: 'Premium Basic', label_ru: 'Премиум Базовый',
+    desc_en: 'Ad-free navigation with instant road reports and voice guidance',
+    desc_ru: 'Навигация без рекламы с мгновенными репортами и голосовыми подсказками',
+  },
+  {
+    tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3,
+    canCreateGroups: false, canReceiveReports: true,
+    label_en: 'Premium Standard', label_ru: 'Премиум Стандарт',
+    desc_en: 'AI co-driver, live cameras & traffic, plus city group chats',
+    desc_ru: 'AI-ассистент, камеры и пробки онлайн, городские чаты и группы',
+  },
+  {
+    tier: 3, name: 'PREMIUM_MAX', price: 20, maxGroups: 10,
+    canCreateGroups: true, canReceiveReports: true,
+    label_en: 'Premium Max', label_ru: 'Премиум Макс',
+    desc_en: 'Unlimited AI, 3D maps, convoys, priority support — everything included',
+    desc_ru: 'Безлимитный AI, 3D-карты, конвои, приоритетная поддержка — всё включено',
+  },
 ] as const;
 
 export type PremiumTier = typeof PREMIUM_TIERS[number];
@@ -26,6 +50,7 @@ export class PremiumService {
     return PREMIUM_TIERS.map(t => ({
       ...t,
       label: lang === 'ru' ? t.label_ru : t.label_en,
+      description: lang === 'ru' ? t.desc_ru : t.desc_en,
     }));
   }
 
@@ -77,6 +102,8 @@ export class PremiumService {
     const amount = +(tier.price * months).toFixed(2);
 
     try {
+      const lang = this.config.get('DEFAULT_LANG', 'ru');
+
       const { token, url } = await this.xsolla.createPaymentToken({
         userId,
         email: user.email,
@@ -84,6 +111,7 @@ export class PremiumService {
         tierName,
         tierPrice: tier.price,
         months,
+        language: lang === 'ru' ? 'ru' : 'en',
       });
 
       await this.prisma.premiumSubscription.upsert({

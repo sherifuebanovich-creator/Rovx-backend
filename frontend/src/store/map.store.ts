@@ -61,7 +61,7 @@ interface MapState {
   isObjectsPanelOpen: boolean;
   isReportPanelOpen: boolean;
   isSidebarOpen: boolean;
-  vehicleMode: 'CAR' | 'TRUCK';
+  vehicleMode: 'CAR';
   darkMode: boolean;
 
   // Actions

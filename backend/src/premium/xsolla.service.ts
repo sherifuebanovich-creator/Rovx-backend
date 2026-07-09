@@ -10,6 +10,7 @@ interface XsollaCreateTokenParams {
   tierName: string;
   tierPrice: number;
   months: number;
+  language?: string;
 }
 
 @Injectable()
@@ -28,7 +29,7 @@ export class XsollaService {
   }
 
   async createPaymentToken(params: XsollaCreateTokenParams): Promise<{ token: string; url: string }> {
-    const { userId, email, userName, tierName, tierPrice, months } = params;
+    const { userId, email, userName, tierName, tierPrice, months, language } = params;
     const amount = +(tierPrice * months).toFixed(2);
 
     const body: any = {
@@ -40,6 +41,7 @@ export class XsollaService {
       settings: {
         project_id: Number(this.projectId),
         currency: 'USD',
+        language: language || 'en',
         mode: 'sandbox',
         ui: { theme: 'dark' },
         return_url: `https://rovx-app-livid.vercel.app/premium`,
