@@ -21,14 +21,14 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3001);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
-  app.useBodyParser('json', { limit: '50mb' });
-  app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
+  app.useBodyParser('json', { limit: '5mb' });
+  app.useBodyParser('urlencoded', { limit: '5mb', extended: true });
 
   app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
   app.use(compression());
 
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000').split(','),
+    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000').split(',').map(s => s.trim()),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token'],
@@ -62,6 +62,7 @@ async function bootstrap() {
     logger.log(`Swagger docs: http://localhost:${port}/docs`);
   }
 
+  app.enableShutdownHooks();
   await app.listen(port);
   logger.log(`ROVX Backend running on port ${port}`);
   logger.log(`Environment: ${configService.get('NODE_ENV', 'development')}`);
