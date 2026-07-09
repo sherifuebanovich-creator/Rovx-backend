@@ -138,7 +138,13 @@ export class AuthService {
         secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
       });
 
-      const storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
+      // Check Redis first, fall back to DB
+      let storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
+      if (!storedToken || storedToken !== refreshToken) {
+        const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+        storedToken = user?.refreshToken || null;
+      }
+
       if (!storedToken || storedToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
       }

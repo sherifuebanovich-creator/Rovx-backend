@@ -10,11 +10,15 @@ export const api = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor - attach access token from cookie
+// Request interceptor - attach access token + language
 api.interceptors.request.use((config) => {
   const token = Cookies.get('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (typeof window !== 'undefined') {
+    const lang = document.documentElement.lang || localStorage.getItem('i18nextLng') || 'ru';
+    config.headers['Accept-Language'] = lang;
   }
   return config;
 });

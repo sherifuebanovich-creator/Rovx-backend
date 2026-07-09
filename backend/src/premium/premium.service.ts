@@ -86,7 +86,7 @@ export class PremiumService {
     return { allowed, currentGroups: groupCount, maxGroups: tier.maxGroups, tier: tier.tier, tierRequired: maxTier.label_en };
   }
 
-  async createCheckoutSession(userId: string, tierName: string, months: number = 1): Promise<{ url: string; paymentId: string }> {
+  async createCheckoutSession(userId: string, tierName: string, months: number = 1, lang: string = 'ru'): Promise<{ url: string; paymentId: string }> {
     const tier = PREMIUM_TIERS.find(t => t.name === tierName);
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
@@ -102,7 +102,7 @@ export class PremiumService {
     const amount = +(tier.price * months).toFixed(2);
 
     try {
-      const lang = this.config.get('DEFAULT_LANG', 'ru');
+      const xsollaLang = lang?.startsWith('ru') ? 'ru' : 'en';
 
       const { token, url } = await this.xsolla.createPaymentToken({
         userId,
@@ -111,7 +111,7 @@ export class PremiumService {
         tierName,
         tierPrice: tier.price,
         months,
-        language: lang === 'ru' ? 'ru' : 'en',
+        language: xsollaLang,
       });
 
       await this.prisma.premiumSubscription.upsert({

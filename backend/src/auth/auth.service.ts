@@ -65,24 +65,17 @@ export class AuthService {
         displayName: dto.displayName || dto.username,
         passwordHash,
         preferredLang: dto.lang || 'ru',
+        preferences: {
+          create: {},
+        },
+      },
+      include: {
+        preferences: true,
       },
     });
 
-    await this.prisma.userPreference.create({
-      data: { userId: user.id },
-    }).catch(err =>
-      this.logger.warn(`Failed to create user preferences: ${err.message}`)
-    );
-
-    const code = await this.verificationService.generateCode(user.email).catch(err => {
-      this.logger.warn(`Failed to generate verification code: ${err.message}`);
-      return null;
-    });
-    if (code) {
-      await this.mailService.sendVerificationCode(user.email, code).catch(err =>
-        this.logger.warn(`Failed to send verification email: ${err.message}`)
-      );
-    }
+    const code = await this.verificationService.generateCode(user.email);
+    await this.mailService.sendVerificationCode(user.email, code);
 
     this.logger.log(`New user registered: ${user.email}`);
     return {
@@ -113,7 +106,7 @@ export class AuthService {
     }
 
     if (!user.isVerified) {
-      return { needsVerification: true, message: 'Please verify your email' };
+      return { needsVerification: true, email: user.email };
     }
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);
@@ -141,13 +134,17 @@ export class AuthService {
 
   async refresh(refreshToken: string): Promise<TokenPair> {
     try {
-      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-      if (!refreshSecret) throw new UnauthorizedException('Auth configuration error');
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
-        secret: refreshSecret,
+        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
       });
 
-      const storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
+      // Check Redis first, fall back to DB
+      let storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
+      if (!storedToken || storedToken !== refreshToken) {
+        const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+        storedToken = user?.refreshToken || null;
+      }
+
       if (!storedToken || storedToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
       }
@@ -220,18 +217,13 @@ export class AuthService {
   private async generateTokens(userId: string, email: string, role: string): Promise<TokenPair> {
     const payload: JwtPayload = { sub: userId, email, role };
 
-    const jwtSecret = this.configService.get<string>('JWT_SECRET');
-    const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-    if (!jwtSecret || !jwtRefreshSecret) {
-      throw new UnauthorizedException('Auth configuration error');
-    }
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: jwtSecret,
+        secret: this.configService.get('JWT_SECRET', 'change-me-in-production'),
         expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
       this.jwtService.signAsync(payload, {
-        secret: jwtRefreshSecret,
+        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '30d'),
       }),
     ]);
@@ -314,8 +306,11 @@ export class AuthService {
 
   async sendVerification(email: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || user.isVerified) {
-      return { message: 'Verification code sent' };
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    if (user.isVerified) {
+      throw new BadRequestException('Email already verified');
     }
 
     const code = await this.verificationService.generateCode(email);
@@ -327,7 +322,7 @@ export class AuthService {
   async verifyEmail(email: string, code: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new BadRequestException('Invalid verification code');
+      throw new BadRequestException('User not found');
     }
     if (user.isVerified) {
       return { message: 'Email already verified' };

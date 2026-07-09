@@ -32,8 +32,10 @@ export class PremiumController {
   createCheckout(
     @CurrentUser('id') userId: string,
     @Body() body: { tierName: string; months?: number },
+    @Req() req: Request,
   ) {
-    return this.premiumService.createCheckoutSession(userId, body.tierName, body.months || 1);
+    const lang = (req.headers['accept-language'] as string) || 'ru';
+    return this.premiumService.createCheckoutSession(userId, body.tierName, body.months || 1, lang);
   }
 
   @ApiBearerAuth()
