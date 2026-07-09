@@ -34,7 +34,7 @@ export default function ProfilePage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const years = useMemo(() => Array.from({ length: currentYear - 1969 + 1 }, (_, i) => currentYear - i), [currentYear]);
-  const [addForm, setAddForm] = useState({ type: 'CAR' as 'CAR' | 'TRUCK', make: '', model: '', year: currentYear });
+  const [addForm, setAddForm] = useState({ type: 'TRUCK' as 'CAR' | 'TRUCK', make: '', model: '', year: currentYear });
   const [addLoading, setAddLoading] = useState(false);
 
   // Edit profile state
@@ -373,24 +373,10 @@ export default function ProfilePage() {
             >
               <p className="text-white text-sm font-semibold mb-3">{t('profile.addVehicle')}</p>
 
-              {/* Type toggle */}
-              <div className="flex gap-2 mb-3">
-                <button type="button" onClick={() => setAddForm(p => ({ ...p, type: 'CAR', make: '', model: '' }))}
-                  className={`flex-1 flex items-center justify-center gap-2 h-9 rounded-xl text-sm font-medium transition-all border ${
-                    addForm.type === 'CAR'
-                      ? 'bg-primary-600/30 border-primary-500/50 text-white'
-                      : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-                  }`}>
-                   <FaCar size={13} /> {t('profile.car')}
-                </button>
-                <button type="button" onClick={() => setAddForm(p => ({ ...p, type: 'TRUCK', make: '', model: '' }))}
-                  className={`flex-1 flex items-center justify-center gap-2 h-9 rounded-xl text-sm font-medium transition-all border ${
-                    addForm.type === 'TRUCK'
-                      ? 'bg-primary-600/30 border-primary-500/50 text-white'
-                      : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-                  }`}>
-                   <FaTruck size={13} /> {t('profile.truck')}
-                </button>
+              {/* Type indicator - truck only */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent-500/10 border border-accent-500/20 mb-3">
+                <FaTruck size={14} className="text-accent-400" />
+                <span className="text-xs text-accent-300 font-medium">{t('profile.truck')}</span>
               </div>
 
               {/* Make */}

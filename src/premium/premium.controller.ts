@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { PremiumService } from './premium.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -54,8 +55,10 @@ export class PremiumController {
   @Public()
   @Post('webhook')
   @ApiExcludeEndpoint()
-  async webhook(@Body() body: any) {
-    await this.premiumService.handleWebhook(body);
+  async webhook(@Req() req: Request) {
+    const signature = req.headers['x-signature'] as string || req.headers['x-hub-signature-256'] as string || '';
+    const rawBody = (req as any).rawBody || '';
+    await this.premiumService.handleWebhook(rawBody, signature);
     return { received: true };
   }
 

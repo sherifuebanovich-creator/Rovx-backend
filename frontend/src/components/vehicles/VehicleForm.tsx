@@ -139,7 +139,7 @@ interface VehicleFormProps {
 
 export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
   const { t } = useTranslation();
-  const [type, setType] = useState<VehicleType>('CAR');
+  const [type, setType] = useState<VehicleType>('TRUCK');
   const [makeSearch, setMakeSearch] = useState('');
   const [selectedMake, setSelectedMake] = useState('');
   const [modelSearch, setModelSearch] = useState('');
@@ -194,19 +194,9 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <button type="button" onClick={() => setType('CAR')}
-          className={`flex items-center justify-center gap-2 flex-1 h-10 rounded-xl text-sm font-medium transition-all border ${
-            type === 'CAR' ? 'bg-primary-600/30 border-primary-500/50 text-white' : 'bg-white/5 border-white/10 text-gray-400'
-          }`}>
-          <FaCar size={14} /> {t('vehicleForm.car')}
-        </button>
-        <button type="button" onClick={() => setType('TRUCK')}
-          className={`flex items-center justify-center gap-2 flex-1 h-10 rounded-xl text-sm font-medium transition-all border ${
-            type === 'TRUCK' ? 'bg-accent-500/30 border-accent-500/50 text-white' : 'bg-white/5 border-white/10 text-gray-400'
-          }`}>
-          <FaTruck size={14} /> {t('vehicleForm.truck')}
-        </button>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent-500/10 border border-accent-500/20 mb-1">
+        <FaTruck size={14} className="text-accent-400" />
+        <span className="text-xs text-accent-300 font-medium">{t('vehicleForm.truck')}</span>
       </div>
 
       <div className="relative" ref={makeRef}>

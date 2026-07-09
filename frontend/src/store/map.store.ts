@@ -111,7 +111,7 @@ export const useMapStore = create<MapState>((set) => ({
   locationError: null,
 
   // Map view
-  mapCenter: { lat: 55.7558, lng: 37.6173 }, // Moscow default
+  mapCenter: { lat: 0, lng: 0 }, // Will be set by geolocation
   zoom: 13,
   mapStyle: 'streets',
   showTraffic: false,

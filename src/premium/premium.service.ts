@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
+import * as crypto from 'crypto';
 
 export const PREMIUM_TIERS = [
   { tier: 0, name: 'FREE', price: 0, maxGroups: 0, canCreateGroups: false, canReceiveReports: false, label_en: 'Free', label_ru: 'Бесплатно' },
@@ -17,6 +18,7 @@ export class PremiumService {
   private readonly logger = new Logger(PremiumService.name);
   private readonly apiKey: string;
   private readonly offerId: string;
+  private readonly webhookSecret: string;
 
   constructor(
     private prisma: PrismaService,
@@ -24,6 +26,7 @@ export class PremiumService {
   ) {
     this.apiKey = this.config.get('LAVA_API_KEY', '');
     this.offerId = this.config.get('LAVA_OFFER_ID_V2', 'af64d6fe-b677-47e1-a9a3-9777fb2e6b58');
+    this.webhookSecret = this.config.get('LAVA_WEBHOOK_SECRET', '');
   }
 
   getTiers(lang = 'en') {
@@ -108,7 +111,7 @@ export class PremiumService {
           levelName: tier.name,
           endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           price: amount,
-          currency: 'RUB',
+          currency: 'USD',
           status: 'pending',
           paymentId: invoiceId,
           provider: 'lava',
@@ -131,7 +134,39 @@ export class PremiumService {
     }
   }
 
-  async handleWebhook(body: any): Promise<void> {
+  private verifyWebhookSignature(rawBody: string, signature: string): boolean {
+    if (!this.webhookSecret) {
+      this.logger.warn('LAVA_WEBHOOK_SECRET not configured — skipping webhook signature verification');
+      return true;
+    }
+    if (!signature) {
+      this.logger.warn('Webhook signature header missing');
+      return false;
+    }
+    try {
+      const hmac = crypto.createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex');
+      const expected = `sha256=${hmac}`;
+      const match = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+      return match;
+    } catch {
+      return false;
+    }
+  }
+
+  async handleWebhook(rawBody: string, signature: string): Promise<void> {
+    if (!this.verifyWebhookSignature(rawBody, signature)) {
+      this.logger.error('Webhook signature verification failed — rejecting event');
+      throw new BadRequestException('Invalid webhook signature');
+    }
+
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      this.logger.error('Failed to parse webhook body as JSON');
+      return;
+    }
+
     const { eventType, contractId } = body;
     if (!eventType || !contractId) return;
 
@@ -143,6 +178,10 @@ export class PremiumService {
       });
       if (!sub) {
         this.logger.warn(`No subscription for contract ${contractId}`);
+        return;
+      }
+      if (sub.status === 'active') {
+        this.logger.log(`Payment ${contractId} already processed — skipping duplicate`);
         return;
       }
       const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

@@ -60,7 +60,9 @@ services:
         sync: false
       - key: LAVA_API_KEY
         sync: false
-      - key: LAVA_OFFER_ID
+      - key: LAVA_OFFER_ID_V2
+        sync: false
+      - key: LAVA_WEBHOOK_SECRET
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
