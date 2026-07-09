@@ -20,11 +20,6 @@ export class XsollaService {
   private get apiKey() { return this.config.get<string>('XSOLLA_API_KEY'); }
   private get projectId() { return this.config.get<number>('XSOLLA_PROJECT_ID'); }
   private get webhookSecret() { return this.config.get<string>('XSOLLA_WEBHOOK_SECRET'); }
-  private get isProduction() { return this.config.get('NODE_ENV') === 'production'; }
-
-  private get paystationUrl() {
-    return 'https://sandbox-secure.xsolla.com/paystation3';
-  }
 
   constructor(private config: ConfigService) {}
 
@@ -36,37 +31,32 @@ export class XsollaService {
     const { userId, email, userName, tierName, tierPrice, months } = params;
     const amount = +(tierPrice * months).toFixed(2);
 
+    const body: any = {
+      user: {
+        id: { value: userId },
+        email: { value: email },
+        name: { value: userName },
+      },
+      settings: {
+        project_id: Number(this.projectId),
+        currency: 'USD',
+        mode: 'sandbox',
+        ui: { theme: 'dark' },
+        return_url: `https://rovx-app-livid.vercel.app/premium`,
+      },
+      purchase: {
+        checkout: { amount, currency: 'USD' },
+        description: { value: `${tierName} - ${months} month(s)` },
+      },
+    };
+
     try {
       const res = await axios.post(
         `https://api.xsolla.com/merchant/v2/merchants/${this.merchantId}/token`,
-        {
-          user: {
-            id: { value: userId },
-            email: { value: email },
-            name: { value: userName },
-          },
-          settings: {
-            project_id: this.projectId,
-            currency: 'USD',
-            mode: 'sandbox',
-            ui: { theme: 'dark' },
-          },
-          purchase: {
-            checkout: { amount, currency: 'USD' },
-            description: `${tierName} - ${months} month(s)`,
-          },
-          custom_parameters: {
-            tier: tierName,
-            months: String(months),
-          },
-          return_urls: {
-            success_url: 'https://rovx-app-livid.vercel.app/premium?success=true',
-            cancel_url: 'https://rovx-app-livid.vercel.app/premium?canceled=true',
-          },
-        },
+        body,
         {
           headers: {
-            Authorization: `Basic ${Buffer.from(`${this.apiKey}:`).toString('base64')}`,
+            Authorization: `Basic ${Buffer.from(`${this.merchantId}:${this.apiKey}`).toString('base64')}`,
             'Content-Type': 'application/json',
           },
           timeout: 15000,
@@ -74,9 +64,13 @@ export class XsollaService {
       );
 
       const token = res.data.token as string;
-      return { token, url: `${this.paystationUrl}/?token=${token}` };
+      return {
+        token,
+        url: `https://sandbox-secure.xsolla.com/paystation3/?token=${token}`,
+      };
     } catch (err: any) {
-      this.logger.error(`Xsolla create token failed: ${err.response?.data ? JSON.stringify(err.response.data) : err.message}`);
+      const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+      this.logger.error(`Xsolla create token failed: ${detail}`);
       throw new BadRequestException('Payment initiation failed. Please try again.');
     }
   }

@@ -148,7 +148,6 @@ export class PremiumService {
       const userId = body.user?.id?.value;
       const status = body.payment?.status;
       const transactionId = body.transaction?.id;
-      const customTier = body.custom_parameters?.tier;
 
       if (!userId || !status) {
         this.logger.warn('Xsolla payment webhook missing userId or status');
@@ -156,16 +155,17 @@ export class PremiumService {
       }
 
       if (status === 'done') {
-        const tierName = customTier || 'PREMIUM_BASIC';
-        const tier = this.getTierInfo(tierName);
         const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-        const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+        const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
 
-        if (sub?.status === 'active') {
+        if (existingSub?.status === 'active') {
           this.logger.log(`Xsolla payment ${transactionId} already processed — skipping`);
           return { received: true };
         }
+
+        const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+        const tier = this.getTierInfo(tierName);
 
         await this.prisma.$transaction([
           this.prisma.premiumSubscription.upsert({
@@ -199,7 +199,7 @@ export class PremiumService {
         this.logger.log(`User ${userId} subscribed to ${tierName} via Xsolla`);
       } else if (status === 'canceled' || status === 'failed') {
         await this.prisma.premiumSubscription.updateMany({
-          where: { userId, paymentId: transactionId },
+          where: { userId, status: 'pending' },
           data: { status: 'cancelled' },
         });
       }
