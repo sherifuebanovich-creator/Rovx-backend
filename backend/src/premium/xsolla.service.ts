@@ -23,9 +23,7 @@ export class XsollaService {
   private get isProduction() { return this.config.get('NODE_ENV') === 'production'; }
 
   private get paystationUrl() {
-    return this.isProduction
-      ? 'https://secure.xsolla.com/paystation3'
-      : 'https://sandbox-secure.xsolla.com/paystation3';
+    return 'https://sandbox-secure.xsolla.com/paystation3';
   }
 
   constructor(private config: ConfigService) {}
@@ -50,7 +48,7 @@ export class XsollaService {
           settings: {
             project_id: this.projectId,
             currency: 'USD',
-            ...(this.isProduction ? {} : { mode: 'sandbox' }),
+            mode: 'sandbox',
             ui: { theme: 'dark' },
           },
           purchase: {
