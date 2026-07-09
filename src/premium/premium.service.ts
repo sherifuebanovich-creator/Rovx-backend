@@ -80,7 +80,7 @@ export class PremiumService {
       const { token, url } = await this.xsolla.createPaymentToken({
         userId,
         email: user.email,
-        userName: user.name || user.email,
+        userName: user.displayName || user.username || user.email,
         tierName,
         tierPrice: tier.price,
         months,
