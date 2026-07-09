@@ -148,4 +148,22 @@ export class TelegramService {
       this.logger.error('Failed to send message to chat', error instanceof Error ? error.message : String(error));
     }
   }
+
+  async sendPhotoToChat(chatId: number, photoUrl: string, caption: string, buttons?: Array<{ text: string; callback_data: string }>) {
+    if (!this.botToken) return;
+    try {
+      const payload: any = {
+        chat_id: chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: 'HTML',
+      };
+      if (buttons && buttons.length > 0) {
+        payload.reply_markup = { inline_keyboard: buttons.map(b => [b]) };
+      }
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendPhoto`, payload, { timeout: 15000 });
+    } catch (error) {
+      this.logger.error('Failed to send photo to chat', error instanceof Error ? error.message : String(error));
+    }
+  }
 }

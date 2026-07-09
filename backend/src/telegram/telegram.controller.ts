@@ -4,7 +4,21 @@ import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
 import { ReportsService } from '../reports/reports.service';
 
-const POPULAR_CITIES = ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону'];
+const COUNTRIES: Record<string, string[]> = {
+  'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
+  'Казахстан': ['Алматы', 'Астана', 'Шымкент', 'Караганда'],
+  'Беларусь': ['Минск', 'Гомель', 'Брест', 'Витебск', 'Гродно'],
+};
+
+const TYPE_EMOJI: Record<string, string> = {
+  ACCIDENT: '💥', POLICE: '👮', ROAD_WORKS: '🚧', ICE: '🧊',
+  FOG: '🌫', FLOODING: '🌊', POTHOLE: '🕳', BAD_ROAD: '🛣',
+  TRAFFIC_JAM: '🚗', ROAD_CLOSURE: '🚫', SPEED_CAMERA: '📷',
+  HAZARD: '⚠️', STRONG_WIND: '💨', LANDSLIDE: '⛰',
+  LOW_BRIDGE: '⬇', SHARP_TURN: '↪', STEEP_CLIMB: '⤴',
+  STEEP_DESCENT: '⤵', WEIGHT_LIMIT: '⚖', HEIGHT_LIMIT: '📏',
+  LENGTH_LIMIT: '📐', OTHER: '📌',
+};
 
 @Controller('telegram')
 export class TelegramController {
@@ -29,7 +43,7 @@ export class TelegramController {
           await this.telegram.sendMessageToChat(chatId,
             '🤖 <b>ROVX Bot</b>\n\n' +
             '📊 /stats — полная статистика системы\n' +
-            '📋 /reports — репорты по городу\n' +
+            '📋 /reports — репорты по городам\n' +
             '🟢 /online — кто сейчас онлайн\n' +
             '💎 /premium — продажи премиума\n' +
             '🖥 /server — нагрузка сервера');
@@ -42,14 +56,11 @@ export class TelegramController {
         }
 
         if (cmd === '/reports') {
-          const city = args.join(' ');
-          if (city) {
-            await this.sendCityReports(chatId, city);
-          } else {
-            const buttons = POPULAR_CITIES.map(c => ({ text: c, callback_data: `city_${c}` }));
-            await this.telegram.sendMessageToChat(chatId,
-              '🏙 <b>Введи город</b>\nНапример: /reports Москва\n\nИли выбери:', buttons);
-          }
+          const countryButtons = Object.keys(COUNTRIES).map(c => ({
+            text: `🌍 ${c}`, callback_data: `country_${c}`,
+          }));
+          await this.telegram.sendMessageToChat(chatId,
+            '🌍 <b>Выбери страну</b>', countryButtons);
           return { ok: true };
         }
 
@@ -92,9 +103,25 @@ export class TelegramController {
           }
         }
 
+        if (data?.startsWith('country_')) {
+          const country = decodeURIComponent(data.replace('country_', ''));
+          const cities = COUNTRIES[country] || [];
+          await this.telegram.answerCallbackQuery(cbId, `🏙 ${country}`);
+          const cityButtons = cities.map(c => ({
+            text: `📍 ${c}`, callback_data: `city_${c}`,
+          }));
+          if (chatId) {
+            await this.telegram.sendMessageToChat(chatId,
+              `🌍 <b>${country}</b>\n\nВыбери город:`, cityButtons);
+          }
+        }
+
         if (data?.startsWith('city_')) {
           const city = decodeURIComponent(data.replace('city_', ''));
-          if (chatId) await this.sendCityReports(chatId, city);
+          if (chatId) {
+            await this.telegram.answerCallbackQuery(cbId, `🏙 ${city}`);
+            await this.sendCityReports(chatId, city);
+          }
         }
 
         return { ok: true };
@@ -103,6 +130,55 @@ export class TelegramController {
       this.logger.error('Telegram webhook error', error instanceof Error ? error.message : String(error));
     }
     return { ok: true };
+  }
+
+  private async sendCityReports(chatId: number, city: string) {
+    try {
+      const res = await this.reports.getReportsForCity(city, 1, 20);
+      const reports = res.reports || [];
+      if (!reports.length) {
+        await this.telegram.sendMessageToChat(chatId, `🏙 <b>${city}</b>\n\nНет активных репортов`);
+        return;
+      }
+
+      await this.telegram.sendMessageToChat(chatId, `🏙 <b>${city}</b> — ${reports.length} репортов\nОтправляю детали...`);
+
+      for (const r of reports.slice(0, 10)) {
+        const emoji = TYPE_EMOJI[r.type] || '📌';
+        const time = r.createdAt ? new Date(r.createdAt).toLocaleString('ru-RU', {
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+        }) : '—';
+        const severityBar = '🔴'.repeat(Math.min(r.severity || 3, 5)) + '⚪'.repeat(5 - Math.min(r.severity || 3, 5));
+        const mapLink = `https://www.google.com/maps?q=${r.lat},${r.lng}`;
+        const name = r.user?.displayName || '—';
+
+        let caption = `${emoji} <b>${r.type}</b>\n`;
+        caption += `━━━━━━━━━━━━━━━\n`;
+        caption += `🕐 <b>Время:</b> ${time}\n`;
+        caption += `⚠️ <b>Серьёзность:</b> ${severityBar} (${r.severity}/5)\n`;
+        caption += `📍 <b>Координаты:</b> ${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}\n`;
+        caption += `🗺 <a href="${mapLink}">Открыть на карте</a>\n`;
+        if (r.address) caption += `📮 <b>Адрес:</b> ${r.address}\n`;
+        if (r.description) caption += `📝 <b>Описание:</b> ${r.description}\n`;
+        caption += `━━━━━━━━━━━━━━━\n`;
+        caption += `👤 <b>Автор:</b> ${name}`;
+
+        const images = Array.isArray(r.images) ? r.images : [];
+        if (images.length > 0) {
+          await this.telegram.sendPhotoToChat(chatId, images[0], caption);
+        } else {
+          await this.telegram.sendMessageToChat(chatId, caption);
+        }
+      }
+
+      if (reports.length > 10) {
+        await this.telegram.sendMessageToChat(chatId,
+          `📋 Показано 10 из ${reports.length} репортов.`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to send city reports', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка при получении репортов для ${city}`);
+    }
   }
 
   private async sendPremium(chatId: number) {
@@ -133,41 +209,6 @@ export class TelegramController {
     } catch (error) {
       this.logger.error('Failed to send server', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении данных сервера');
-    }
-  }
-
-  private async sendCityReports(chatId: number, city: string) {
-    try {
-      const res = await this.reports.getReportsForCity(city, 1, 20);
-      const reports = res.reports || [];
-      if (!reports.length) {
-        await this.telegram.sendMessageToChat(chatId, `🏙 <b>${city}</b>\n\nНет активных репортов`);
-        return;
-      }
-
-      const typeEmoji: Record<string, string> = {
-        ACCIDENT: '💥', POLICE: '👮', ROAD_WORKS: '🚧', ICE: '🧊',
-        FOG: '🌫', FLOODING: '🌊', POTHOLE: '🕳', BAD_ROAD: '🛣',
-        TRAFFIC_JAM: '🚗', ROAD_CLOSURE: '🚫',
-      };
-
-      let msg = `🏙 <b>${city}</b> — ${reports.length} репортов\n━━━━━━━━━━━━━━━\n`;
-      for (const r of reports.slice(0, 20)) {
-        const emoji = typeEmoji[r.type] || '📌';
-        const time = r.createdAt ? new Date(r.createdAt).toLocaleString('ru-RU', {
-          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-        }) : '—';
-        msg += `${emoji} <b>${r.type}</b>\n`;
-        msg += `🕐 ${time}\n`;
-        if (r.description) msg += `📝 ${r.description.slice(0, 80)}\n`;
-        if (r.user?.displayName) msg += `👤 ${r.user.displayName}\n`;
-        msg += `━━━━━━━━━━━━━━━\n`;
-      }
-
-      await this.telegram.sendMessageToChat(chatId, msg);
-    } catch (error) {
-      this.logger.error('Failed to send city reports', error instanceof Error ? error.message : String(error));
-      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка при получении репортов для ${city}`);
     }
   }
 
