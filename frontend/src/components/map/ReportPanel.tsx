@@ -306,17 +306,17 @@ export function ReportPanel() {
                   {photos.map((photo, i) => (
                     <div key={i} className="relative w-16 sm:w-20 h-16 sm:h-20 rounded-xl overflow-hidden border border-white/10">
                       <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => removePhoto(i)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center touch-target"
-                      >
-                        <FaTimes size={8} className="text-white" />
-                      </button>
                       {photoValidated[i] === false && (
                         <div className="absolute inset-0 bg-red-600/50 flex items-center justify-center">
                           <FaTimes size={16} className="text-white" />
                         </div>
                       )}
+                      <button
+                        onClick={() => removePhoto(i)}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center touch-target z-10"
+                      >
+                        <FaTimes size={8} className="text-white" />
+                      </button>
                     </div>
                   ))}
                   {photos.length < 3 && (
