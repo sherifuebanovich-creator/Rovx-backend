@@ -53,6 +53,7 @@ export default function MapViewGL() {
 
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
+  const setFollowUser = useMapStore(s => s.setFollowUser);
 
   const cleanupMarkers = useCallback((markers: maplibregl.Marker[]) => {
     markers.forEach(m => m.remove());
@@ -81,6 +82,10 @@ export default function MapViewGL() {
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+    map.on('dragstart', () => {
+      setFollowUser(false);
+    });
 
     map.on('moveend', () => {
       const center = map.getCenter();
@@ -170,7 +175,13 @@ export default function MapViewGL() {
     }
 
     if (followUser) {
-      mapRef.current.flyTo({ center: [userLocation.lng, userLocation.lat], duration: 500 });
+      const cur = mapRef.current.getCenter();
+      const dx = cur.lng - userLocation.lng;
+      const dy = cur.lat - userLocation.lat;
+      const dist = Math.hypot(dx * 111000, dy * 111000);
+      if (dist > 50) {
+        mapRef.current.easeTo({ center: [userLocation.lng, userLocation.lat], duration: 800 });
+      }
     }
   }, [userLocation, userHeading, followUser]);
 

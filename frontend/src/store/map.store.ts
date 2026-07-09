@@ -96,7 +96,7 @@ interface MapState {
   toggleRoutesPanel: () => void;
   toggleSidebar: () => void;
   toggleReportPanel: () => void;
-  setVehicleMode: (mode: 'CAR' | 'TRUCK') => void;
+  setVehicleMode: (mode: 'CAR') => void;
   setDarkMode: (dark: boolean) => void;
   setShow3D: (show: boolean) => void;
   toggle3D: () => void;

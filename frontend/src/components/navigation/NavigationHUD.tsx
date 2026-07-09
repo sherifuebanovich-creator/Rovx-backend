@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaChevronRight, FaTimes, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
+import { FaTimes, FaVolumeMute, FaVolumeUp, FaChevronRight } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 import { useTranslation } from 'react-i18next';
@@ -35,7 +35,6 @@ export function NavigationHUD() {
   userHeadingRef.current = userHeading;
   userSpeedRef.current = userSpeed;
 
-  // Init monitor
   useEffect(() => {
     if (!monitorRef.current) {
       monitorRef.current = createSpeedCameraMonitor();
@@ -58,7 +57,6 @@ export function NavigationHUD() {
     return () => { mon.setCameras([]); };
   }, []);
 
-  // Load OSM cameras when user location changes
   useEffect(() => {
     if (!userLocation) return;
     mapApi.getSpeedCameras(userLocation.lat, userLocation.lng, 50)
@@ -74,14 +72,12 @@ export function NavigationHUD() {
       .catch(() => {});
   }, [userLocation?.lat, userLocation?.lng]);
 
-  // Update position
   useEffect(() => {
     const mon = monitorRef.current;
     if (!mon || !userLocation) return;
     mon.updatePosition(userLocation.lat, userLocation.lng, userHeading, userSpeed);
   }, [userLocation?.lat, userLocation?.lng, userHeading, userSpeed]);
 
-  // Periodic camera check + OSM refresh (always, even without active navigation)
   useEffect(() => {
     if (!userLocation) return;
 
@@ -94,7 +90,6 @@ export function NavigationHUD() {
       const speed = userSpeedRef.current;
       if (!mon || !loc) return;
 
-      // Refresh OSM cameras every 30s
       osmLoadCount++;
       if (osmLoadCount % 30 === 0) {
         mapApi.getSpeedCameras(loc.lat, loc.lng, 50)
@@ -184,22 +179,22 @@ export function NavigationHUD() {
   const instructions = selectedRoute?.instructions || [];
   const currentLeg = Math.min(navigation.currentLeg ?? 0, instructions.length - 1);
   const currentInstruction = instructions[currentLeg] || null;
+  const nextInstruction = instructions[currentLeg + 1] || null;
 
-  // Cleanup warning timeout
   useEffect(() => {
     return () => { if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current); };
   }, []);
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Camera warning overlay */}
+      {/* Camera warning */}
       <AnimatePresence>
         {cameraWarning && (
           <motion.div
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="absolute top-24 left-4 right-4 pointer-events-auto z-10"
+            className="absolute top-4 left-4 right-4 pointer-events-auto z-10"
           >
             <div className="bg-red-600/90 backdrop-blur-xl rounded-2xl px-4 py-3 border border-red-400/30 shadow-2xl">
               <div className="flex items-center gap-3">
@@ -223,100 +218,113 @@ export function NavigationHUD() {
         )}
       </AnimatePresence>
 
-      {/* Main instruction banner */}
+      {/* Top navigation banner — Yandex style */}
       <motion.div
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-dark-card/95 backdrop-blur-xl border-b border-dark-border safe-top pointer-events-auto"
+        className="absolute top-0 left-0 right-0 pointer-events-auto"
       >
-        <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-2 sm:pb-3">
-          {currentInstruction ? (
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 bg-primary-600 rounded-xl sm:rounded-2xl flex items-center
-                              justify-center text-2xl sm:text-3xl shadow-glow-primary">
-                {getTurnIcon(currentInstruction.type)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-lg sm:text-2xl font-bold text-white leading-tight">
-                  {formatDistance(currentInstruction.distance)}
-                </p>
-                <p className="text-xs sm:text-sm text-gray-300 mt-0.5 truncate">{currentInstruction.text}</p>
-                {currentInstruction.streetName && (
-                  <p className="text-[10px] sm:text-xs text-gray-500 truncate">{currentInstruction.streetName}</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 bg-green-600 rounded-xl sm:rounded-2xl flex items-center
-                              justify-center text-2xl sm:text-3xl">🏁</div>
-              <div>
-                <p className="text-lg sm:text-xl font-bold text-white">{t('navigationHud.arrived')}</p>
-                <p className="text-xs sm:text-sm text-gray-300">{destination?.name}</p>
-              </div>
-            </div>
-          )}
+        <div className="bg-dark-card/90 backdrop-blur-xl border-b border-white/5">
+          <div className="px-4 pt-4 pb-3">
+            {currentInstruction ? (
+              <>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 flex-shrink-0 bg-primary-600 rounded-2xl flex items-center justify-center text-3xl shadow-lg">
+                    {getTurnIcon(currentInstruction.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-3xl font-bold text-white tabular-nums leading-tight">
+                      {formatDistance(currentInstruction.distance)}
+                    </p>
+                    <p className="text-sm text-gray-300 mt-0.5 truncate">
+                      {currentInstruction.text}
+                    </p>
+                    {currentInstruction.streetName && (
+                      <p className="text-xs text-gray-500 truncate mt-0.5">
+                        {currentInstruction.streetName}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-          {instructions[currentLeg + 1] && (
-            <div className="flex items-center gap-2 mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-dark-border">
-              <FaChevronRight size={12} className="text-gray-500" />
-              <p className="text-[11px] sm:text-xs text-gray-400 truncate">
-                {t('navigationHud.then', { instruction: instructions[currentLeg + 1].text })}
-              </p>
-            </div>
-          )}
+                {nextInstruction && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+                    <FaChevronRight size={10} className="text-gray-500 flex-shrink-0" />
+                    <p className="text-xs text-gray-400 truncate">
+                      {t('navigationHud.then', { instruction: nextInstruction.text })}
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 flex-shrink-0 bg-green-600 rounded-2xl flex items-center justify-center text-3xl">🏁</div>
+                <div>
+                  <p className="text-xl font-bold text-white">{t('navigationHud.arrived')}</p>
+                  <p className="text-sm text-gray-300">{destination?.name}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
 
-      {/* Bottom mini bar */}
+      {/* Bottom bar — Yandex style floating pill */}
       <motion.div
-        initial={{ y: 20, opacity: 0 }}
+        initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="absolute bottom-20 sm:bottom-24 left-2 sm:left-4 right-2 sm:right-4 pointer-events-auto"
+        className="absolute bottom-8 left-3 right-3 pointer-events-auto"
       >
-        <div className="glass-dark rounded-xl sm:rounded-2xl px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-1">
+        <div className="bg-dark-card/90 backdrop-blur-xl rounded-2xl px-3 py-3 border border-white/5 shadow-2xl flex items-center justify-between gap-2">
           {/* Speed */}
-          <div className="text-center min-w-0">
-            <p className="text-base sm:text-lg font-bold text-white tabular-nums">
-              {Math.round(userSpeed)}
-            </p>
-            <p className="text-[9px] sm:text-[10px] text-gray-400">{t('navigationHud.kmh')}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-2xl font-bold text-white tabular-nums">{Math.round(userSpeed)}</span>
+            <span className="text-[10px] text-gray-400 uppercase">{t('navigationHud.kmh')}</span>
           </div>
+
+          {/* Vertical divider */}
+          <div className="w-px h-8 bg-white/10" />
 
           {/* ETA */}
-          <div className="text-center min-w-0">
-            <p className="text-base sm:text-lg font-bold text-white tabular-nums">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xl font-bold text-white tabular-nums">
               {userSpeed > 0 && remainingMin !== null ? `${remainingMin} ${t('navigationHud.min')}` : '--'}
-            </p>
-            <p className="text-[9px] sm:text-[10px] text-gray-400">{t('navigationHud.eta')}</p>
+            </span>
+            <span className="text-[10px] text-gray-400">{t('navigationHud.eta')}</span>
           </div>
 
-          <div className="text-center min-w-0">
-            <p className="text-base sm:text-lg font-bold text-white tabular-nums">
+          {/* Vertical divider */}
+          <div className="w-px h-8 bg-white/10" />
+
+          {/* Distance */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xl font-bold text-white tabular-nums">
               {remainingDist !== null ? formatDistance(remainingDist) : '--'}
-            </p>
-            <p className="text-[9px] sm:text-[10px] text-gray-400">{t('navigationHud.remaining')}</p>
+            </span>
+            <span className="text-[10px] text-gray-400">{t('navigationHud.remaining')}</span>
           </div>
 
-          <div className="text-center max-w-[60px] sm:max-w-[80px] hidden xs:block">
-            <p className="text-[11px] sm:text-sm font-semibold text-white truncate">{destination?.name}</p>
-            <p className="text-[8px] sm:text-[10px] text-gray-400">{t('navigationHud.destination')}</p>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Actions */}
+          <div className="flex items-center gap-2 ml-1">
             <button onClick={() => setAiCoDriver(!isAiCoDriverEnabled)}
-              className={`w-9 sm:w-10 h-9 sm:h-10 rounded-xl flex items-center justify-center transition-all ${
-                isAiCoDriverEnabled ? 'bg-primary-600 text-white' : 'bg-white/10 text-gray-400'
+              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                isAiCoDriverEnabled ? 'bg-primary-600/80 text-white' : 'bg-white/10 text-gray-400'
               }`}>
-              {isAiCoDriverEnabled ? <FaVolumeUp size={14} /> : <FaVolumeMute size={14} />}
+              {isAiCoDriverEnabled ? <FaVolumeUp size={13} /> : <FaVolumeMute size={13} />}
             </button>
             <button onClick={clearRoute}
-              className="w-9 sm:w-10 h-9 sm:h-10 bg-red-600/20 rounded-xl flex items-center justify-center
-                         text-red-400 hover:bg-red-600/40 transition-all">
-              <FaTimes size={14} />
+              className="w-9 h-9 bg-red-600/20 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-600/40 transition-all">
+              <FaTimes size={13} />
             </button>
           </div>
         </div>
+
+        {/* Destination name */}
+        {destination?.name && (
+          <p className="text-[11px] text-gray-400 text-center mt-1.5 truncate px-4">
+            {destination.name}
+          </p>
+        )}
       </motion.div>
     </div>
   );

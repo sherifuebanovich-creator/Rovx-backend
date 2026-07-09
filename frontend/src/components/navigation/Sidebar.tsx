@@ -1,7 +1,7 @@
 'use client';
 import { motion } from 'framer-motion';
 import { FaTimes, FaUser, FaRoute, FaBookmark, FaTrophy, FaCog, FaSignOutAlt,
-         FaStar, FaMap, FaCar, FaTruck, FaCrown, FaChevronRight, FaBell } from 'react-icons/fa';
+         FaStar, FaMap, FaCrown, FaChevronRight, FaBell } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -14,8 +14,6 @@ import { useTranslation } from 'react-i18next';
 export function Sidebar() {
   const { t } = useTranslation();
   const toggleSidebar = useMapStore(s => s.toggleSidebar);
-  const vehicleMode = useMapStore(s => s.vehicleMode);
-  const setVehicleMode = useMapStore(s => s.setVehicleMode);
   const { user, logout } = useAuthStore();
 
   const handleLogout = async () => {
@@ -122,22 +120,7 @@ export function Sidebar() {
           ))}
         </div>
 
-        {/* Vehicle mode */}
-        <div className="px-4 py-3 border-t border-dark-border">
-          <p className="text-xs text-gray-400 mb-2">{t('sidebar.vehicleMode')}</p>
-          <div className="flex gap-2">
-            <button onClick={() => setVehicleMode('CAR')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                vehicleMode === 'CAR' ? 'bg-primary-600/30 border-primary-500/60 text-white' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-              <FaCar size={14} /> {t('sidebar.car')}
-            </button>
-            <button onClick={() => setVehicleMode('TRUCK')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                vehicleMode === 'TRUCK' ? 'bg-accent-500/30 border-accent-500/60 text-white' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-              <FaTruck size={14} /> {t('sidebar.truck')}
-            </button>
-          </div>
-        </div>
+
 
         {/* Logout */}
         {user && (
