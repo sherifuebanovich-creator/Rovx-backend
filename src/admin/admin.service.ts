@@ -161,9 +161,9 @@ export class AdminService {
       this.prisma.report.count({ where: { createdAt: { gte: dayAgo } } }),
       this.prisma.report.count({ where: { createdAt: { gte: weekAgo } } }),
       this.prisma.report.count({ where: { createdAt: { gte: monthAgo } } }),
-      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: dayAgo } } }),
-      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: weekAgo } } }),
-      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: monthAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { status: 'active', createdAt: { gte: dayAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { status: 'active', createdAt: { gte: weekAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { status: 'active', createdAt: { gte: monthAgo } } }),
       this.redis.smembers('online:users'),
     ]);
 
@@ -177,7 +177,7 @@ export class AdminService {
 
     // Premium purchases with details
     const premiumDetails = await this.prisma.premiumSubscription.findMany({
-      where: { createdAt: { gte: monthAgo } },
+      where: { status: 'active', createdAt: { gte: monthAgo } },
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { id: true, username: true, displayName: true, email: true } },

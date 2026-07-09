@@ -49,7 +49,16 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
    - `activeTab` default changed to `'report'`
 
 ## Current Issues
-- Xsolla sandbox returns error 0004-0002 — user needs to configure payment methods in Xsolla Publisher Account
+- Xsolla PayStation returns error — user needs to configure payment methods in Xsolla Publisher Account (Projects → Rovx → Payment methods → add test card)
+- Backend 401 after redeploy fixed (refresh token DB fallback) — user may need to re-login once
+
+## Last Session Additions
+- `GET /admin/stats` — reports per hour/day/week/month, premium sales, online users with names, server CPU/RAM
+- `POST /telegram/webhook` — Telegram bot `/stats` command with inline buttons for premium details
+- `GET /admin/stats/premium/:id` — premium purchase details (buyer, price, date)
+- BottomBar compacted to rounded pill with 2 buttons (report + chats)
+- Auto-redirect to `/auth/login` when refresh token fails
+- All errors localized via `Accept-Language` header (RU/EN)
 
 ## Env Vars
 | Key | Value |
