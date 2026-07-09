@@ -84,7 +84,9 @@ export default function MapViewGL() {
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
     map.on('dragstart', () => {
-      setFollowUser(false);
+      if (!isNavigatingRef.current) {
+        setFollowUser(false);
+      }
     });
 
     map.on('moveend', () => {

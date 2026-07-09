@@ -4,6 +4,7 @@ import { useMapStore } from '@/store/map.store';
 
 const SPEED_SMOOTHING_ALPHA = 0.35;
 const SMOOTHED_SPEED_KEY = 'rovx_smoothedSpeed';
+const AUTO_FOLLOW_SPEED_THRESHOLD = 10; // km/h
 
 function getInitialSmoothedSpeed(): number {
   if (typeof window === 'undefined') return 0;
@@ -20,9 +21,11 @@ export function useGeolocation() {
   const watchIdRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
   const smoothSpeedRef = useRef(getInitialSmoothedSpeed());
-  const { setUserLocation, setLocationError, followUser, setMapCenter } = useMapStore();
+  const { setUserLocation, setLocationError, followUser, setMapCenter, navigation, setFollowUser } = useMapStore();
   const followUserRef = useRef(followUser);
   followUserRef.current = followUser;
+  const navRef = useRef(navigation);
+  navRef.current = navigation;
 
   const startWatching = useCallback(() => {
     if (!navigator.geolocation) {
@@ -62,6 +65,11 @@ export function useGeolocation() {
 
         if (followUserRef.current) {
           setMapCenter(coords);
+        }
+
+        // Auto-follow: during navigation, re-enable follow when moving
+        if (navRef.current.isNavigating && smoothSpeedRef.current > AUTO_FOLLOW_SPEED_THRESHOLD && !followUserRef.current) {
+          setFollowUser(true);
         }
       },
       (error) => {
