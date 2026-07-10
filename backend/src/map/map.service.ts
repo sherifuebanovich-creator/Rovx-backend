@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { GovernmentDataService } from './government-data.service';
 const MapObjectCategory = {
   GAS_STATION: 'GAS_STATION',
   EV_CHARGER: 'EV_CHARGER',
@@ -60,7 +61,6 @@ const OSM_TAG_MAP: Record<string, string[]> = {
   GAS_STATION: ['["amenity"="fuel"]'],
   EV_CHARGER: ['["amenity"="charging_station"]'],
   PARKING: ['["amenity"="parking"]'],
-  TRUCK_PARKING: ['["amenity"="truck_parking"]'],
   CAFE: ['["amenity"="cafe"]'],
   RESTAURANT: ['["amenity"="restaurant"]'],
   HOTEL: ['["tourism"="hotel"]'],
@@ -104,6 +104,7 @@ export class MapService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private governmentData: GovernmentDataService,
   ) {}
 
   async getObjectsInBounds(query: BoundsQuery) {
@@ -268,7 +269,7 @@ export class MapService {
   }
 
   async getSpeedCameras(lat: number, lng: number, radiusKm = 10) {
-    const cacheKey = `cameras:osm:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `cameras:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -277,12 +278,13 @@ export class MapService {
     const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
     const query = `[out:json];(node["highway"="speed_camera"](${bbox});node["camera:type"](${bbox}););out body;`;
 
+    let osmCameras: any[] = [];
     try {
       const res = await axios.post('https://overpass-api.de/api/interpreter',
         `data=${encodeURIComponent(query)}`,
         { timeout: 15000 },
       );
-      const cameras = (res.data.elements || []).map((el: any) => {
+      osmCameras = (res.data.elements || []).map((el: any) => {
         const tags = el.tags || {};
         const cameraType = this.detectCameraType(tags);
         return {
@@ -295,12 +297,22 @@ export class MapService {
           direction: tags.direction || undefined,
         };
       });
-      await this.redis.set(cacheKey, JSON.stringify(cameras), 600);
-      return cameras;
     } catch (err) {
       this.logger.warn(`Overpass camera API error: ${(err as Error).message}`);
-      return [];
     }
+
+    const govCameras = await this.governmentData.fetchGovernmentSpeedCameras(lat, lng, radiusKm);
+
+    const merged = [...osmCameras];
+    for (const gov of govCameras) {
+      const dup = merged.some(
+        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
+      );
+      if (!dup) merged.push(gov);
+    }
+
+    await this.redis.set(cacheKey, JSON.stringify(merged), 600);
+    return merged;
   }
 
   private detectCameraType(tags: Record<string, string>): string {
@@ -317,7 +329,7 @@ export class MapService {
   }
 
   async getTrafficSignals(lat: number, lng: number, radiusKm = 2) {
-    const cacheKey = `traffic:osm:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `traffic:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -326,24 +338,35 @@ export class MapService {
     const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
     const query = `[out:json];node["highway"="traffic_signals"](${bbox});out body;`;
 
+    let osmSignals: any[] = [];
     try {
       const res = await axios.post('https://overpass-api.de/api/interpreter',
         `data=${encodeURIComponent(query)}`,
         { timeout: 10000 },
       );
-      const signals = (res.data.elements || []).map((el: any) => ({
+      osmSignals = (res.data.elements || []).map((el: any) => ({
         id: `osm-${el.id}`,
         lat: el.lat,
         lng: el.lon,
         name: el.tags?.name || '',
         crossing: el.tags?.crossing || '',
       }));
-      await this.redis.set(cacheKey, JSON.stringify(signals), 300);
-      return signals;
     } catch (err) {
       this.logger.warn(`Overpass API error: ${(err as Error).message}`);
-      return [];
     }
+
+    const govSignals = await this.governmentData.fetchGovernmentTrafficSignals(lat, lng, radiusKm);
+
+    const merged = [...osmSignals];
+    for (const gov of govSignals) {
+      const dup = merged.some(
+        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
+      );
+      if (!dup) merged.push(gov);
+    }
+
+    await this.redis.set(cacheKey, JSON.stringify(merged), 300);
+    return merged;
   }
 
   async getNearby(lat: number, lng: number, radiusKm: number, category?: MapObjectCategory) {
@@ -420,7 +443,71 @@ export class MapService {
     return segments;
   }
 
+  private parsePhotonFeatures(features: any[], query: string) {
+    return (features || []).map((f: any) => {
+      const p = f.properties;
+      const addrParts = [p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean);
+      const displayName = p.name
+        || (p.street ? (p.housenumber ? `${p.street}, ${p.housenumber}` : p.street) : null)
+        || p.city
+        || p.state
+        || query;
+      return {
+        id: `ext-${p.osm_id || ''}-${p.osm_key || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+        name: displayName,
+        address: addrParts.join(', '),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        category: (p.osm_value || p.type || 'address').toUpperCase(),
+        source: 'external',
+      };
+    });
+  }
+
+  private async fetchExternalResults(query: string, limit: number, lat?: number, lng?: number) {
+    const params = `q=${encodeURIComponent(query)}&limit=${limit}&lang=ru${
+      lat && lng ? `&lat=${lat}&lon=${lng}` : ''
+    }`;
+
+    try {
+      const url = `https://photon.komoot.io/api/?${params}`;
+      this.logger.log(`Photon request: ${url}`);
+      const response = await axios.get(url, { timeout: 8000 });
+      const results = this.parsePhotonFeatures(response.data.features || [], query);
+      if (results.length > 0) {
+        this.logger.log(`Photon returned ${results.length} results`);
+        return results;
+      }
+      this.logger.warn('Photon returned 0 results, trying Nominatim');
+    } catch (e) {
+      this.logger.error(`Photon failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    try {
+      const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}&accept-language=ru&addressdetails=1`;
+      this.logger.log(`Nominatim fallback: ${nomUrl}`);
+      const response = await axios.get(nomUrl, { timeout: 8000, headers: { 'User-Agent': 'RovxApp/1.0' } });
+      return (response.data || []).map((r: any) => {
+        const addrParts = [r.address?.road, r.address?.house_number, r.address?.city || r.address?.town, r.address?.state, r.address?.country].filter(Boolean);
+        return {
+          id: `nom-${r.place_id}`,
+          name: r.display_name?.split(',')[0] || query,
+          address: addrParts.join(', '),
+          lat: parseFloat(r.lat),
+          lng: parseFloat(r.lon),
+          category: (r.type || r.class || 'address').toUpperCase(),
+          source: 'external',
+        };
+      });
+    } catch (e) {
+      this.logger.error(`Nominatim failed: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }
+  }
+
   async searchObjects(query: string, lat?: number, lng?: number, radiusKm = 50) {
+    if (!query || query.length < 1) return [];
+
     const where: any = {
       isActive: true,
       OR: [
@@ -436,39 +523,11 @@ export class MapService {
       where.lng = { gte: lng - lngDelta, lte: lng + lngDelta };
     }
 
-    const localResults = await this.prisma.mapObject.findMany({
-      where,
-      take: 10,
-    });
+    const localResults = await this.prisma.mapObject.findMany({ where, take: 10 }).catch(() => []);
 
     let externalResults: any[] = [];
     if (query.length >= 3) {
-      try {
-        const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10&lang=ru${
-          lat && lng ? `&lat=${lat}&lon=${lng}` : ''
-        }`;
-        const response = await axios.get(photonUrl, { timeout: 5000 });
-        externalResults = (response.data.features || []).map((f: any) => {
-          const p = f.properties;
-          const addrParts = [p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean);
-          const displayName = p.name
-            || (p.street ? (p.housenumber ? `${p.street}, ${p.housenumber}` : p.street) : null)
-            || p.city
-            || p.state
-            || query;
-          return {
-            id: `ext-${p.osm_id || ''}-${p.osm_key || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-            name: displayName,
-            address: addrParts.join(', '),
-            lat: f.geometry.coordinates[1],
-            lng: f.geometry.coordinates[0],
-            category: (p.osm_value || p.type || 'address').toUpperCase(),
-            source: 'external',
-          };
-        });
-      } catch (e) {
-        this.logger.error(`External search failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
+      externalResults = await this.fetchExternalResults(query, 10, lat, lng);
     }
 
     const combined = [
@@ -488,51 +547,31 @@ export class MapService {
   }
 
   async getSuggestions(query: string, lat?: number, lng?: number) {
-    if (query.length < 1) return [];
+    if (!query || query.length < 1) return [];
 
-    const localResults = await this.prisma.mapObject.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { address: { contains: query, mode: 'insensitive' } },
-        ],
-      },
-      take: 5,
-      select: {
-        id: true, category: true, name: true, lat: true, lng: true,
-        address: true, rating: true,
-      },
-    });
+    let localResults: any[] = [];
+    try {
+      localResults = await this.prisma.mapObject.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { address: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        take: 5,
+        select: {
+          id: true, category: true, name: true, lat: true, lng: true,
+          address: true, rating: true,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`Local suggest query failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     let externalResults: any[] = [];
     if (query.length >= 3) {
-      try {
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8&lang=ru${
-          lat && lng ? `&lat=${lat}&lon=${lng}` : ''
-        }`;
-        const response = await axios.get(url, { timeout: 5000 });
-        externalResults = (response.data.features || []).map((f: any) => {
-          const p = f.properties;
-          const addrParts = [p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean);
-          const displayName = p.name
-            || (p.street ? (p.housenumber ? `${p.street}, ${p.housenumber}` : p.street) : null)
-            || p.city
-            || p.state
-            || query;
-          return {
-            id: `ext-${p.osm_id || ''}-${p.osm_key || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-            name: displayName,
-            address: addrParts.join(', '),
-            lat: f.geometry.coordinates[1],
-            lng: f.geometry.coordinates[0],
-            category: (p.osm_value || p.type || 'address').toUpperCase(),
-            source: 'external',
-          };
-        });
-      } catch (e) {
-        this.logger.error(`Suggest API failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
+      externalResults = await this.fetchExternalResults(query, 8, lat, lng);
     }
 
     const combined = [
