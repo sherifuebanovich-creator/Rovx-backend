@@ -577,21 +577,7 @@ export class ReportsService {
     // 1. Broadcast via WebSocket to nearby area
     await this.gateway.broadcastReport(report).catch(() => {});
 
-    // 2. Send to Telegram bot
-    await this.telegram.sendReportNotification({
-      type: dto.type,
-      description: dto.description,
-      lat: dto.lat,
-      lng: dto.lng,
-      severity: dto.severity || 3,
-      images: dto.images,
-      address: dto.address,
-      city: reportCity || undefined,
-      time: timeStr,
-      userDisplayName: report.user?.displayName,
-    }).catch(() => {});
-
-    // 3. Send to all Premium users (tier 1+)
+    // 2. Send to all Premium users (tier 1+)
     const premiumUserIds = await this.getPremiumUsers().catch(() => []);
 
     const notificationData = JSON.stringify({

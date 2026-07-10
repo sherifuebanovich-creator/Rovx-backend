@@ -49,6 +49,7 @@ export class TelegramController {
     await this.telegram.sendMessageToChat(chatId,
       '🤖 <b>ROVX Bot</b>\n\n' +
       '📋 /reports — репорты по городам\n' +
+      '🔍 /search <город> — поиск репортов\n' +
       '🟢 /online — кто сейчас онлайн\n' +
       '💎 /premium — продажи премиума\n' +
       '🖥 /server — нагрузка сервера\n' +
@@ -112,6 +113,40 @@ export class TelegramController {
 
         if (cmd === '/server') {
           await this.sendServer(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/search') {
+          const query = text.replace('/search', '').trim();
+          if (!query) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔍 <b>Введите город</b>\nПример: <code>/search Ташкент</code>');
+            return { ok: true };
+          }
+          try {
+            const result = await this.reports.getReportsForCity(query, 1, 10);
+            if (result.reports.length === 0) {
+              await this.telegram.sendMessageToChat(chatId, `🔍 Репортов в <b>${query}</b> не найдено`);
+              return { ok: true };
+            }
+            const lines = result.reports.map((r: any, i: number) => {
+              const sev = r.severity >= 4 ? '🔴' : r.severity >= 3 ? '🟡' : '🟢';
+              const time = r.createdAt ? new Date(r.createdAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '';
+              const photo = r.images && r.images.length > 0 ? '📷' : '';
+              return `${i+1}. ${sev} <b>${r.type}</b> ${photo}\n   📍 ${r.address || 'нет адреса'}\n   🕐 ${time}\n   ⚠️ Серьёзность: ${r.severity}/5`;
+            });
+            const header = `🔍 <b>Репорты в ${query}</b> (${result.total} шт.):\n━━━━━━━━━━━━━━━`;
+            const msg = [header, ...lines].join('\n\n');
+
+            const firstWithPhoto = result.reports.find((r: any) => r.images && r.images.length > 0);
+            if (firstWithPhoto && firstWithPhoto.images[0]) {
+              await this.telegram.sendPhotoToChat(chatId, firstWithPhoto.images[0], msg);
+            } else {
+              await this.telegram.sendMessageToChat(chatId, msg);
+            }
+          } catch (e) {
+            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка поиска: ${e}`);
+          }
           return { ok: true };
         }
       }
