@@ -447,8 +447,8 @@ export class MapService {
     const where: any = {
       isActive: true,
       OR: [
-        { name: { contains: query } },
-        { address: { contains: query } },
+        { name: { contains: query, mode: 'insensitive' } },
+        { address: { contains: query, mode: 'insensitive' } },
       ],
     };
 
@@ -467,26 +467,28 @@ export class MapService {
     let externalResults: any[] = [];
     if (query.length >= 3) {
       try {
-        const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10${
+        const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10&lang=ru${
           lat && lng ? `&lat=${lat}&lon=${lng}` : ''
         }`;
-        const response = await axios.get(photonUrl, { timeout: 2000 });
-        externalResults = response.data.features.map((f: any) => ({
-        id: `ext-${f.properties.osm_id || f.properties.osm_key || ''}-${f.properties.name || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-        name: f.properties.name || f.properties.street || f.properties.city,
-        address: [
-          f.properties.street,
-          f.properties.housenumber,
-          f.properties.city,
-          f.properties.country,
-        ]
-          .filter(Boolean)
-          .join(', '),
-        lat: f.geometry.coordinates[1],
-        lng: f.geometry.coordinates[0],
-        category: (f.properties.osm_value || 'poi').toUpperCase(),
-        isVerified: false,
-      }));
+        const response = await axios.get(photonUrl, { timeout: 5000 });
+        externalResults = (response.data.features || []).map((f: any) => {
+          const p = f.properties;
+          const addrParts = [p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean);
+          const displayName = p.name
+            || (p.street ? (p.housenumber ? `${p.street}, ${p.housenumber}` : p.street) : null)
+            || p.city
+            || p.state
+            || query;
+          return {
+            id: `ext-${p.osm_id || ''}-${p.osm_key || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+            name: displayName,
+            address: addrParts.join(', '),
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0],
+            category: (p.osm_value || p.type || 'address').toUpperCase(),
+            source: 'external',
+          };
+        });
       } catch (e) {
         this.logger.error(`External search failed: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -515,8 +517,8 @@ export class MapService {
       where: {
         isActive: true,
         OR: [
-          { name: { contains: query } },
-          { address: { contains: query } },
+          { name: { contains: query, mode: 'insensitive' } },
+          { address: { contains: query, mode: 'insensitive' } },
         ],
       },
       take: 5,
@@ -526,23 +528,31 @@ export class MapService {
       },
     });
 
-    // Only search external API when 3+ characters (to avoid global results for short input)
     let externalResults: any[] = [];
     if (query.length >= 3) {
       try {
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5${
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8&lang=ru${
           lat && lng ? `&lat=${lat}&lon=${lng}` : ''
         }`;
-        const response = await axios.get(url, { timeout: 2000 });
-        externalResults = response.data.features.map((f: any) => ({
-          id: `ext-${f.properties.osm_id || ''}-${f.properties.name || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-          name: f.properties.name || f.properties.street || f.properties.city || query,
-          address: [f.properties.street, f.properties.housenumber, f.properties.city, f.properties.country].filter(Boolean).join(', '),
-          lat: f.geometry.coordinates[1],
-          lng: f.geometry.coordinates[0],
-          category: (f.properties.osm_value || 'address').toUpperCase(),
-          source: 'external',
-        }));
+        const response = await axios.get(url, { timeout: 5000 });
+        externalResults = (response.data.features || []).map((f: any) => {
+          const p = f.properties;
+          const addrParts = [p.street, p.housenumber, p.city, p.state, p.country].filter(Boolean);
+          const displayName = p.name
+            || (p.street ? (p.housenumber ? `${p.street}, ${p.housenumber}` : p.street) : null)
+            || p.city
+            || p.state
+            || query;
+          return {
+            id: `ext-${p.osm_id || ''}-${p.osm_key || ''}-${f.geometry.coordinates[0]}-${f.geometry.coordinates[1]}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+            name: displayName,
+            address: addrParts.join(', '),
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0],
+            category: (p.osm_value || p.type || 'address').toUpperCase(),
+            source: 'external',
+          };
+        });
       } catch (e) {
         this.logger.error(`Suggest API failed: ${e instanceof Error ? e.message : String(e)}`);
       }

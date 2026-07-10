@@ -144,114 +144,94 @@ export class ReportsService {
     ].filter(Boolean);
 
     if (supported.length > 0 && !supported.some(m => m === model || m.includes(model))) {
-      this.logger.warn(`Model "${model}" not in vision-capable list [${supported.join(',')}], rejecting photo validation`);
-      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
+      this.logger.warn(`Model "${model}" not in vision-capable list [${supported.join(',')}], rejecting`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото' };
     }
 
     if (!model.includes('vision') && !model.includes('gpt-4o') && !model.includes('claude-3') && !model.includes('gpt-4.1') && !model.includes('llama')) {
-      this.logger.warn(`Model "${model}" may not support vision, rejecting photo validation`);
-      return { valid: false, reason: 'AI модель не поддерживает проверку фото. Обратитесь к администратору.' };
+      this.logger.warn(`Model "${model}" may not support vision, rejecting`);
+      return { valid: false, reason: 'AI модель не поддерживает проверку фото' };
     }
 
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
 
-    let prompt: string;
-    if (description && description.trim()) {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно описанию события на российских дорогах.
+    const prompt = description?.trim()
+      ? `Тип: "${typeLabel}". Описание: "${description}".
+Проверь фото: есть ли на нём дорожная ситуация, соответствующая типу и описанию?
+Фото ОДОБРЕНО (valid=true): на фото дорога/транспорт/ДТП/яма/погода на дороге, соответствующая типу.
+Фото ОТКЛОНЕНО (valid=false): селфи, еда, животные, интерьер, природа без дороги, или фото не соответствует типу.
+Ответ ТОЛЬКО JSON: {"valid":true/false,"reason":"причина на русском до 50 символов"}`
+      : `Тип: "${typeLabel}".
+Проверь фото: есть ли на нём дорожная ситуация, соответствующая этому типу?
+Фото ОДОБРЕНО (valid=true): на фото дорога/транспорт/ДТП/яма/погода на дороге, соответствующая типу.
+Фото ОТКЛОНЕНО (valid=false): селфи, еда, животные, интерьер, природа без дороги, или фото не соответствует типу.
+Ответ ТОЛЬКО JSON: {"valid":true/false,"reason":"причина на русском до 50 символов"}`;
 
-Описание: "${description}"
-
-Тип события: "${typeLabel}"
-
-Правила проверки:
-- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
-- Если на фото видно то, что описано в тексте — valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
-- Если на фото НЕ то, что описано (например, в описании "яма", а на фото авария) — valid: false
-- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
-- Для ICE — на фото должен быть лёд на дороге или гололёд
-- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
-- Для POLICE — на фото должен быть патруль ДПС или полицейская машина
-- Для ROAD_WORKS — на фото должны быть дорожные работы или техника
-
-Ответь JSON:
-{
-  "valid": boolean,
-  "reason": "краткое пояснение на русском (до 100 символов)"
-}
-
-Если фото показывает дорогу, улицу, транспорт или дорожную ситуацию — valid: true.
-Если фото НЕ связано с дорогой (селфи, еда, интерьер, животные, природа без дороги) — valid: false.
-Если не уверен — valid: false.`;
-    } else {
-      prompt = `Проанализируй это изображение и определи, соответствует ли оно заявленному типу события на российских дорогах.
-
-Заявленный тип события: "${typeLabel}"
-
-Правила проверки:
-- Фото должно быть сделано на дороге/улице и относиться к дорожной ситуации
-- Если на фото видно именно то, что указано в типе события — valid: true
-- Если фото не связано с дорогой, транспортом или улицей (селфи, еда, животные, интерьер, природа без признаков дороги) — valid: false
-- Если фото связано с дорогой/транспортом, но НЕ соответствует заявленному типу — valid: false
-- Для POTHOLE/BAD_ROAD — на фото должна быть яма, выбоина или разрушенное покрытие
-- Для ICE — на фото должен быть лёд на дороге
-- Для ACCIDENT — на фото должны быть повреждённые автомобили или место ДТП
-- Для POLICE — на фото должен быть патруль ДПС
-- Для ROAD_WORKS — на фото должны быть дорожные работы
-
-Ответь JSON:
-{
-  "valid": boolean,
-  "reason": "краткое пояснение на русском (до 100 символов)"
-}
-
-Если фото показывает дорогу, улицу, транспорт или дорожную ситуацию — valid: true.
-Если фото НЕ связано с дорогой (селфи, еда, интерьер, животные, природа без дороги) — valid: false.
-Если не уверен — valid: false.`;
-    }
-
-    try {
-      const response = await axios.post(
-        `${this.aiBaseUrl}/chat/completions`,
-        {
-          model,
-          messages: [
-            { role: 'system', content: 'You are a strict image moderation AI for Russian road reports. Analyze images and respond in JSON only.' },
-            { role: 'user', content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
-            ]},
-          ],
-          temperature: 0.1,
-          max_tokens: 200,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await axios.post(
+          `${this.aiBaseUrl}/chat/completions`,
+          {
+            model,
+            messages: [
+              { role: 'system', content: 'Анализируй фото. Отвечай ТОЛЬКО валидным JSON без markdown и пояснений.' },
+              { role: 'user', content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: imageUrl } },
+              ]},
+            ],
+            temperature: 0.1,
+            max_tokens: 150,
           },
-          timeout: 15000,
-        },
-      );
+          {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 20000,
+          },
+        );
 
-      const content = response.data.choices?.[0]?.message?.content;
-      if (!content) {
-        this.logger.warn('Photo validation: empty response from AI');
+        const raw = response.data.choices?.[0]?.message?.content || '';
+        this.logger.debug(`AI response (attempt ${attempt + 1}): ${raw.slice(0, 200)}`);
+
+        const parsed = this.extractJson(raw);
+        if (parsed && typeof parsed.valid === 'boolean') {
+          this.logger.log(`Photo validation [${typeLabel}]: ${parsed.valid ? 'ACCEPTED' : 'REJECTED'} — ${String(parsed.reason || '')}`);
+          return parsed.valid
+            ? { valid: true }
+            : { valid: false, reason: String(parsed.reason || 'Фото не соответствует типу') };
+        }
+
+        this.logger.warn(`AI returned non-parseable response (attempt ${attempt + 1}): ${raw.slice(0, 300)}`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (axios.isAxiosError(error) && error.response?.status) {
+          this.logger.error(`AI API error ${error.response.status}: ${msg}`);
+        } else {
+          this.logger.error(`AI request failed (attempt ${attempt + 1}): ${msg}`);
+        }
+        if (attempt === 0) continue;
         return { valid: true };
       }
-
-      const result = JSON.parse(content);
-      this.logger.log(`Photo validation for ${typeLabel}: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
-
-      if (!result.valid) {
-        return { valid: false, reason: result.reason || 'Фото не соответствует заявленному типу события' };
-      }
-      return { valid: true };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Photo validation error: ${msg}`);
-      return { valid: true };
     }
+
+    this.logger.warn('AI returned unparseable JSON after 2 attempts, accepting photo (fail-open)');
+    return { valid: true };
+  }
+
+  private extractJson(raw: string): Record<string, unknown> | null {
+    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch {}
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {}
+    }
+    return null;
   }
 
   async validateDescription(description: string, reportType?: string): Promise<{ valid: boolean; reason?: string }> {
@@ -380,10 +360,12 @@ export class ReportsService {
   async createReport(userId: string, dto: CreateReportDto) {
     await this.checkReportLimit(userId);
 
-    // AI validate photos against description
+    // AI validate photos against description (parallel)
     if (dto.images && dto.images.length > 0) {
-      for (const img of dto.images) {
-        const validation = await this.validatePhoto(img, dto.type, dto.description);
+      const results = await Promise.all(
+        dto.images.map(img => this.validatePhoto(img, dto.type, dto.description)),
+      );
+      for (const validation of results) {
         if (!validation.valid) {
           throw new BadRequestException(validation.reason || 'Фото не соответствует описанию');
         }

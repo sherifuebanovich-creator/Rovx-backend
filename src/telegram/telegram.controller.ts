@@ -4,6 +4,8 @@ import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
 import { ReportsService } from '../reports/reports.service';
 
+const BOT_PASSWORD = 'claudepro';
+
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
   'Узбекистан': ['Ташкент', 'Самарканд', 'Бухара', 'Наманган', 'Андижан', 'Фергана', 'Нукус', 'Карши', 'Джизак', 'Ургенч'],
@@ -31,12 +33,27 @@ const TYPE_EMOJI: Record<string, string> = {
 @Controller('telegram')
 export class TelegramController {
   private readonly logger = new Logger(TelegramController.name);
+  private readonly authorizedChats = new Set<number>();
 
   constructor(
     private telegram: TelegramService,
     private admin: AdminService,
     private reports: ReportsService,
   ) {}
+
+  private isAuthorized(chatId: number): boolean {
+    return this.authorizedChats.has(chatId);
+  }
+
+  private async sendMenu(chatId: number) {
+    await this.telegram.sendMessageToChat(chatId,
+      '🤖 <b>ROVX Bot</b>\n\n' +
+      '📋 /reports — репорты по городам\n' +
+      '🟢 /online — кто сейчас онлайн\n' +
+      '💎 /premium — продажи премиума\n' +
+      '🖥 /server — нагрузка сервера\n' +
+      '🚪 /logout — выйти');
+  }
 
   @Public()
   @Post('webhook')
@@ -45,15 +62,32 @@ export class TelegramController {
       if (body.message?.text) {
         const text = body.message.text.trim();
         const chatId = body.message.chat.id;
-        const [cmd, ...args] = text.split(' ');
+        const [cmd] = text.split(' ');
 
         if (cmd === '/start') {
-          await this.telegram.sendMessageToChat(chatId,
-            '🤖 <b>ROVX Bot</b>\n\n' +
-            '📋 /reports — репорты по городам\n' +
-            '🟢 /online — кто сейчас онлайн\n' +
-            '💎 /premium — продажи премиума\n' +
-            '🖥 /server — нагрузка сервера');
+          if (this.isAuthorized(chatId)) {
+            await this.sendMenu(chatId);
+          } else {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔐 <b>Доступ закрыт</b>\n\nВведите пароль для доступа к боту:');
+          }
+          return { ok: true };
+        }
+
+        if (cmd === '/logout') {
+          this.authorizedChats.delete(chatId);
+          await this.telegram.sendMessageToChat(chatId, '🚪 Вы вышли. Введите пароль для доступа:');
+          return { ok: true };
+        }
+
+        if (!this.isAuthorized(chatId)) {
+          if (text === BOT_PASSWORD) {
+            this.authorizedChats.add(chatId);
+            await this.telegram.sendMessageToChat(chatId, '✅ <b>Добро пожаловать!</b>');
+            await this.sendMenu(chatId);
+          } else {
+            await this.telegram.sendMessageToChat(chatId, '❌ Неверный пароль');
+          }
           return { ok: true };
         }
 
@@ -86,6 +120,11 @@ export class TelegramController {
         const data = body.callback_query.data;
         const cbId = body.callback_query.id;
         const chatId = body.callback_query.message?.chat?.id;
+
+        if (chatId && !this.isAuthorized(chatId)) {
+          await this.telegram.answerCallbackQuery(cbId, '🔒 Нужна авторизация');
+          return { ok: true };
+        }
 
         if (data?.startsWith('premium_')) {
           const id = data.replace('premium_', '');

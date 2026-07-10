@@ -49,12 +49,12 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
    - `activeTab` default changed to `'report'`
 
 10. **Bot commands**
-    - `/stats` — полная статистика
-    - `/reports` — выбор страны → города → репорт с фото/описанием/координатами/временем
+    - `/reports` — выбор страны (СНГ) → города → репорт с фото/описанием/координатами/временем
     - `/online` — кто сейчас онлайн (с городом)
-    - `/premium` — продажи премиума
+    - `/premium` — продажи премиума (с inline-кнопками деталей)
     - `/server` — нагрузка CPU/RAM
     - `/start` — приветствие со списком команд
+    - Ежечасный отчёт через `TasksService` (`@Cron`)
     - `sendPhotoToChat()` добавлен в TelegramService
 
 11. **Map: user marker → dot**
@@ -67,12 +67,11 @@ Road navigation app with user reports, premium subscriptions, and AI photo valid
 ## This Session (Jul 2026)
 
 ### Changes Made
-1. **AI photo validation: default to reject** — prompt defaults to `valid: false` when unsure
-2. **Bot /stats: only count active** — `status: 'active'` filter on premium counts
-3. **Bot commands refactored** — `/premium`, `/server`, `/online` as separate commands; `/start` shows full list
-4. **/reports with country→city flow** — 3 countries, 30+ cities, reports sent as individual messages with photo
-5. **User marker → dot** — triangle replaced with blue circle + heading arrow
-6. **Duplicate recenter button removed** from MapApp bottom-right (TopBar has one)
+1. **REQUEST_HEADER_TOO_LARGE** — убрал `rovxUser` из NextAuth JWT callback (был весь объект пользователя ~2KB в куке `next-auth.session-token`), переименовал куку в `rovx-session-token` (чтобы старый большой токен игнорировался), убрал `withCredentials: true` из axios
+2. **Hourly Telegram report** — `TasksService` с `@Cron(EVERY_HOUR)` шлёт статистику в Telegram (репорты, премиум, онлайн, сервер)
+3. **CIS countries** — Узбекистан, Украина, Азербайджан, Армения, Кыргызстан, Таджикистан, Туркменистан, Молдова с их городами
+4. **/stats removed** — `/start` показывает только `/reports`, `/online`, `/premium`, `/server`
+5. **MapAppLoader stuck fix** — добавлен `setTimeout(done, 3000)` safety fallback; если `rovx-auth` в localStorage битый (isAuthenticated: false), приложение не зависало на загрузке навсегда
 
 ## Env Vars
 | Key | Value |

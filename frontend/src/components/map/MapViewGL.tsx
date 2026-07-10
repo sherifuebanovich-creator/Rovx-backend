@@ -31,6 +31,7 @@ export default function MapViewGL() {
   const reportTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
+  const followBackTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const mapCenter = useMapStore(s => s.mapCenter);
   const zoom = useMapStore(s => s.zoom);
@@ -50,6 +51,9 @@ export default function MapViewGL() {
   const navigation = useMapStore(s => s.navigation);
   const isNavigatingRef = useRef(false);
   isNavigatingRef.current = navigation.isNavigating;
+
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
 
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
@@ -84,9 +88,14 @@ export default function MapViewGL() {
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
     map.on('dragstart', () => {
-      if (!isNavigatingRef.current) {
-        setFollowUser(false);
-      }
+      if (isNavigatingRef.current) return;
+      setFollowUser(false);
+      clearTimeout(followBackTimerRef.current);
+      followBackTimerRef.current = setTimeout(() => {
+        if (mapRef.current && userLocationRef.current) {
+          setFollowUser(true);
+        }
+      }, 3000);
     });
 
     map.on('moveend', () => {
@@ -127,6 +136,7 @@ export default function MapViewGL() {
     return () => {
       clearTimeout(objectTimerRef.current);
       clearTimeout(reportTimerRef.current);
+      clearTimeout(followBackTimerRef.current);
       cleanupMarkers(objectMarkersRef.current);
       cleanupMarkers(reportMarkersRef.current);
       cleanupMarkers(trafficMarkersRef.current);
@@ -286,7 +296,6 @@ export default function MapViewGL() {
   const loadObjectsInBounds = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
-      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) return;
 
@@ -324,7 +333,6 @@ export default function MapViewGL() {
   const loadReportsInBounds = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
-      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) return;
 
@@ -400,7 +408,6 @@ export default function MapViewGL() {
   const loadTrafficSignals = useCallback(
     (bounds: maplibregl.LngLatBounds) => {
       if (!mapRef.current) return;
-      if (isNavigatingRef.current) return;
       const z = mapRef.current.getZoom();
       if (z < 13) {
         cleanupMarkers(trafficMarkersRef.current);
@@ -469,20 +476,16 @@ export default function MapViewGL() {
     loadTrafficSignals(bounds);
   }, [activeCategories, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
 
-  // Clear markers during navigation (like Yandex Navigation), restore when stopped
+  // Refresh markers when navigation state changes
   useEffect(() => {
     if (!mapRef.current) return;
-    if (navigation.isNavigating) {
-      cleanupMarkers(objectMarkersRef.current);
-      cleanupMarkers(reportMarkersRef.current);
-      cleanupMarkers(trafficMarkersRef.current);
-    } else {
-      const bounds = mapRef.current.getBounds();
+    const bounds = mapRef.current.getBounds();
+    if (!navigation.isNavigating) {
       loadObjectsInBounds(bounds);
-      loadReportsInBounds(bounds);
       loadTrafficSignals(bounds);
     }
-  }, [navigation.isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals, cleanupMarkers]);
+    loadReportsInBounds(bounds);
+  }, [navigation.isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
 
   return (
     <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>

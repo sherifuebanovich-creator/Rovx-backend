@@ -36,10 +36,12 @@ export default function MapAppLoader() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    const done = () => setChecking(false);
+
     const check = () => {
       const hasToken = !!Cookies.get('access_token');
       if (useAuthStore.getState().isAuthenticated || useAuthStore.getState().user || hasToken) {
-        setChecking(false);
+        done();
         return true;
       }
       return false;
@@ -49,17 +51,19 @@ export default function MapAppLoader() {
 
     const unsub = useAuthStore.subscribe((state) => {
       if (state.isAuthenticated || state.user) {
-        setChecking(false);
+        done();
         unsub();
       }
     });
 
     const hasStoredAuth = !!localStorage.getItem('rovx-auth');
     if (!hasStoredAuth) {
-      setChecking(false);
+      done();
     }
 
-    return () => { unsub(); };
+    const timer = setTimeout(done, 3000);
+
+    return () => { unsub(); clearTimeout(timer); };
   }, []);
 
   if (checking) {

@@ -21,8 +21,8 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3001);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
-  app.useBodyParser('json', { limit: '5mb' });
-  app.useBodyParser('urlencoded', { limit: '5mb', extended: true });
+  app.useBodyParser('json', { limit: '50mb' });
+  app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
 
   app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
   app.use(compression());

@@ -73,40 +73,48 @@ export function ReportPanel() {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const newFiles = [...photoFiles, ...files].slice(0, 3);
-    setPhotoFiles(newFiles);
+    const newFileCount = Math.min(files.length, 3 - photoFiles.length);
+    if (newFileCount <= 0) return;
+    const filesToAdd = files.slice(0, newFileCount);
 
-    // Convert to base64/data URLs for preview and validation
-    const newPhotos: string[] = [];
-    for (const file of newFiles) {
-      const dataUrl = await fileToDataUrl(file);
-      newPhotos.push(dataUrl);
+    const addedPhotos: string[] = [];
+    const addedFiles: File[] = [];
+    for (const file of filesToAdd) {
+      const compressed = await compressImage(file);
+      const dataUrl = await fileToDataUrl(compressed);
+      addedPhotos.push(dataUrl);
+      addedFiles.push(compressed);
     }
-    setPhotos(newPhotos);
-    setPhotoValidated(newPhotos.map(() => false));
 
-    // Validate each new photo with AI
+    const allPhotos = [...photos, ...addedPhotos];
+    const allFiles = [...photoFiles, ...addedFiles];
+    setPhotos(allPhotos);
+    setPhotoFiles(allFiles);
+
+    const prevValidated = [...photoValidated];
+    setPhotoValidated([...prevValidated, ...addedPhotos.map(() => false)]);
+
     setPhotoChecking(true);
-    const validations: boolean[] = [];
-    for (let i = 0; i < newPhotos.length; i++) {
+    const newValidations: boolean[] = [];
+    for (let i = 0; i < addedPhotos.length; i++) {
       try {
-        const res = await reportsApi.validatePhoto(newPhotos[i], selectedType || undefined, description || undefined);
+        const res = await reportsApi.validatePhoto(addedPhotos[i], selectedType || undefined, description || undefined);
         const result = res.data.data || res.data;
         if (result.valid) {
-          validations.push(true);
+          newValidations.push(true);
         } else {
-          validations.push(false);
+          newValidations.push(false);
           toast.error(t('reportPanel.photoRejected') + (result.reason ? ': ' + result.reason : ''));
         }
       } catch {
-        validations.push(true);
+        newValidations.push(true);
       }
     }
-    setPhotoValidated(validations);
+
+    setPhotoValidated([...prevValidated, ...newValidations]);
     setPhotoChecking(false);
 
-    const allValid = validations.every(v => v);
-    if (allValid && validations.length > 0) {
+    if (newValidations.every(v => v) && newValidations.length > 0) {
       toast.success(t('reportPanel.photoAccepted'));
     }
   };
@@ -418,5 +426,30 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return; }
+        resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
   });
 }
