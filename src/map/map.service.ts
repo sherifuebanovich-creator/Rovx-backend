@@ -484,7 +484,12 @@ export class MapService {
     }
 
     try {
-      const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}&accept-language=ru&addressdetails=1`;
+      let nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}&accept-language=ru&addressdetails=1`;
+      if (lat && lng) {
+        const d = 2;
+        const viewbox = `${lng - d},${lat - d},${lng + d},${lat + d}`;
+        nomUrl += `&viewbox=${viewbox}&bounded=0`;
+      }
       this.logger.log(`Nominatim fallback: ${nomUrl}`);
       const response = await axios.get(nomUrl, { timeout: 8000, headers: { 'User-Agent': 'RovxApp/1.0' } });
       return (response.data || []).map((r: any) => {
