@@ -1,9 +1,10 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, OnModuleInit } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
 import { ReportsService } from '../reports/reports.service';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
@@ -29,8 +30,10 @@ const TYPE_EMOJI: Record<string, string> = {
   LENGTH_LIMIT: '📐', OTHER: '📌',
 };
 
+const AUTH_REDIS_KEY = 'telegram:auth:chats';
+
 @Controller('telegram')
-export class TelegramController {
+export class TelegramController implements OnModuleInit {
   private readonly logger = new Logger(TelegramController.name);
   private readonly authorizedChats = new Set<number>();
 
@@ -39,10 +42,31 @@ export class TelegramController {
     private admin: AdminService,
     private reports: ReportsService,
     private config: ConfigService,
+    private redis: RedisService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const ids = await this.redis.smembers(AUTH_REDIS_KEY);
+      for (const id of ids) {
+        this.authorizedChats.add(Number(id));
+      }
+      this.logger.log(`Loaded ${ids.length} authorized Telegram chats from Redis`);
+    } catch {}
+  }
 
   private isAuthorized(chatId: number): boolean {
     return this.authorizedChats.has(chatId);
+  }
+
+  private async authorizeChat(chatId: number) {
+    this.authorizedChats.add(chatId);
+    await this.redis.sadd(AUTH_REDIS_KEY, String(chatId));
+  }
+
+  private async deauthorizeChat(chatId: number) {
+    this.authorizedChats.delete(chatId);
+    await this.redis.srem(AUTH_REDIS_KEY, String(chatId));
   }
 
   private async sendMenu(chatId: number) {
@@ -77,7 +101,7 @@ export class TelegramController {
         }
 
         if (cmd === '/logout') {
-          this.authorizedChats.delete(chatId);
+          await this.deauthorizeChat(chatId);
           await this.telegram.sendMessageToChat(chatId, '🚪 Вы вышли. Введите пароль для доступа:');
           return { ok: true };
         }
@@ -89,7 +113,7 @@ export class TelegramController {
             return { ok: true };
           }
           if (text === botPassword) {
-            this.authorizedChats.add(chatId);
+            await this.authorizeChat(chatId);
             await this.telegram.sendMessageToChat(chatId, '✅ <b>Добро пожаловать!</b>');
             await this.sendMenu(chatId);
           } else {

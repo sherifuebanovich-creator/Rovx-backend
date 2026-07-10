@@ -178,6 +178,7 @@
   },
   "navigationHud": {
     "arrived": "Arrived!",
+    "arrivedVoice": "You have arrived at {{name}}",
     "then": "Then: {{instruction}}",
     "eta": "ETA",
     "remaining": "Remaining",
@@ -185,7 +186,11 @@
     "km": "km",
     "m": "m",
     "min": "min",
-    "kmh": "km/h"
+    "h": "h",
+    "kmh": "km/h",
+    "recalculating": "Recalculating route...",
+    "rerouted": "Route recalculated",
+    "endTrip": "End trip"
   },
   "objectDetailPanel": {
     "categories": {

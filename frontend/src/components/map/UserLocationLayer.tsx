@@ -9,6 +9,7 @@ import {
   accuracyCircleGeoJSON,
   type BlueDotElements,
 } from '@/lib/maplibreIcons';
+import { speedToAutoZoom } from '@/lib/navigationEngine';
 
 const INTERPOLATION_DURATION_MS = 600;
 const FOLLOW_THRESHOLD_PX = 60;
@@ -44,6 +45,10 @@ export default function UserLocationLayer({ map }: Props) {
   const userSpeed = useMapStore((s) => s.userSpeed);
   const locationError = useMapStore((s) => s.locationError);
   const setFollowUser = useMapStore((s) => s.setFollowUser);
+  const navigation = useMapStore((s) => s.navigation);
+  const isNavigatingRef = useRef(false);
+  const prevPitchRef = useRef(0);
+  const prevBearingRef = useRef(0);
 
   const initAccuracySource = useCallback(
     (m: maplibregl.Map) => {
@@ -128,8 +133,40 @@ export default function UserLocationLayer({ map }: Props) {
     compassModeRefState.current = compassMode;
   }, [compassMode]);
 
+  // Auto-bear/pitch/zoom during navigation (Yandex style)
+  useEffect(() => {
+    if (!map) return;
+
+    const wasNavigating = isNavigatingRef.current;
+    isNavigatingRef.current = navigation.isNavigating;
+
+    if (navigation.isNavigating && !wasNavigating) {
+      prevPitchRef.current = map.getPitch();
+      prevBearingRef.current = map.getBearing();
+
+      map.easeTo({ pitch: 60, duration: 800 });
+
+      compassModeRef.current = true;
+      compassModeRefState.current = true;
+      followActiveRef.current = true;
+      setFollowActive(true);
+      setFollowUser(true);
+    } else if (!navigation.isNavigating && wasNavigating) {
+      compassModeRef.current = false;
+      compassModeRefState.current = false;
+      setCompassMode(false);
+
+      map.easeTo({
+        pitch: prevPitchRef.current,
+        bearing: 0,
+        duration: 600,
+      });
+    }
+  }, [navigation.isNavigating, map, setFollowUser]);
+
   useEffect(() => {
     if (!map || !userLocation) return;
+    if (!isFinite(userLocation.lat) || !isFinite(userLocation.lng)) return;
 
     if (!blueDotRef.current) {
       blueDotRef.current = createBlueDotElements();
@@ -166,6 +203,7 @@ export default function UserLocationLayer({ map }: Props) {
 
       const lat = from.lat + (to.lat - from.lat) * ease;
       const lng = from.lng + (to.lng - from.lng) * ease;
+      if (!isFinite(lat) || !isFinite(lng)) return;
       const heading = interpolateHeading(from.heading, to.heading, ease);
 
       markerRef.current.setLngLat([lng, lat]);
@@ -191,7 +229,7 @@ export default function UserLocationLayer({ map }: Props) {
 
   useEffect(() => {
     if (!blueDotRef.current || !map || !userLocation) return;
-    updateBlueDotAccuracy(blueDotRef.current, userAccuracy || 50, map.getZoom());
+    updateBlueDotAccuracy(blueDotRef.current, userAccuracy || 50, map.getZoom(), userLocation.lat);
   }, [map, userLocation, userAccuracy]);
 
   useEffect(() => {
@@ -214,14 +252,23 @@ export default function UserLocationLayer({ map }: Props) {
     const p2 = map.project([userLocation.lng, userLocation.lat]);
     const distPx = Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
-    if (distPx > FOLLOW_THRESHOLD_PX) {
-      map.easeTo({
+    const isNav = isNavigatingRef.current;
+    const targetZoom = isNav ? speedToAutoZoom(userSpeed) : undefined;
+    const currentZoom = map.getZoom();
+    const zoomDiff = targetZoom != null ? Math.abs(currentZoom - targetZoom) : 0;
+
+    if (distPx > FOLLOW_THRESHOLD_PX || (isNav && zoomDiff > 0.3)) {
+      const opts: maplibregl.CameraOptions & maplibregl.AnimationOptions = {
         center: [userLocation.lng, userLocation.lat],
-        duration: 800,
-        easing: (t) => t * (2 - t),
-      });
+        duration: isNav ? 500 : 800,
+        easing: (t: number) => t * (2 - t),
+      };
+      if (isNav && targetZoom != null && zoomDiff > 0.3) {
+        opts.zoom = targetZoom;
+      }
+      map.easeTo(opts);
     }
-  }, [map, userLocation, followActive]);
+  }, [map, userLocation, followActive, userSpeed]);
 
   const handleRecenter = useCallback(() => {
     if (!map || !userLocation) return;
@@ -253,7 +300,7 @@ export default function UserLocationLayer({ map }: Props) {
 
   return (
     <>
-      {!followActive && userLocation && (
+      {!followActive && userLocation && !navigation.isNavigating && (
         <button
           onClick={handleRecenter}
           className="absolute z-40 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"
@@ -278,7 +325,7 @@ export default function UserLocationLayer({ map }: Props) {
         </button>
       )}
 
-      {userLocation && userSpeed > 2 && (
+      {userLocation && userSpeed > 2 && !navigation.isNavigating && (
         <button
           onClick={handleToggleCompass}
           className="absolute z-40 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"

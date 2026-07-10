@@ -1,28 +1,37 @@
 'use client';
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaTimes, FaVolumeMute, FaVolumeUp, FaChevronRight } from 'react-icons/fa';
+import { FaTimes, FaVolumeMute, FaVolumeUp, FaChevronRight, FaLocationArrow } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 import { useTranslation } from 'react-i18next';
-import { mapApi } from '@/lib/api';
+import { mapApi, routesApi } from '@/lib/api';
+import {
+  computeNavigationUpdate, getRemainingDistance, getRemainingDuration,
+  type NavigationUpdate,
+} from '@/lib/navigationEngine';
 import {
   SpeedCamera, createSpeedCameraMonitor, buildCameraWarningMessage,
   buildCameraAlertText, SpeedCameraMonitor,
 } from '@/lib/speedCameraMonitor';
+import { RouteResult } from '@/types';
 
 export function NavigationHUD() {
   const navigation = useMapStore(s => s.navigation);
   const selectedRoute = useMapStore(s => s.selectedRoute);
   const destination = useMapStore(s => s.destination);
+  const origin = useMapStore(s => s.origin);
   const setNavigation = useMapStore(s => s.setNavigation);
+  const setSelectedRoute = useMapStore(s => s.setSelectedRoute);
   const userLocation = useMapStore(s => s.userLocation);
   const userHeading = useMapStore(s => s.userHeading);
   const userSpeed = useMapStore(s => s.userSpeed);
   const isAiCoDriverEnabled = useMapStore(s => s.isAiCoDriverEnabled);
   const setAiCoDriver = useMapStore(s => s.setAiCoDriver);
   const clearRoute = useMapStore(s => s.clearRoute);
-  const { speak } = useVoiceAssistant();
+  const activeTrip = useMapStore(s => s.activeTrip);
+  const setActiveTrip = useMapStore(s => s.setActiveTrip);
+  const { speak, announceNavigation } = useVoiceAssistant();
   const { t, i18n } = useTranslation();
 
   const monitorRef = useRef<SpeedCameraMonitor | null>(null);
@@ -31,10 +40,142 @@ export function NavigationHUD() {
   const userLocationRef = useRef(userLocation);
   const userHeadingRef = useRef(userHeading);
   const userSpeedRef = useRef(userSpeed);
+  const legAnnouncedRef = useRef(-1);
+  const engineInitRef = useRef(false);
   userLocationRef.current = userLocation;
   userHeadingRef.current = userHeading;
   userSpeedRef.current = userSpeed;
 
+  const formatDistance = (meters: number) => {
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} ${t('navigationHud.km')}`;
+    if (meters >= 100) return `${Math.round(meters / 10) * 10} ${t('navigationHud.m')}`;
+    return `${Math.round(meters)} ${t('navigationHud.m')}`;
+  };
+
+  const getTurnIcon = (type: string) => {
+    const icons: Record<string, string> = {
+      turn_left: '↰', turn_right: '↱', continue: '↑', arrive: '🏁',
+      depart: '▶', roundabout: '↻', merge: '↗', ramp: '↗', fork: '⑂',
+      default: '↑',
+    };
+    return icons[type] || icons.default;
+  };
+
+  const endTrip = useCallback(async () => {
+    if (activeTrip) {
+      try {
+        const rem = userLocation && selectedRoute
+          ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
+          : 0;
+        const traveled = selectedRoute ? selectedRoute.distance - rem / 1000 : 0;
+        await routesApi.endTrip(activeTrip, {
+          distance: traveled,
+          duration: 0,
+          status: 'completed',
+        });
+      } catch {}
+      setActiveTrip(null);
+    }
+  }, [activeTrip, userLocation, selectedRoute, setActiveTrip]);
+
+  const handleCancel = useCallback(async () => {
+    await endTrip();
+    clearRoute();
+  }, [endTrip, clearRoute]);
+
+  const handleArrival = useCallback(async () => {
+    speak(t('navigationHud.arrivedVoice', { name: destination?.name || '' }), true);
+    await endTrip();
+  }, [speak, t, destination, endTrip]);
+
+  const handleReroute = useCallback(async () => {
+    if (!userLocation || !destination) return;
+    setNavigation({ isRerouting: true });
+    try {
+      const res = await routesApi.calculate({
+        originLat: userLocation.lat,
+        originLng: userLocation.lng,
+        destLat: destination.lat,
+        destLng: destination.lng,
+        routeType: 'FASTEST',
+      });
+      const routes: RouteResult[] = res.data.data || [];
+      if (routes.length > 0) {
+        setSelectedRoute(routes[0]);
+        setNavigation({ currentLeg: 0, isOffRoute: false, isRerouting: false });
+        legAnnouncedRef.current = -1;
+        speak(t('navigationHud.rerouted'), true);
+      } else {
+        setNavigation({ isRerouting: false });
+      }
+    } catch {
+      setNavigation({ isRerouting: false });
+    }
+  }, [userLocation, destination, setNavigation, setSelectedRoute, speak, t]);
+
+  // Navigation engine — runs on every position update
+  useEffect(() => {
+    if (!navigation.isNavigating || !selectedRoute || !userLocation) return;
+
+    const update: NavigationUpdate = computeNavigationUpdate(
+      userLocation.lat, userLocation.lng, userHeading,
+      selectedRoute, navigation.currentLeg,
+    );
+
+    if (update.currentLeg !== navigation.currentLeg ||
+        update.isArrived !== navigation.isArrived ||
+        update.isOffRoute !== navigation.isOffRoute) {
+      setNavigation({
+        currentLeg: update.currentLeg,
+        isArrived: update.isArrived,
+        isOffRoute: update.isOffRoute,
+      });
+    }
+
+    if (update.routeProgress !== navigation.routeProgress) {
+      setNavigation({ routeProgress: update.routeProgress });
+    }
+    if (Math.abs(update.distanceToManeuver - navigation.distanceToManeuver) > 5) {
+      setNavigation({ distanceToManeuver: update.distanceToManeuver });
+    }
+    if (Math.abs(update.bearingToManeuver - navigation.bearingToManeuver) > 2) {
+      setNavigation({ bearingToManeuver: update.bearingToManeuver });
+    }
+
+    if (update.isArrived && !engineInitRef.current) {
+      engineInitRef.current = true;
+      handleArrival();
+    }
+
+    if (update.shouldReroute) {
+      handleReroute();
+    }
+  }, [userLocation?.lat, userLocation?.lng, userHeading, navigation.isNavigating]);
+
+  // Reset engine init flag when navigation starts
+  useEffect(() => {
+    if (navigation.isNavigating) {
+      engineInitRef.current = false;
+      legAnnouncedRef.current = -1;
+    }
+  }, [navigation.isNavigating]);
+
+  // Voice guidance on leg change
+  useEffect(() => {
+    if (!navigation.isNavigating || !selectedRoute) return;
+    const instructions = selectedRoute.instructions || [];
+    const leg = navigation.currentLeg;
+
+    if (leg !== legAnnouncedRef.current && leg < instructions.length) {
+      const inst = instructions[leg];
+      if (inst && isAiCoDriverEnabled) {
+        announceNavigation(inst.text, inst.type, inst.distance, inst.streetName);
+      }
+      legAnnouncedRef.current = leg;
+    }
+  }, [navigation.currentLeg, navigation.isNavigating, selectedRoute, isAiCoDriverEnabled, announceNavigation]);
+
+  // Speed camera monitoring
   useEffect(() => {
     if (!monitorRef.current) {
       monitorRef.current = createSpeedCameraMonitor();
@@ -124,66 +265,30 @@ export function NavigationHUD() {
     return () => { clearInterval(interval); };
   }, [navigation.isNavigating, i18n.language, speak]);
 
-  const formatDistance = (meters: number) => {
-    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} ${t('navigationHud.km')}`;
-    if (meters >= 100) return `${Math.round(meters / 10) * 10} ${t('navigationHud.m')}`;
-    return `${Math.round(meters)} ${t('navigationHud.m')}`;
-  };
-
-  const getTurnIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      turn_left: '↰', turn_right: '↱', continue: '↑', arrive: '🏁',
-      depart: '▶', roundabout: '↻', merge: '↗', ramp: '↗', fork: '⑂',
-      default: '↑',
-    };
-    return icons[type] || icons.default;
-  };
-
-  const getRemainingDistance = useCallback(() => {
-    if (!selectedRoute || !userLocation) return null;
-    const { polyline } = selectedRoute;
-    if (!polyline?.length) return null;
-
-    let minDist = Infinity;
-    let closestIdx = 0;
-    polyline?.forEach((pt, i) => {
-      const d = Math.hypot(pt.lat - userLocation.lat, pt.lng - userLocation.lng);
-      if (d < minDist) { minDist = d; closestIdx = i; }
-    });
-
-    const remaining = polyline.slice(closestIdx);
-    let totalDist = 0;
-    for (let i = 1; i < remaining.length; i++) {
-      const dLat = (remaining[i].lat - remaining[i - 1].lat) * Math.PI / 180;
-      const dLon = (remaining[i].lng - remaining[i - 1].lng) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(remaining[i - 1].lat * Math.PI / 180) *
-        Math.cos(remaining[i].lat * Math.PI / 180) *
-        Math.sin(dLon / 2) ** 2;
-      totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-    return totalDist;
-  }, [selectedRoute, userLocation]);
-
-  const remainingDist = getRemainingDistance();
-  const plannedAvgSpeed = selectedRoute && selectedRoute.duration > 0
-    ? selectedRoute.distance / (selectedRoute.duration / 60)
-    : 80;
-  const currentAvgSpeed = userSpeed > 5
-    ? userSpeed
-    : plannedAvgSpeed;
-  const remainingMin = remainingDist
-    ? Math.round((remainingDist / 1000) / currentAvgSpeed * 60)
-    : null;
-
-  const instructions = selectedRoute?.instructions || [];
-  const currentLeg = Math.min(navigation.currentLeg ?? 0, instructions.length - 1);
-  const currentInstruction = instructions[currentLeg] || null;
-  const nextInstruction = instructions[currentLeg + 1] || null;
-
   useEffect(() => {
     return () => { if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current); };
   }, []);
+
+  const instructions = selectedRoute?.instructions || [];
+  const currentLeg = Math.min(navigation.currentLeg ?? 0, Math.max(0, instructions.length - 1));
+  const currentInstruction = instructions[currentLeg] || null;
+  const nextInstruction = instructions[currentLeg + 1] || null;
+
+  const remainingDist = userLocation && selectedRoute
+    ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
+    : null;
+  const remainingSec = userLocation && selectedRoute
+    ? getRemainingDuration(
+        userLocation.lat, userLocation.lng, selectedRoute.polyline,
+        selectedRoute.duration, selectedRoute.distance * 1000,
+      )
+    : null;
+  const remainingMin = remainingSec != null ? Math.round(remainingSec / 60) : null;
+  const remainingTime = remainingMin != null
+    ? remainingMin >= 60
+      ? `${Math.floor(remainingMin / 60)} ${t('navigationHud.h')} ${remainingMin % 60} ${t('navigationHud.min')}`
+      : `${remainingMin} ${t('navigationHud.min')}`
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
@@ -218,15 +323,34 @@ export function NavigationHUD() {
         )}
       </AnimatePresence>
 
+      {/* Off-route / rerouting banner */}
+      <AnimatePresence>
+        {navigation.isRerouting && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute top-20 left-4 right-4 pointer-events-auto z-10"
+          >
+            <div className="bg-amber-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-amber-400/30 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-semibold text-white">{t('navigationHud.recalculating')}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top navigation banner — Yandex style */}
       <motion.div
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="absolute top-0 left-0 right-0 pointer-events-auto"
       >
-        <div className="bg-dark-card/90 backdrop-blur-xl border-b border-white/5">
+        <div className="bg-dark-card/95 backdrop-blur-xl border-b border-white/5">
           <div className="px-4 pt-4 pb-3">
-            {currentInstruction ? (
+            {currentInstruction && !navigation.isArrived ? (
               <>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 flex-shrink-0 bg-primary-600 rounded-2xl flex items-center justify-center text-3xl shadow-lg">
@@ -234,7 +358,7 @@ export function NavigationHUD() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-3xl font-bold text-white tabular-nums leading-tight">
-                      {formatDistance(currentInstruction.distance)}
+                      {formatDistance(navigation.distanceToManeuver || currentInstruction.distance)}
                     </p>
                     <p className="text-sm text-gray-300 mt-0.5 truncate">
                       {currentInstruction.text}
@@ -262,6 +386,12 @@ export function NavigationHUD() {
                 <div>
                   <p className="text-xl font-bold text-white">{t('navigationHud.arrived')}</p>
                   <p className="text-sm text-gray-300">{destination?.name}</p>
+                  <button
+                    onClick={handleCancel}
+                    className="mt-2 px-4 py-1.5 bg-primary-600 rounded-lg text-xs font-semibold text-white"
+                  >
+                    {t('navigationHud.endTrip')}
+                  </button>
                 </div>
               </div>
             )}
@@ -275,25 +405,23 @@ export function NavigationHUD() {
         animate={{ y: 0, opacity: 1 }}
         className="absolute bottom-8 left-3 right-3 pointer-events-auto"
       >
-        <div className="bg-dark-card/90 backdrop-blur-xl rounded-2xl px-3 py-3 border border-white/5 shadow-2xl flex items-center justify-between gap-2">
+        <div className="bg-dark-card/95 backdrop-blur-xl rounded-2xl px-3 py-3 border border-white/5 shadow-2xl flex items-center justify-between gap-2">
           {/* Speed */}
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-2xl font-bold text-white tabular-nums">{Math.round(userSpeed)}</span>
             <span className="text-[10px] text-gray-400 uppercase">{t('navigationHud.kmh')}</span>
           </div>
 
-          {/* Vertical divider */}
           <div className="w-px h-8 bg-white/10" />
 
           {/* ETA */}
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-xl font-bold text-white tabular-nums">
-              {userSpeed > 0 && remainingMin !== null ? `${remainingMin} ${t('navigationHud.min')}` : '--'}
+              {remainingTime || '--'}
             </span>
             <span className="text-[10px] text-gray-400">{t('navigationHud.eta')}</span>
           </div>
 
-          {/* Vertical divider */}
           <div className="w-px h-8 bg-white/10" />
 
           {/* Distance */}
@@ -312,14 +440,13 @@ export function NavigationHUD() {
               }`}>
               {isAiCoDriverEnabled ? <FaVolumeUp size={13} /> : <FaVolumeMute size={13} />}
             </button>
-            <button onClick={clearRoute}
+            <button onClick={handleCancel}
               className="w-9 h-9 bg-red-600/20 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-600/40 transition-all">
               <FaTimes size={13} />
             </button>
           </div>
         </div>
 
-        {/* Destination name */}
         {destination?.name && (
           <p className="text-[11px] text-gray-400 text-center mt-1.5 truncate px-4">
             {destination.name}

@@ -47,6 +47,8 @@ export default function MapViewGL() {
   const isNavigatingRef = useRef(false);
   isNavigatingRef.current = navigation.isNavigating;
 
+  const routeProgress = navigation.routeProgress;
+
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
 
@@ -148,20 +150,20 @@ export default function MapViewGL() {
 
   // User location marker is handled by <UserLocationLayer />
 
-  // Route polyline
+  // Route polyline with progress visualization
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const routeId = 'route-line';
+    const routeTraveledId = 'route-line-traveled';
+    const routeRemainingId = 'route-line-remaining';
 
     const cleanupRoute = () => {
-      try {
-        if (map.getLayer(routeId)) map.removeLayer(routeId);
-      } catch { /* ignore */ }
-      try {
-        if (map.getSource(routeId)) map.removeSource(routeId);
-      } catch { /* ignore */ }
+      [routeId, routeTraveledId, routeRemainingId].forEach(id => {
+        try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+        try { if (map.getSource(id)) map.removeSource(id); } catch {}
+      });
     };
 
     if (!selectedRoute?.polyline?.length) {
@@ -173,38 +175,67 @@ export default function MapViewGL() {
     cleanupRoute();
 
     const coords = selectedRoute.polyline.map((p) => [p.lng, p.lat]);
+    const isNav = navigation.isNavigating;
+    const progress = navigation.routeProgress;
+    const splitIdx = Math.max(1, Math.min(coords.length - 1, Math.round(progress * (coords.length - 1))));
 
-    map.addSource(routeId, {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'LineString', coordinates: coords },
-      },
-    });
+    if (isNav && splitIdx > 0 && splitIdx < coords.length) {
+      const traveledCoords = coords.slice(0, splitIdx + 1);
+      const remainingCoords = coords.slice(splitIdx);
 
-    map.addLayer({
-      id: routeId,
-      type: 'line',
-      source: routeId,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-color': '#0ea5e9',
-        'line-width': 5,
-        'line-opacity': 0.9,
-      },
-    });
+      if (traveledCoords.length >= 2) {
+        map.addSource(routeTraveledId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: traveledCoords } },
+        });
+        map.addLayer({
+          id: routeTraveledId,
+          type: 'line',
+          source: routeTraveledId,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#64748b', 'line-width': 4, 'line-opacity': 0.5 },
+        });
+      }
 
-    routeSourceRef.current = routeId;
+      if (remainingCoords.length >= 2) {
+        map.addSource(routeRemainingId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: remainingCoords } },
+        });
+        map.addLayer({
+          id: routeRemainingId,
+          type: 'line',
+          source: routeRemainingId,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#0ea5e9', 'line-width': 5, 'line-opacity': 0.9 },
+        });
+      }
+    } else {
+      map.addSource(routeId, {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+      });
+      map.addLayer({
+        id: routeId,
+        type: 'line',
+        source: routeId,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#0ea5e9', 'line-width': 5, 'line-opacity': 0.9 },
+      });
+    }
 
-    try {
-      const bounds = coords.reduce(
-        (b, c) => b.extend(c as [number, number]),
-        new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
-      );
-      map.fitBounds(bounds, { padding: 60, duration: 500 });
-    } catch { /* ignore */ }
-  }, [selectedRoute]);
+    routeSourceRef.current = isNav ? routeRemainingId : routeId;
+
+    if (!isNav) {
+      try {
+        const bounds = coords.reduce(
+          (b, c) => b.extend(c as [number, number]),
+          new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
+        );
+        map.fitBounds(bounds, { padding: 60, duration: 500 });
+      } catch {}
+    }
+  }, [selectedRoute, navigation.isNavigating, routeProgress]);
 
   // Render POI markers
   const renderObjectMarkers = useCallback(

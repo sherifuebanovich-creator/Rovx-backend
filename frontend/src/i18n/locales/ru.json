@@ -169,6 +169,7 @@
   },
   "navigationHud": {
     "arrived": "Прибыли!",
+    "arrivedVoice": "Вы прибыли в {{name}}",
     "then": "Далее: {{instruction}}",
     "eta": "ETA",
     "remaining": "Осталось",
@@ -176,7 +177,11 @@
     "km": "км",
     "m": "м",
     "min": "мин",
-    "kmh": "км/ч"
+    "h": "ч",
+    "kmh": "км/ч",
+    "recalculating": "Пересчёт маршрута...",
+    "rerouted": "Маршрут пересчитан",
+    "endTrip": "Завершить поездку"
   },
   "objectDetailPanel": {
     "categories": {

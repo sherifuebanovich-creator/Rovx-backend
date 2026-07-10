@@ -295,8 +295,9 @@ export function createBlueDotElements(): BlueDotElements {
   return { container, pulseRing, dotOuter, dotInner, headingCone, accuracyCircle };
 }
 
-export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: number, mapZoom: number) {
-  const metersPerPixel = 156543.03392 * Math.cos((el.container.ownerDocument.defaultView as any)?.__mapCenterLat ?? 0) / Math.pow(2, mapZoom);
+export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: number, mapZoom: number, lat: number) {
+  const latRad = (lat * Math.PI) / 180;
+  const metersPerPixel = (156543.03392 * Math.cos(latRad)) / Math.pow(2, mapZoom);
   const diameterPx = (accuracyMeters / metersPerPixel) * 2;
   const clamped = Math.min(Math.max(diameterPx, 24), 400);
 

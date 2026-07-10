@@ -3,10 +3,13 @@ import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestio
 
 interface NavigationState {
   isNavigating: boolean;
-  currentInstruction: string | null;
-  nextInstruction: string | null;
-  distanceToNext: number;
   currentLeg: number;
+  routeProgress: number;
+  distanceToManeuver: number;
+  bearingToManeuver: number;
+  isArrived: boolean;
+  isOffRoute: boolean;
+  isRerouting: boolean;
 }
 
 interface MapState {
@@ -131,10 +134,13 @@ export const useMapStore = create<MapState>((set) => ({
   // Navigation
   navigation: {
     isNavigating: false,
-    currentInstruction: null,
-    nextInstruction: null,
-    distanceToNext: 0,
     currentLeg: 0,
+    routeProgress: 0,
+    distanceToManeuver: 0,
+    bearingToManeuver: 0,
+    isArrived: false,
+    isOffRoute: false,
+    isRerouting: false,
   },
   isAiCoDriverEnabled: false,
 
@@ -267,10 +273,13 @@ export const useMapStore = create<MapState>((set) => ({
       activeTrip: null,
       navigation: {
         isNavigating: false,
-        currentInstruction: null,
-        nextInstruction: null,
-        distanceToNext: 0,
         currentLeg: 0,
+        routeProgress: 0,
+        distanceToManeuver: 0,
+        bearingToManeuver: 0,
+        isArrived: false,
+        isOffRoute: false,
+        isRerouting: false,
       },
       searchQuery: '',
       searchSuggestions: [],
