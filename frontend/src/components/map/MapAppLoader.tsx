@@ -39,7 +39,7 @@ export default function MapAppLoader() {
     const done = () => setChecking(false);
 
     const check = () => {
-      const hasToken = !!Cookies.get('access_token');
+      const hasToken = !!Cookies.get('rovx-session-token');
       if (useAuthStore.getState().isAuthenticated || useAuthStore.getState().user || hasToken) {
         done();
         return true;
@@ -77,7 +77,7 @@ export default function MapAppLoader() {
           </div>
           <div className="text-center">
             <p className="font-display text-xl font-bold text-gradient">{t('mapAppLoader.brand')}</p>
-            <p className="text-sm text-gray-400 mt-1">{t('mapAppLoader.loadingRu')}</p>
+            <p className="text-sm text-gray-400 mt-1">{t('mapAppLoader.loading')}</p>
           </div>
         </div>
       </div>

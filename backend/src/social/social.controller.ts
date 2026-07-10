@@ -1,7 +1,12 @@
 import {
   Controller, Post, Put, Delete, Get, Body, Param, Query, UseGuards,
+  UploadedFile, BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { SocialService } from './social.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -58,6 +63,41 @@ export class SocialController {
   @ApiOperation({ summary: 'Create group (Premium required)' })
   async createGroup(@CurrentUser('id') userId: string, @Body() data: any) {
     return this.socialService.createGroup(userId, data);
+  }
+
+  @Post('groups/:groupId/avatar')
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'avatars');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueName = `group-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+          cb(null, uniqueName);
+        },
+      }),
+      limits: { fileSize: 2 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)$/)) {
+          return cb(new BadRequestException('Only JPEG, PNG, WebP, GIF images allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload group avatar' })
+  async uploadGroupAvatar(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    return this.socialService.updateGroup(userId, groupId, { avatar: avatarUrl });
   }
 
   @Put('groups/:groupId')

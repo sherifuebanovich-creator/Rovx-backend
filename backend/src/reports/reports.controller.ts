@@ -8,37 +8,18 @@ import {
   Query,
   UseGuards,
   ParseBoolPipe,
+  UploadedFile,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-const ReportType = {
-  ACCIDENT: 'ACCIDENT',
-  ROAD_CLOSURE: 'ROAD_CLOSURE',
-  ROAD_WORKS: 'ROAD_WORKS',
-  TRAFFIC_JAM: 'TRAFFIC_JAM',
-  ICE: 'ICE',
-  FOG: 'FOG',
-  FLOODING: 'FLOODING',
-  POLICE: 'POLICE',
-  POTHOLE: 'POTHOLE',
-  BAD_ROAD: 'BAD_ROAD',
-  STRONG_WIND: 'STRONG_WIND',
-  FREQUENT_ACCIDENTS: 'FREQUENT_ACCIDENTS',
-  LANDSLIDE: 'LANDSLIDE',
-  LOW_BRIDGE: 'LOW_BRIDGE',
-  SHARP_TURN: 'SHARP_TURN',
-  STEEP_CLIMB: 'STEEP_CLIMB',
-  STEEP_DESCENT: 'STEEP_DESCENT',
-  WEIGHT_LIMIT: 'WEIGHT_LIMIT',
-  HEIGHT_LIMIT: 'HEIGHT_LIMIT',
-  LENGTH_LIMIT: 'LENGTH_LIMIT',
-  SPEED_CAMERA: 'SPEED_CAMERA',
-  HAZARD: 'HAZARD',
-  OTHER: 'OTHER',
-} as const;
-type ReportType = (typeof ReportType)[keyof typeof ReportType];
 
 @ApiTags('Reports')
 @Controller('reports')
@@ -48,8 +29,43 @@ export class ReportsController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'photos', maxCount: 3 },
+      ],
+      {
+        storage: diskStorage({
+          destination: (_req, _file, cb) => {
+            const dir = join(process.cwd(), 'uploads', 'reports');
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+          },
+          filename: (_req, file, cb) => {
+            const uniqueName = `report-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+            cb(null, uniqueName);
+          },
+        }),
+        limits: { fileSize: 5 * 1024 * 1024 },
+        fileFilter: (_req, file, cb) => {
+          if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)$/)) {
+            return cb(new BadRequestException('Only JPEG, PNG, WebP, GIF images allowed'), false);
+          }
+          cb(null, true);
+        },
+      },
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Create hazard/event report' })
-  async create(@CurrentUser('id') userId: string, @Body() dto: any) {
+  async create(
+    @CurrentUser('id') userId: string,
+    @Body() dto: any,
+    @UploadedFiles() files?: { photos?: Express.Multer.File[] },
+  ) {
+    if (files?.photos?.length) {
+      dto.images = files.photos.map(f => `/uploads/reports/${f.filename}`);
+    }
     return this.reportsService.createReport(userId, dto);
   }
 
@@ -82,7 +98,7 @@ export class ReportsController {
     @Query('maxLng') maxLng: number,
     @Query('types') types?: string,
   ) {
-    const reportTypes = types ? (types.split(',') as ReportType[]) : undefined;
+    const reportTypes = types ? (types.split(',')) : undefined;
     return this.reportsService.getReportsInArea(+minLat, +maxLat, +minLng, +maxLng, reportTypes);
   }
 

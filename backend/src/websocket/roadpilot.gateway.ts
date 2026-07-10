@@ -84,11 +84,15 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (userId) {
       this.connectedUsers.delete(client.id);
-      await Promise.all([
-        this.redis.srem('online:users', userId),
-        this.redis.del(`socket:${userId}`),
-        this.redis.del(`location:${userId}`),
-      ]);
+      try {
+        await Promise.all([
+          this.redis.srem('online:users', userId),
+          this.redis.del(`socket:${userId}`),
+          this.redis.del(`location:${userId}`),
+        ]);
+      } catch (err) {
+        this.logger.warn(`Redis cleanup failed for ${client.id}: ${(err as Error).message}`);
+      }
     }
     this.logger.log(`Client disconnected: ${client.id}`);
   }
@@ -101,11 +105,21 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
 
-    await this.redis.set(
-      `location:${userId}`,
-      JSON.stringify({ ...data, updatedAt: Date.now() }),
-      300,
-    );
+    if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number' ||
+        !isFinite(data.lat) || !isFinite(data.lng) ||
+        data.lat < -90 || data.lat > 90 || data.lng < -180 || data.lng > 180) {
+      return;
+    }
+
+    try {
+      await this.redis.set(
+        `location:${userId}`,
+        JSON.stringify({ ...data, updatedAt: Date.now() }),
+        300,
+      );
+    } catch (err) {
+      this.logger.warn(`Redis set location failed for ${userId}: ${(err as Error).message}`);
+    }
 
     const gridCells = this.getNearbyCells(data.lat, data.lng);
     const currentRooms = [...client.rooms];
@@ -120,19 +134,23 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       client.join(cell);
     }
 
-    const isConvoy = await this.redis.get(`convoy:active:${userId}`);
-    if (isConvoy === 'true') {
-      const memberGroups = await this.prisma.groupMember.findMany({
-        where: { userId },
-        select: { groupId: true },
-      });
-      for (const group of memberGroups) {
-        this.server.to(`group:${group.groupId}`).emit('convoy:location', {
-          userId,
-          ...data,
-          updatedAt: Date.now(),
+    try {
+      const isConvoy = await this.redis.get(`convoy:active:${userId}`);
+      if (isConvoy === 'true') {
+        const memberGroups = await this.prisma.groupMember.findMany({
+          where: { userId },
+          select: { groupId: true },
         });
+        for (const group of memberGroups) {
+          this.server.to(`group:${group.groupId}`).emit('convoy:location', {
+            userId,
+            ...data,
+            updatedAt: Date.now(),
+          });
+        }
       }
+    } catch (err) {
+      this.logger.warn(`Convoy broadcast failed for ${userId}: ${(err as Error).message}`);
     }
   }
 
@@ -155,48 +173,58 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { emergencyContacts: true },
-    });
-    if (!user) return;
-
-    const sosAlert = {
-      userId,
-      userName: user.displayName,
-      lat: data.lat,
-      lng: data.lng,
-      message: data.message || 'EMERGENCY: SOS Triggered!',
-      timestamp: Date.now(),
-    };
-
-    const gridCells = this.getNearbyCells(data.lat, data.lng, 5);
-    for (const cell of gridCells) {
-      this.server.to(cell).emit('sos:alert', sosAlert);
+    if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number' ||
+        !isFinite(data.lat) || !isFinite(data.lng)) {
+      return;
     }
 
-    const memberGroups = await this.prisma.groupMember.findMany({
-      where: { userId },
-      select: { groupId: true },
-    });
-    for (const group of memberGroups) {
-      this.server.to(`group:${group.groupId}`).emit('sos:alert', sosAlert);
-    }
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { emergencyContacts: true },
+      });
+      if (!user) return;
 
-    await this.prisma.report.create({
-      data: {
+      const sosAlert = {
         userId,
-        type: 'HAZARD',
+        userName: user.displayName,
         lat: data.lat,
         lng: data.lng,
-        severity: 5,
-        description: `SOS ALERT from ${user.displayName}: ${sosAlert.message}`,
-        status: 'ACTIVE',
-      },
-    });
+        message: data.message || 'EMERGENCY: SOS Triggered!',
+        timestamp: Date.now(),
+      };
 
-    this.logger.warn(`SOS Triggered by user ${userId} at ${data.lat}, ${data.lng}`);
-    return { success: true, alertedContacts: user.emergencyContacts.length };
+      const gridCells = this.getNearbyCells(data.lat, data.lng, 5);
+      for (const cell of gridCells) {
+        this.server.to(cell).emit('sos:alert', sosAlert);
+      }
+
+      const memberGroups = await this.prisma.groupMember.findMany({
+        where: { userId },
+        select: { groupId: true },
+      });
+      for (const group of memberGroups) {
+        this.server.to(`group:${group.groupId}`).emit('sos:alert', sosAlert);
+      }
+
+      await this.prisma.report.create({
+        data: {
+          userId,
+          type: 'HAZARD',
+          lat: data.lat,
+          lng: data.lng,
+          severity: 5,
+          description: `SOS ALERT from ${user.displayName}: ${sosAlert.message}`,
+          status: 'ACTIVE',
+        },
+      });
+
+      this.logger.warn(`SOS Triggered by user ${userId} at ${data.lat}, ${data.lng}`);
+      return { success: true, alertedContacts: user.emergencyContacts.length };
+    } catch (err) {
+      this.logger.error(`SOS handler failed for ${userId}: ${(err as Error).message}`);
+      return { success: false, error: 'Failed to process SOS' };
+    }
   }
 
   @SubscribeMessage('subscribe:area')
@@ -239,21 +267,25 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.city || !data.content?.trim()) return;
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, displayName: true, avatar: true },
-    });
-    if (!user) return;
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, displayName: true, avatar: true },
+      });
+      if (!user) return;
 
-    const message = await this.prisma.cityChatMessage.create({
-      data: { city: data.city.toLowerCase(), userId, content: data.content.trim() },
-      include: {
-        user: { select: { id: true, displayName: true, avatar: true } },
-      },
-    });
+      const message = await this.prisma.cityChatMessage.create({
+        data: { city: data.city.toLowerCase(), userId, content: data.content.trim() },
+        include: {
+          user: { select: { id: true, displayName: true, avatar: true } },
+        },
+      });
 
-    const room = `city:${data.city.toLowerCase()}`;
-    this.server.to(room).emit('city:message', message);
+      const room = `city:${data.city.toLowerCase()}`;
+      this.server.to(room).emit('city:message', message);
+    } catch (err) {
+      this.logger.warn(`City message failed for ${userId}: ${(err as Error).message}`);
+    }
   }
 
   @SubscribeMessage('join:group')
@@ -287,21 +319,29 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { receiverId: string; content: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId || !data.content?.trim()) return;
+    if (!userId || !data.content?.trim() || !data.receiverId) return;
 
-    const message = await this.prisma.message.create({
-      data: {
-        senderId: userId,
-        receiverId: data.receiverId,
-        content: data.content.trim(),
-      },
-      include: {
-        sender: { select: { id: true, displayName: true, avatar: true } },
-      },
-    });
+    try {
+      const receiver = await this.prisma.user.findUnique({ where: { id: data.receiverId }, select: { id: true } });
+      if (!receiver) return { error: 'Receiver not found' };
 
-    await this.gatewayService.sendToUser(data.receiverId, 'message:received', message);
-    return message;
+      const message = await this.prisma.message.create({
+        data: {
+          senderId: userId,
+          receiverId: data.receiverId,
+          content: data.content.trim(),
+        },
+        include: {
+          sender: { select: { id: true, displayName: true, avatar: true } },
+        },
+      });
+
+      await this.gatewayService.sendToUser(data.receiverId, 'message:received', message);
+      return message;
+    } catch (err) {
+      this.logger.warn(`Message send failed for ${userId}: ${(err as Error).message}`);
+      return { error: 'Failed to send message' };
+    }
   }
 
   @SubscribeMessage('group:message')
@@ -310,25 +350,29 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { groupId: string; content: string; replyTo?: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
+    if (!userId || !data.content?.trim()) return;
 
-    const member = await this.prisma.groupMember.findFirst({
-      where: { groupId: data.groupId, userId },
-    });
-    if (!member) return;
+    try {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId },
+      });
+      if (!member) return;
 
-    const message = await this.prisma.groupMessage.create({
-      data: {
-        groupId: data.groupId,
-        senderId: userId,
-        content: data.content,
-      },
-      include: {
-        sender: { select: { id: true, displayName: true, avatar: true } },
-      },
-    });
+      const message = await this.prisma.groupMessage.create({
+        data: {
+          groupId: data.groupId,
+          senderId: userId,
+          content: data.content.trim(),
+        },
+        include: {
+          sender: { select: { id: true, displayName: true, avatar: true } },
+        },
+      });
 
-    this.server.to(`group:${data.groupId}`).emit('group:message', message);
+      this.server.to(`group:${data.groupId}`).emit('group:message', message);
+    } catch (err) {
+      this.logger.warn(`Group message failed for ${userId}: ${(err as Error).message}`);
+    }
   }
 
   @SubscribeMessage('group:typing')
@@ -353,15 +397,31 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
 
-    const member = await this.prisma.groupMember.findFirst({
-      where: { groupId: data.groupId, userId, isAdmin: true },
-    });
-    if (!member) return;
+    try {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId, isAdmin: true },
+      });
+      if (!member) return;
 
-    this.server.to(`group:${data.groupId}`).emit('group:updated', {
-      ...data,
-      updatedBy: userId,
-    });
+      const updateData: any = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.description !== undefined) updateData.description = data.description;
+      if (data.avatar !== undefined) updateData.avatar = data.avatar;
+
+      if (Object.keys(updateData).length > 0) {
+        await this.prisma.group.update({
+          where: { id: data.groupId },
+          data: updateData,
+        });
+      }
+
+      this.server.to(`group:${data.groupId}`).emit('group:updated', {
+        ...data,
+        updatedBy: userId,
+      });
+    } catch (err) {
+      this.logger.warn(`Group edit failed for ${userId}: ${(err as Error).message}`);
+    }
   }
 
   @SubscribeMessage('trip:started')
@@ -376,13 +436,19 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   private getNearbyCells(lat: number, lng: number, radiusKm = 10): string[] {
+    if (!isFinite(lat) || !isFinite(lng)) return [];
+
+    const clampedLat = Math.max(-85, Math.min(85, lat));
+    const clampedLng = Math.max(-180, Math.min(180, lng));
+    const clampedRadius = Math.min(radiusKm, 50);
+
     const cells: string[] = [];
     const step = 0.045;
-    const range = Math.ceil(radiusKm / 5);
+    const range = Math.ceil(clampedRadius / 5);
     for (let dlat = -range; dlat <= range; dlat++) {
       for (let dlng = -range; dlng <= range; dlng++) {
-        const gridLat = (Math.floor(lat / step) + dlat) * step;
-        const gridLng = (Math.floor(lng / step) + dlng) * step;
+        const gridLat = (Math.floor(clampedLat / step) + dlat) * step;
+        const gridLng = (Math.floor(clampedLng / step) + dlng) * step;
         cells.push(`area:${gridLat.toFixed(3)},${gridLng.toFixed(3)}`);
       }
     }

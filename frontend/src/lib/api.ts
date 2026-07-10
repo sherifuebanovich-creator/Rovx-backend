@@ -126,6 +126,14 @@ export const usersApi = {
   addVehicle: (data: any) => api.post('/users/me/vehicles', data),
   getVehicles: () => api.get('/users/me/vehicles'),
   deleteVehicle: (id: string) => api.delete(`/users/me/vehicles/${id}`),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/users/me/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+  },
 };
 
 // Routes endpoints
@@ -167,7 +175,24 @@ export const mapApi = {
 
 // Reports endpoints
 export const reportsApi = {
-  create: (data: any) => api.post('/reports', data),
+  create: (data: any, photos?: File[]) => {
+    if (photos && photos.length > 0) {
+      const formData = new FormData();
+      formData.append('type', data.type);
+      formData.append('lat', String(data.lat));
+      formData.append('lng', String(data.lng));
+      if (data.description) formData.append('description', data.description);
+      if (data.severity) formData.append('severity', String(data.severity));
+      for (const photo of photos) {
+        formData.append('photos', photo);
+      }
+      return api.post('/reports', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+    }
+    return api.post('/reports', data);
+  },
   getInArea: (params: any) => api.get('/reports', { params }),
   vote: (id: string, confirm: boolean) => api.post(`/reports/${id}/vote`, { confirm }),
   delete: (id: string) => api.delete(`/reports/${id}`),
@@ -197,6 +222,14 @@ export const socialApi = {
   createGroup: (data: any) => api.post('/social/groups', data),
   updateGroup: (groupId: string, data: any) => api.put(`/social/groups/${groupId}`, data),
   deleteGroup: (groupId: string) => api.delete(`/social/groups/${groupId}`),
+  uploadGroupAvatar: (groupId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post(`/social/groups/${groupId}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+  },
   getGroups: (page = 1, region?: string, city?: string, search?: string) =>
     api.get('/social/groups', { params: { page, region, city, search } }),
   getMyGroups: () => api.get('/social/groups/my'),

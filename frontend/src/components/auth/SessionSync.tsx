@@ -23,6 +23,23 @@ export function SessionSync() {
 
       if (sessionToken && cookieToken !== sessionToken) {
         setTokens(sessionToken, refreshToken || '');
+        if (!storeUser && rovxUser) {
+          setUser({
+            id: rovxUser.id || '',
+            email: rovxUser.email || (session as any).user?.email || '',
+            username: rovxUser.username || '',
+            displayName: rovxUser.displayName || (session as any).user?.name || 'User',
+            avatar: rovxUser.avatar || (session as any).user?.image || '',
+            role: rovxUser.role || 'USER',
+            subscription: rovxUser.subscription || 'FREE',
+            preferredLang: rovxUser.preferredLang || 'ru',
+            preferredVehicle: rovxUser.preferredVehicle || 'CAR',
+            driverScore: rovxUser.driverScore ?? 5.0,
+            reputation: rovxUser.reputation ?? 0,
+            totalTrips: rovxUser.totalTrips ?? 0,
+            totalDistance: rovxUser.totalDistance ?? 0,
+          });
+        }
       }
 
       if (!sessionToken && !rovxUser && googleUser?.email && !syncedRef.current) {

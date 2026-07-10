@@ -40,8 +40,8 @@ export class FriendsService {
       data: {
         userId: friendId,
         type: 'friend_request',
-        title: 'Запрос в друзья',
-        body: 'Вам отправили запрос в друзья',
+        title: 'Friend request',
+        body: 'You received a friend request',
         data: JSON.stringify({ userId }),
       },
     });
@@ -67,8 +67,8 @@ export class FriendsService {
       data: {
         userId: friendId,
         type: 'friend_accepted',
-        title: 'Запрос принят',
-        body: 'Ваш запрос в друзья принят',
+        title: 'Friend request accepted',
+        body: 'Your friend request was accepted',
         data: JSON.stringify({ userId }),
       },
     });

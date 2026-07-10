@@ -41,7 +41,7 @@ export function NavigationHUD() {
     }
     const mon = monitorRef.current;
 
-    mapApi.getObjects({ categories: 'SPEED_CAMERA', limit: 500, minLat: -90, maxLat: 90, minLng: -180, maxLng: 180 })
+    mapApi.getObjects({ categories: 'SPEED_CAMERA', limit: 100, minLat: -90, maxLat: 90, minLng: -180, maxLng: 180 })
       .then(res => {
         const objects: any[] = res.data.data || res.data || [];
         const cameras: SpeedCamera[] = objects.map((o: any) => ({

@@ -53,7 +53,14 @@ export default function GroupChatPage() {
   // Join group room when socket is ready
   useEffect(() => {
     const ws = getSocket();
-    if (!ws?.connected || joinedRef.current) return;
+    if (!ws) return;
+    if (!ws.connected) {
+      ws.once('connect', () => {
+        ws.emit('join:group', { groupId });
+        joinedRef.current = true;
+      });
+      return;
+    }
     ws.emit('join:group', { groupId });
     joinedRef.current = true;
   }, [socketReady, groupId]);

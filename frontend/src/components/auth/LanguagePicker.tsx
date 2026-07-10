@@ -4,7 +4,7 @@ import { LANGUAGES } from '@/config/languages';
 import { FaChevronDown, FaSearch } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
-const POPULAR = ['en', 'ru'];
+const POPULAR = ['en', 'ru', 'uz', 'tr', 'uk', 'de'];
 
 interface LanguagePickerProps {
   value: string;

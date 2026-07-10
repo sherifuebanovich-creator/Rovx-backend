@@ -96,6 +96,10 @@ export class RoutesService {
     // OSRM routing engine
     const osrmBase = this.config.get('OSRM_URL', 'https://router.project-osrm.org');
     const profile = dto.vehicleType === 'TRUCK' ? 'driving' : 'driving';
+    const excludeParts: string[] = [];
+    if (dto.vehicleType === 'TRUCK') {
+      excludeParts.push('motorway');
+    }
     const waypoints = [
       `${dto.originLng},${dto.originLat}`,
       ...(dto.waypoints || []).map((w) => `${w.lng},${w.lat}`),
@@ -109,7 +113,8 @@ export class RoutesService {
       annotations: 'speed,duration,distance',
     };
 
-    if (dto.avoidTolls) params.exclude = 'toll';
+    if (dto.avoidTolls) excludeParts.push('toll');
+    if (excludeParts.length > 0) params.exclude = excludeParts.join(',');
 
     try {
       const url = `${osrmBase}/route/v1/${profile}/${waypoints}`;

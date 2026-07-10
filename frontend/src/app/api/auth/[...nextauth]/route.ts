@@ -31,12 +31,6 @@ const authOptions: NextAuthOptions = {
       if (account?.provider === 'google') {
         try {
           let lang = 'en';
-          try {
-            if (typeof window !== 'undefined') {
-              lang = localStorage.getItem('pending_lang') || 'en';
-              localStorage.removeItem('pending_lang');
-            }
-          } catch {}
 
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
           const res = await fetch(`${apiUrl}/auth/google`, {

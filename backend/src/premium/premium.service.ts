@@ -79,7 +79,7 @@ export class PremiumService {
     const tier = await this.getUserTier(userId);
     const maxTier = PREMIUM_TIERS[PREMIUM_TIERS.length - 1];
     if (!tier.canCreateGroups) {
-      return { allowed: false, currentGroups: 0, maxGroups: 1, tier: tier.tier, tierRequired: maxTier.label_en };
+      return { allowed: false, currentGroups: 0, maxGroups: 0, tier: tier.tier, tierRequired: maxTier.label_en };
     }
     const groupCount = await this.prisma.group.count({ where: { ownerId: userId } });
     const allowed = groupCount < tier.maxGroups;

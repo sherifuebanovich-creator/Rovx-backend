@@ -33,8 +33,8 @@ export class SocialService {
       data: {
         userId: followingId,
         type: 'new_follower',
-        title: 'Новый подписчик',
-        body: 'На вас подписались',
+        title: 'New follower',
+        body: 'Someone started following you',
         data: JSON.stringify({ followerId }),
       },
     });

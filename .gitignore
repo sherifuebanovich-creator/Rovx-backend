@@ -42,6 +42,10 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+## Uploads
+uploads/*
+!uploads/.gitkeep
+
 ## Misc
 *.tsbuildinfo
 .vercel

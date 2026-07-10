@@ -1,22 +1,23 @@
-FROM node:20-slim AS builder
+# ── Stage 1: Builder ──────────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-
-COPY package*.json ./
+COPY backend/package*.json ./
 RUN npm install
 
-COPY prisma ./prisma
+COPY backend/prisma ./prisma
 RUN npx prisma generate
 
-COPY tsconfig.json nest-cli.json ./
-COPY src ./src
-RUN npx nest build 2>&1 || npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false
+COPY backend/tsconfig.json backend/nest-cli.json ./
+COPY backend/src ./src
+RUN npx nest build 2>&1 || (echo "=== nest build failed, falling back to tsc ===" && npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false)
 
-FROM node:20-slim AS runner
+# ── Stage 2: Runner ───────────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS runner
 
-RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends wget python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install edge-tts 2>/dev/null || true
 
 WORKDIR /app
 
@@ -27,9 +28,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-RUN mkdir -p uploads
+RUN mkdir -p uploads/avatars uploads/reports
 
-COPY entrypoint.sh /entrypoint.sh
+COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 3001

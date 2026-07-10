@@ -21,6 +21,8 @@ export class XsollaService {
   private get apiKey() { return this.config.get<string>('XSOLLA_API_KEY'); }
   private get projectId() { return this.config.get<number>('XSOLLA_PROJECT_ID'); }
   private get webhookSecret() { return this.config.get<string>('XSOLLA_WEBHOOK_SECRET'); }
+  private get isSandbox() { return this.config.get<string>('XSOLLA_MODE', 'sandbox') === 'sandbox'; }
+  private get appUrl() { return this.config.get<string>('APP_URL', 'https://rovx-app-livid.vercel.app'); }
 
   constructor(private config: ConfigService) {}
 
@@ -42,9 +44,9 @@ export class XsollaService {
         project_id: Number(this.projectId),
         currency: 'USD',
         language: language || 'en',
-        mode: 'sandbox',
+        mode: this.isSandbox ? 'sandbox' : 'production',
         ui: { theme: 'dark' },
-        return_url: `https://rovx-app-livid.vercel.app/premium`,
+        return_url: `${this.appUrl}/premium`,
       },
       purchase: {
         checkout: { amount, currency: 'USD' },
@@ -96,7 +98,13 @@ export class XsollaService {
       const hash = algorithm === 'sha256'
         ? crypto.createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex')
         : crypto.createHmac('sha1', this.webhookSecret).update(rawBody).digest('hex');
-      return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
+        const tokenBuf = Buffer.from(hash, 'hex');
+        const sigBuf = Buffer.from(signature, 'hex');
+        if (tokenBuf.length !== sigBuf.length) {
+          this.logger.warn('Xsolla webhook signature length mismatch');
+          return false;
+        }
+        return crypto.timingSafeEqual(tokenBuf, sigBuf);
     } catch {
       return false;
     }

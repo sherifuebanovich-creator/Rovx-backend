@@ -5,19 +5,13 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import helmet from 'helmet';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  // eslint-disable-next-line no-console
-  console.log('=== BOOTSTRAP START ===');
-  // eslint-disable-next-line no-console
-  console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-  // eslint-disable-next-line no-console
-  console.log('DATABASE_URL_DIRECT exists:', !!process.env.DATABASE_URL_DIRECT);
-
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
@@ -29,8 +23,11 @@ async function bootstrap() {
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
   // Increase body parser limit for photo/video uploads in reports
-  app.useBodyParser('json', { limit: '50mb' });
-  app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
+  app.useBodyParser('json', { limit: '10mb' });
+  app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
+
+  // Serve uploaded files
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
   // Security
   app.use(helmet({
@@ -41,7 +38,7 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000').split(','),
+    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000').split(',').map(s => s.trim()),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token'],
@@ -82,6 +79,7 @@ async function bootstrap() {
     logger.log(`Swagger docs: http://localhost:${port}/docs`);
   }
 
+  app.enableShutdownHooks();
   await app.listen(port);
   logger.log(`ROVX Backend running on port ${port}`);
   logger.log(`Environment: ${configService.get('NODE_ENV', 'development')}`);

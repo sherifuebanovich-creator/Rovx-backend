@@ -16,6 +16,7 @@ export default function CreateGroupPage() {
   const [description, setDescription] = useState('');
   const [city, setCity] = useState('');
   const [avatar, setAvatar] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,9 +26,18 @@ export default function CreateGroupPage() {
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setAvatar(reader.result as string);
-    reader.readAsDataURL(file);
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(t('profile.avatarTooLarge') || 'Image too large (max 2MB)');
+      return;
+    }
+    if (!file.type.match(/^image\/(jpeg|png|webp|gif)$/)) {
+      toast.error(t('profile.avatarInvalidType') || 'Only JPEG, PNG, WebP, GIF allowed');
+      return;
+    }
+    setAvatarFile(file);
+    const preview = URL.createObjectURL(file);
+    setAvatar(preview);
   };
 
   const handleCreate = async () => {
@@ -35,8 +45,15 @@ export default function CreateGroupPage() {
     if (!isMax) { toast.error(t('createGroup.premiumRequired')); return; }
     setLoading(true);
     try {
-      const res = await socialApi.createGroup({ name: name.trim(), description: description.trim(), city: city.trim() || undefined, avatar: avatar || undefined, isPublic });
+      const res = await socialApi.createGroup({ name: name.trim(), description: description.trim(), city: city.trim() || undefined, isPublic });
       const group = res.data?.data || res.data;
+      if (avatarFile && group.id) {
+        try {
+          await socialApi.uploadGroupAvatar(group.id, avatarFile);
+        } catch {
+          // Avatar upload failed, group still created
+        }
+      }
       toast.success(t('createGroup.created'));
       router.push(`/groups/${group.id}`);
     } catch (err: any) {

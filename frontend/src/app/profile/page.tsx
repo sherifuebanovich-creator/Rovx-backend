@@ -41,7 +41,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ displayName: '', username: '', bio: '', phone: '', city: '', homeAddress: '', workAddress: '' });
   const [editLoading, setEditLoading] = useState(false);
-  const [avatarFile, setAvatarFile] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -68,13 +69,18 @@ export default function ProfilePage() {
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const maxSize = 5 * 1024 * 1024;
+    const maxSize = 2 * 1024 * 1024;
     if (file.size > maxSize) {
       toast.error(t('profile.avatarTooLarge'));
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
-    setAvatarFile(dataUrl);
+    if (!file.type.match(/^image\/(jpeg|png|webp|gif)$/)) {
+      toast.error(t('profile.avatarInvalidType') || 'Only JPEG, PNG, WebP, GIF allowed');
+      return;
+    }
+    setAvatarFile(file);
+    const preview = URL.createObjectURL(file);
+    setAvatarPreview(preview);
   };
 
   const handleSaveProfile = async () => {
@@ -84,6 +90,12 @@ export default function ProfilePage() {
     }
     setEditLoading(true);
     try {
+      let avatarUrl = user?.avatar;
+      if (avatarFile) {
+        const avatarRes = await usersApi.uploadAvatar(avatarFile);
+        const avatarData = avatarRes.data.data || avatarRes.data;
+        avatarUrl = avatarData.avatar;
+      }
       const payload: any = {
         displayName: editForm.displayName.trim(),
         username: editForm.username.trim(),
@@ -93,9 +105,6 @@ export default function ProfilePage() {
         homeAddress: editForm.homeAddress.trim(),
         workAddress: editForm.workAddress.trim(),
       };
-      if (avatarFile) {
-        payload.avatar = avatarFile;
-      }
       const res = await usersApi.updateProfile(payload);
       const updated = res.data.data || res.data;
       setUser({ ...user!,
@@ -106,10 +115,11 @@ export default function ProfilePage() {
         city: updated.city,
         homeAddress: updated.homeAddress,
         workAddress: updated.workAddress,
-        avatar: updated.avatar || user!.avatar,
+        avatar: avatarUrl || user!.avatar,
       });
       setEditing(false);
       setAvatarFile(null);
+      setAvatarPreview(null);
       toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to update profile';
@@ -187,8 +197,8 @@ export default function ProfilePage() {
             {editing ? (
               <>
                 <div onClick={() => avatarInputRef.current?.click()} className="w-full h-full flex items-center justify-center cursor-pointer group">
-                  {avatarFile ? (
-                    <img src={avatarFile} className="w-full h-full object-cover" />
+                  {avatarPreview ? (
+                    <img src={avatarPreview} className="w-full h-full object-cover" />
                   ) : user.avatar ? (
                     <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" />
                   ) : (
@@ -441,13 +451,4 @@ export default function ProfilePage() {
       </div>
     </div>
   );
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }

@@ -80,10 +80,14 @@ export function ReportPanel() {
     const addedPhotos: string[] = [];
     const addedFiles: File[] = [];
     for (const file of filesToAdd) {
-      const compressed = await compressImage(file);
-      const dataUrl = await fileToDataUrl(compressed);
-      addedPhotos.push(dataUrl);
-      addedFiles.push(compressed);
+      try {
+        const compressed = await compressImage(file);
+        const dataUrl = await fileToDataUrl(compressed);
+        addedPhotos.push(dataUrl);
+        addedFiles.push(compressed);
+      } catch {
+        toast.error(t('reportPanel.photoLoadFailed'));
+      }
     }
 
     const allPhotos = [...photos, ...addedPhotos];
@@ -147,12 +151,7 @@ export function ReportPanel() {
 
     setIsSubmitting(true);
     try {
-      const imageUrls: string[] = [];
-      for (let i = 0; i < photos.length; i++) {
-        if (photoValidated[i]) {
-          imageUrls.push(photos[i]);
-        }
-      }
+      const validatedFiles = photoFiles.filter((_, i) => photoValidated[i]);
 
       const res = await reportsApi.create({
         type: selectedType,
@@ -160,8 +159,7 @@ export function ReportPanel() {
         lng: userLocation.lng,
         description: description.trim() || undefined,
         severity,
-        images: imageUrls.length > 0 ? imageUrls : undefined,
-      });
+      }, validatedFiles.length > 0 ? validatedFiles : undefined);
 
       setSubmittedData(res.data.data || res.data);
       setSubmitted(true);
@@ -430,7 +428,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<File> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
@@ -445,11 +443,11 @@ function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<File> 
       canvas.height = height;
       canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
       canvas.toBlob((blob) => {
-        if (!blob) { resolve(file); return; }
+        if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
         resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
       }, 'image/jpeg', quality);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
     img.src = url;
   });
 }

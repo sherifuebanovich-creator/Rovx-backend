@@ -32,6 +32,10 @@ services:
         value: https://rovx-app-livid.vercel.app
       - key: BACKEND_URL
         value: https://rovx-backend-up1u.onrender.com
+      - key: APP_URL
+        value: https://rovx-backend-up1u.onrender.com
+      - key: XSOLLA_MODE
+        value: sandbox
       - key: THROTTLE_SHORT_LIMIT
         value: "10"
       - key: THROTTLE_MEDIUM_LIMIT
@@ -43,6 +47,12 @@ services:
       - key: DATABASE_URL_DIRECT
         sync: false
       - key: REDIS_URL
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: REDIS_PASSWORD
         sync: false
       - key: JWT_SECRET
         sync: false
@@ -72,7 +82,11 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      - key: TELEGRAM_BOT_PASSWORD
+        sync: false
       - key: GOVERNMENT_API_URL
         sync: false
       - key: GOVERNMENT_API_KEY
+        sync: false
+      - key: GOVERNMENT_DATA_SOURCES
         sync: false

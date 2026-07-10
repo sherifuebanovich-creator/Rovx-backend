@@ -29,7 +29,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-RUN mkdir -p uploads
+RUN mkdir -p uploads/avatars uploads/reports
 
 EXPOSE 3001
 

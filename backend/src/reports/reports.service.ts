@@ -313,21 +313,20 @@ export class ReportsService {
   async getUsersInCity(city: string): Promise<string[]> {
     if (!city) return [];
     const lower = city.toLowerCase();
-    const escaped = lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordPattern = new RegExp(`\\b${escaped}\\b`, 'i');
+
     const users = await this.prisma.user.findMany({
-      where: { isActive: true, isBanned: false },
-      select: { id: true, homeAddress: true, workAddress: true, city: true },
-      take: 1000,
+      where: {
+        isActive: true,
+        isBanned: false,
+        OR: [
+          { city: { contains: lower, mode: 'insensitive' } },
+          { homeAddress: { contains: lower, mode: 'insensitive' } },
+          { workAddress: { contains: lower, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
     });
-    return users
-      .filter(u => {
-        const fields = [u.city, u.homeAddress, u.workAddress].filter(Boolean) as string[];
-        if (fields.some(f => wordPattern.test(f))) return true;
-        if (fields.some(f => f.toLowerCase().includes(lower))) return true;
-        return false;
-      })
-      .map(u => u.id);
+    return users.map(u => u.id);
   }
 
   async getPremiumUsers(): Promise<string[]> {

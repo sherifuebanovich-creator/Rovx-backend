@@ -193,6 +193,7 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password.length < 8) { toast.error(t('auth.register.passwordTooShort')); return; }
+    if (!/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { toast.error(t('auth.register.passwordWeak') || 'Password must contain uppercase, lowercase, and numbers'); return; }
     setIsLoading(true);
     try {
       const payload = {

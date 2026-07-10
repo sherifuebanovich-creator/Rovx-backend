@@ -59,7 +59,15 @@
     "signOut": "Sign Out",
     "loggedOut": "Logged out",
     "brand": "ROVX",
-    "brandSubtitle": "AI Navigation"
+    "brandSubtitle": "AI Navigation",
+    "premium": "Premium",
+    "friends": "Friends",
+    "groups": "Groups",
+    "fuel": "Fuel Calculator",
+    "free": "Free",
+    "premiumBasic": "Premium Basic",
+    "premiumStandard": "Premium Standard",
+    "premiumMax": "Premium Max"
   },
   "searchPanel": {
     "categories": {
@@ -259,7 +267,8 @@
     "sendToTelegram": "Sent to Telegram",
     "status": "Status",
     "underReview": "Under review",
-    "discussInChat": "Discuss in city chat"
+    "discussInChat": "Discuss in city chat",
+    "photoLoadFailed": "Failed to load photo"
   },
   "layerControls": {
     "title": "MAP LAYERS",
@@ -474,17 +483,17 @@
     "km": "km",
     "min": "min",
     "fallback1": "Home → Office",
-    "fallback2": "ul. Tverskaya, 12",
+    "fallback2": "Central Station, 12",
     "fallback3": "Weekend route",
     "fallback4": "Airport → Center",
-    "fallback5": "Moscow Ring Road bypass",
+    "fallback5": "Highway bypass",
     "fallback6": "Home",
     "fallback7": "Office",
-    "fallback8": "ul. Lenina, 1",
+    "fallback8": "Main Street, 1",
     "fallback9": "Weekend route",
-    "fallback10": "ul. Pushkina, 5",
+    "fallback10": "Park Avenue, 5",
     "fallback11": "Airport",
-    "fallback12": "ul. Arbat, 20"
+    "fallback12": "Market Square, 20"
   },
   "achievements": {
     "back": "Back",
@@ -605,7 +614,13 @@
     "distance": "Distance",
     "time": "Time",
     "fuel": "Fuel",
-    "cost": "Cost"
+    "cost": "Cost",
+    "currency": "$",
+    "hourAbbr": "h",
+    "minAbbr": "min",
+    "literAbbr": "L",
+    "perLiter100km": "L/100km",
+    "currencyPerLiter": "$/L"
   },
   "groupDetails": {
     "notFound": "Group not found",

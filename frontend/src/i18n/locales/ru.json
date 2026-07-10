@@ -54,7 +54,11 @@
     "free": "Бесплатно",
     "premiumBasic": "Premium Basic",
     "premiumStandard": "Premium Standard",
-    "premiumMax": "Premium Max"
+    "premiumMax": "Premium Max",
+    "premium": "Премиум",
+    "friends": "Друзья",
+    "groups": "Группы",
+    "fuel": "Калькулятор топлива"
   },
   "searchPanel": {
     "categories": {
@@ -254,7 +258,8 @@
     "sendToTelegram": "Отправлено в Telegram",
     "status": "Статус",
     "underReview": "На рассмотрении",
-    "discussInChat": "Обсудить в чате города"
+    "discussInChat": "Обсудить в чате города",
+    "photoLoadFailed": "Не удалось загрузить фото"
   },
   "layerControls": {
     "title": "СЛОИ КАРТЫ",
@@ -469,17 +474,17 @@
     "km": "км",
     "min": "мин",
     "fallback1": "Дом → Офис",
-    "fallback2": "ул. Тверская, 12",
+    "fallback2": "Центральный вокзал, 12",
     "fallback3": "Маршрут выходного дня",
     "fallback4": "Аэропорт → Центр",
-    "fallback5": "Объезд МКАД",
+    "fallback5": "Объезд шоссе",
     "fallback6": "Дом",
     "fallback7": "Офис",
-    "fallback8": "ул. Ленина, 1",
+    "fallback8": "Главная улица, 1",
     "fallback9": "Маршрут выходного дня",
-    "fallback10": "ул. Пушкина, 5",
+    "fallback10": "Парковая, 5",
     "fallback11": "Аэропорт",
-    "fallback12": "ул. Арбат, 20"
+    "fallback12": "Рыночная площадь, 20"
   },
   "achievements": {
     "back": "Назад",
@@ -600,7 +605,13 @@
     "distance": "Расстояние",
     "time": "Время",
     "fuel": "Топливо",
-    "cost": "Стоимость"
+    "cost": "Стоимость",
+    "currency": "₽",
+    "hourAbbr": "ч",
+    "minAbbr": "мин",
+    "literAbbr": "л",
+    "perLiter100km": "л/100км",
+    "currencyPerLiter": "₽/л"
   },
   "groupDetails": {
     "notFound": "Группа не найдена",

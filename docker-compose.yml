@@ -72,9 +72,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-rovx_redis_pass_2024}
-      JWT_SECRET: ${JWT_SECRET:-rovx-super-secret-jwt-key-minimum-32-characters-long}
+      JWT_SECRET: ${JWT_SECRET:-HmNiNMmNcrB4GkgYAdUH/b1rLLT5DT7vZMoYCXhfXJ1rAxzSKYaDkOpevFP5Yy7m}
       JWT_EXPIRES_IN: 15m
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-rovx-refresh-secret-key-minimum-32-characters-long}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-W9Nufy4tctYOcBCGtccqaxqUXTxVujtd7oCdtrvzVd5jZfssTWAZmvNaTb0paAUY}
       JWT_REFRESH_EXPIRES_IN: 30d
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

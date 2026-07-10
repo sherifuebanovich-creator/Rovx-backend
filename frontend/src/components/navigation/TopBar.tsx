@@ -33,8 +33,10 @@ export function TopBar() {
   const checkUnread = useCallback(() => {
     if (!user) return;
     socialApi.getNotifications(1).then((res) => {
-      const notifs = res.data.data || res.data || [];
-      setHasUnread(notifs.some((n: any) => !n.isRead));
+      const data = res.data;
+      const notifs = data?.data?.notifications || data?.data || data?.notifications || data || [];
+      const arr = Array.isArray(notifs) ? notifs : [];
+      setHasUnread(arr.some((n: any) => !n.isRead));
     }).catch(() => {});
   }, [user]);
 

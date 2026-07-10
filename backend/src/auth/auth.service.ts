@@ -134,8 +134,13 @@ export class AuthService {
 
   async refresh(refreshToken: string): Promise<TokenPair> {
     try {
+      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+      if (!refreshSecret) {
+        this.logger.error('JWT_REFRESH_SECRET is not set');
+        throw new UnauthorizedException('Server configuration error');
+      }
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
-        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
+        secret: refreshSecret,
       });
 
       // Check Redis first, fall back to DB
@@ -216,14 +221,20 @@ export class AuthService {
 
   private async generateTokens(userId: string, email: string, role: string): Promise<TokenPair> {
     const payload: JwtPayload = { sub: userId, email, role };
+    const jwtSecret = this.configService.get<string>('JWT_SECRET');
+    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    if (!jwtSecret || !refreshSecret) {
+      this.logger.error('JWT_SECRET or JWT_REFRESH_SECRET is not set');
+      throw new Error('Server configuration error: JWT secrets not configured');
+    }
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_SECRET', 'change-me-in-production'),
+        secret: jwtSecret,
         expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_REFRESH_SECRET', 'change-me-in-production'),
+        secret: refreshSecret,
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '30d'),
       }),
     ]);
@@ -277,7 +288,7 @@ export class AuthService {
           displayName: data.displayName || finalUsername,
           avatar: data.avatar,
           passwordHash: '',
-          preferredLang: data.lang || 'en',
+          preferredLang: data.lang || 'ru',
           googleId: data.googleId,
           isVerified: true,
           preferences: {

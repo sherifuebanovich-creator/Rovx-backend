@@ -119,7 +119,7 @@ export default function FuelPage() {
                   <div key={h.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-white truncate">{h.originName} → {h.destName}</p>
-                      <p className="text-[10px] text-gray-500">{h.distanceKm} км · {h.fuelCost} ₽</p>
+                      <p className="text-[10px] text-gray-500">{h.distanceKm} {t('navigationHud.km')} · {h.fuelCost} {t('fuel.currency')}</p>
                     </div>
                   </div>
                 ))}
@@ -182,7 +182,7 @@ export default function FuelPage() {
               <select value={fuelType} onChange={e => setFuelType(e.target.value)}
                 className="input-field text-sm mt-1 appearance-none">
                 {FUEL_TYPES.map(ft => (
-                  <option key={ft.key} value={ft.key}>{ft.label} ({ft.price} ₽/л)</option>
+                  <option key={ft.key} value={ft.key}>{ft.label} ({ft.price} {t('fuel.currencyPerLiter')})</option>
                 ))}
               </select>
             </div>
@@ -212,7 +212,7 @@ export default function FuelPage() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">{t('fuel.distance')}</p>
-                  <p className="text-white font-bold">{result.distanceKm} км</p>
+                  <p className="text-white font-bold">{result.distanceKm} {t('navigationHud.km')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -221,7 +221,7 @@ export default function FuelPage() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">{t('fuel.time')}</p>
-                  <p className="text-white font-bold">{Math.floor(result.durationMin / 60)}ч {result.durationMin % 60}м</p>
+                  <p className="text-white font-bold">{Math.floor(result.durationMin / 60)}{t('fuel.hourAbbr')} {result.durationMin % 60}{t('fuel.minAbbr')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -230,7 +230,7 @@ export default function FuelPage() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">{t('fuel.fuel')}</p>
-                  <p className="text-white font-bold">{result.fuelConsumed} л</p>
+                  <p className="text-white font-bold">{result.fuelConsumed} {t('fuel.literAbbr')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -239,13 +239,13 @@ export default function FuelPage() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">{t('fuel.cost')}</p>
-                  <p className="text-white font-bold">{result.fuelCost} ₽</p>
+                  <p className="text-white font-bold">{result.fuelCost} {t('fuel.currency')}</p>
                 </div>
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 text-xs text-gray-500">
               <FaGasPump size={10} />
-              <span>{result.fuelType} · {result.efficiencyUsed} л/100км · {result.fuelPricePerLiter} ₽/л</span>
+              <span>{result.fuelType} · {result.efficiencyUsed} {t('fuel.perLiter100km')} · {result.fuelPricePerLiter} {t('fuel.currencyPerLiter')}</span>
             </div>
           </motion.div>
         )}

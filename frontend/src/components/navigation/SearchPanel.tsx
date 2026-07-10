@@ -374,38 +374,76 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     setDestination({ lat: item.lat, lng: item.lng, name: item.name });
     const loc = origin || userLocation;
     if (loc) {
-      if (!origin) setOrigin({ ...loc, name: t('searchPanel.myLocation') });
-      try {
-        const res = await routesApi.calculate({
-          originLat: origin?.lat || loc.lat,
-          originLng: origin?.lng || loc.lng,
-          destLat: item.lat, destLng: item.lng,
-          routeType: selectedTypes[0] || 'FASTEST',
-          vehicleType: selectedVehicle?.type || vehicleMode,
-        });
-        const route = res.data.data?.[0];
-        if (route) {
-          setCalculatedRoutes([route]);
-          setSelectedRoute(route);
-          const trip = await routesApi.startTrip({
-        originName: origin?.name || t('searchPanel.myLocation'),
-            originLat: origin?.lat || loc.lat,
-            originLng: origin?.lng || loc.lng,
-            destName: item.name, destLat: item.lat, destLng: item.lng,
-            distance: route.distance,
-            duration: route.duration,
+      if (!origin) {
+        const newOrigin = { ...loc, name: t('searchPanel.myLocation') };
+        setOrigin(newOrigin);
+        const originLat = newOrigin.lat;
+        const originLng = newOrigin.lng;
+        try {
+          const res = await routesApi.calculate({
+            originLat,
+            originLng,
+            destLat: item.lat, destLng: item.lng,
+            routeType: selectedTypes[0] || 'FASTEST',
+            vehicleType: selectedVehicle?.type || vehicleMode,
           });
-          useMapStore.getState().setActiveTrip(trip.data.data.id);
-          setNavigation({ isNavigating: true });
+          const route = res.data.data?.[0];
+          if (route) {
+            setCalculatedRoutes([route]);
+            setSelectedRoute(route);
+            const trip = await routesApi.startTrip({
+              originName: newOrigin.name,
+              originLat,
+              originLng,
+              destName: item.name, destLat: item.lat, destLng: item.lng,
+              distance: route.distance,
+              duration: route.duration,
+            });
+            useMapStore.getState().setActiveTrip(trip.data.data.id);
+            setNavigation({ isNavigating: true });
 
-          const mins = Math.round(route.duration / 60);
-          const dist = route.distance >= 1
-            ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
-            : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
-          speak(t('searchPanel.routeBuilt', { dist, mins }), true);
+            const mins = Math.round(route.duration / 60);
+            const dist = route.distance >= 1
+              ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
+              : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
+            speak(t('searchPanel.routeBuilt', { dist, mins }), true);
+          }
+        } catch {
+          toast.error(t('searchPanel.routeBuildFailed'));
         }
-      } catch {
-        toast.error(t('searchPanel.routeBuildFailed'));
+      } else {
+        try {
+          const res = await routesApi.calculate({
+            originLat: origin.lat,
+            originLng: origin.lng,
+            destLat: item.lat, destLng: item.lng,
+            routeType: selectedTypes[0] || 'FASTEST',
+            vehicleType: selectedVehicle?.type || vehicleMode,
+          });
+          const route = res.data.data?.[0];
+          if (route) {
+            setCalculatedRoutes([route]);
+            setSelectedRoute(route);
+            const trip = await routesApi.startTrip({
+              originName: origin.name,
+              originLat: origin.lat,
+              originLng: origin.lng,
+              destName: item.name, destLat: item.lat, destLng: item.lng,
+              distance: route.distance,
+              duration: route.duration,
+            });
+            useMapStore.getState().setActiveTrip(trip.data.data.id);
+            setNavigation({ isNavigating: true });
+
+            const mins = Math.round(route.duration / 60);
+            const dist = route.distance >= 1
+              ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
+              : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
+            speak(t('searchPanel.routeBuilt', { dist, mins }), true);
+          }
+        } catch {
+          toast.error(t('searchPanel.routeBuildFailed'));
+        }
       }
     }
     setIsGoing(false);
