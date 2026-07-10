@@ -116,7 +116,7 @@ export class FriendsService {
       },
     });
 
-    const onlineUserIds = await this.redis.smembers('online:users');
+    const onlineUserIds = await this.getValidOnlineUserIds();
 
     return friends.map(f => {
       const friend = f.userId === userId ? f.friend : f.user;
@@ -172,9 +172,21 @@ export class FriendsService {
     });
 
     const friendIds = (await this.getFriends(currentUserId)).map(f => f.id);
+    const onlineUserIds = await this.getValidOnlineUserIds();
     return users.map(u => ({
       ...u,
       isFriend: friendIds.includes(u.id),
+      isOnline: onlineUserIds.includes(u.id),
     }));
+  }
+
+  private async getValidOnlineUserIds(): Promise<string[]> {
+    const onlineIds = await this.redis.smembers('online:users');
+    const validIds: string[] = [];
+    for (const uid of onlineIds) {
+      const ts = await this.redis.get(`online:ts:${uid}`);
+      if (ts) validIds.push(uid);
+    }
+    return validIds;
   }
 }

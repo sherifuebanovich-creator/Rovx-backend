@@ -23,7 +23,7 @@ export function SessionSync() {
 
       if (sessionToken && cookieToken !== sessionToken) {
         setTokens(sessionToken, refreshToken || '');
-        if (!storeUser && rovxUser) {
+        if (rovxUser) {
           setUser({
             id: rovxUser.id || '',
             email: rovxUser.email || (session as any).user?.email || '',

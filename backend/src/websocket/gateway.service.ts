@@ -46,6 +46,11 @@ export class GatewayService {
     this.server.to(`group:${groupId}`).emit(event, data);
   }
 
+  async emitToRoom(room: string, event: string, data: any) {
+    if (!this.server) return;
+    this.server.to(room).emit(event, data);
+  }
+
   private getGridCell(lat: number, lng: number): string {
     // ~5km grid cells
     const gridLat = Math.floor(lat / 0.045) * 0.045;

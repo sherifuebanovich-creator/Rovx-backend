@@ -37,6 +37,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   private readonly logger = new Logger(RovxGateway.name);
   private readonly connectedUsers = new Map<string, string>();
+  private readonly userConnections = new Map<string, Set<string>>();
+  private readonly USER_ONLINE_TTL = 1800;
 
   constructor(
     private jwtService: JwtService,
@@ -49,6 +51,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   afterInit(server: Server) {
     this.gatewayService.setServer(server);
     this.logger.log('WebSocket Gateway initialized');
+    setInterval(() => this.cleanupStaleOnlineUsers(), 600_000);
   }
 
   async handleConnection(client: Socket) {
@@ -66,16 +69,31 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         secret: this.configService.get('JWT_SECRET'),
       });
 
-      this.connectedUsers.set(client.id, payload.sub);
+      const userId = payload.sub;
+      this.connectedUsers.set(client.id, userId);
 
-      client.join(`user:${payload.sub}`);
+      let conns = this.userConnections.get(userId);
+      const isFirstConnection = !conns || conns.size === 0;
+      if (!conns) {
+        conns = new Set();
+        this.userConnections.set(userId, conns);
+      }
+      conns.add(client.id);
 
-      await this.redis.sadd('online:users', payload.sub);
-      await this.redis.set(`socket:${payload.sub}`, client.id, 86400);
+      client.join(`user:${userId}`);
 
-      this.logger.log(`Client connected: ${client.id} (user: ${payload.sub})`);
+      if (isFirstConnection) {
+        await this.redis.sadd('online:users', userId);
+        await this.redis.set(`online:ts:${userId}`, Date.now().toString(), this.USER_ONLINE_TTL);
+        await this.notifyFriendsOnlineStatus(userId, true);
+      }
+
+      await this.redis.set(`socket:${userId}:${client.id}`, '1', 86400);
+
+      this.logger.log(`Client connected: ${client.id} (user: ${userId}, connections: ${conns.size})`);
     } catch (error) {
-      this.logger.warn(`Unauthorized connection attempt from ${client.id}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Unauthorized connection attempt from ${client.id}: ${msg}`);
       client.disconnect(true);
     }
   }
@@ -84,12 +102,21 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (userId) {
       this.connectedUsers.delete(client.id);
+
+      const conns = this.userConnections.get(userId);
+      if (conns) {
+        conns.delete(client.id);
+      }
+
       try {
-        await Promise.all([
-          this.redis.srem('online:users', userId),
-          this.redis.del(`socket:${userId}`),
-          this.redis.del(`location:${userId}`),
-        ]);
+        await this.redis.del(`socket:${userId}:${client.id}`);
+
+        if (!conns || conns.size === 0) {
+          this.userConnections.delete(userId);
+          await this.redis.srem('online:users', userId);
+          await this.redis.del(`online:ts:${userId}`);
+          await this.notifyFriendsOnlineStatus(userId, false);
+        }
       } catch (err) {
         this.logger.warn(`Redis cleanup failed for ${client.id}: ${(err as Error).message}`);
       }
@@ -433,6 +460,40 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!userId) return;
     client.join(`trip:${data.tripId}`);
     return { ok: true };
+  }
+
+  private async notifyFriendsOnlineStatus(userId: string, isOnline: boolean) {
+    try {
+      const friendships = await this.prisma.friend.findMany({
+        where: {
+          OR: [{ userId }, { friendId: userId }],
+          status: 'ACCEPTED',
+        },
+        select: { userId: true, friendId: true },
+      });
+
+      const friendIds = friendships.map(f => f.userId === userId ? f.friendId : f.userId);
+
+      for (const friendId of friendIds) {
+        this.server.to(`user:${friendId}`).emit('user:online', { userId, isOnline });
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to notify friends of online status for ${userId}: ${(err as Error).message}`);
+    }
+  }
+
+  private async cleanupStaleOnlineUsers() {
+    try {
+      const onlineIds = await this.redis.smembers('online:users');
+      for (const uid of onlineIds) {
+        const ts = await this.redis.get(`online:ts:${uid}`);
+        if (!ts) {
+          await this.redis.srem('online:users', uid);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Stale cleanup failed: ${(err as Error).message}`);
+    }
   }
 
   private getNearbyCells(lat: number, lng: number, radiusKm = 10): string[] {

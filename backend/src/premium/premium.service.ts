@@ -125,7 +125,6 @@ export class PremiumService {
           currency: 'USD',
           status: 'pending',
           paymentId: token,
-          provider: 'xsolla',
           autoRenew: false,
         },
         update: {
@@ -207,7 +206,6 @@ export class PremiumService {
               currency: 'USD',
               status: 'active',
               paymentId: transactionId,
-              provider: 'xsolla',
               autoRenew: false,
             },
             update: {
@@ -269,7 +267,6 @@ export class PremiumService {
       canReceiveReports: tierInfo.canReceiveReports,
       active: sub?.status === 'active' && (!user?.subscriptionEnd || user.subscriptionEnd > new Date()),
       paymentId: sub?.paymentId,
-      provider: sub?.provider || 'xsolla',
     };
   }
 }

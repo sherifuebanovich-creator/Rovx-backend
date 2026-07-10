@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   UploadedFile,
   BadRequestException,
 } from '@nestjs/common';

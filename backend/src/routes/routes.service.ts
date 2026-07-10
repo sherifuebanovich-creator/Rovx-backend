@@ -62,7 +62,7 @@ export class RoutesService {
     private config: ConfigService,
   ) {}
 
-  async calculateRoute(dto: CalculateRouteDto, userId: string): Promise<RouteResult[]> {
+  async calculateRoute(dto: CalculateRouteDto, userId?: string): Promise<RouteResult[]> {
     const cacheKey = `route:${dto.originLat},${dto.originLng}:${dto.destLat},${dto.destLng}:${dto.routeType || 'fastest'}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) {
@@ -75,7 +75,7 @@ export class RoutesService {
     return results;
   }
 
-  private async computeRoutes(dto: CalculateRouteDto, userId: string): Promise<RouteResult[]> {
+  private async computeRoutes(dto: CalculateRouteDto, userId?: string): Promise<RouteResult[]> {
     const routeTypes = dto.routeType
       ? [dto.routeType]
       : [RouteType.FASTEST, RouteType.SHORTEST, RouteType.SAFEST];
@@ -91,7 +91,7 @@ export class RoutesService {
   private async computeSingleRoute(
     dto: CalculateRouteDto,
     type: RouteType,
-    userId: string,
+    userId?: string,
   ): Promise<RouteResult> {
     // OSRM routing engine
     const osrmBase = this.config.get('OSRM_URL', 'https://router.project-osrm.org');

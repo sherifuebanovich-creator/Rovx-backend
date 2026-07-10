@@ -3,8 +3,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
 import { ReportsService } from '../reports/reports.service';
-
-const BOT_PASSWORD = 'claudepro';
+import { ConfigService } from '@nestjs/config';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
@@ -39,6 +38,7 @@ export class TelegramController {
     private telegram: TelegramService,
     private admin: AdminService,
     private reports: ReportsService,
+    private config: ConfigService,
   ) {}
 
   private isAuthorized(chatId: number): boolean {
@@ -50,6 +50,7 @@ export class TelegramController {
       '🤖 <b>ROVX Bot</b>\n\n' +
       '📋 /reports — репорты по городам\n' +
       '🔍 /search <город> — поиск репортов\n' +
+      '🔎 /report <id> — детали репорта\n' +
       '🟢 /online — кто сейчас онлайн\n' +
       '💎 /premium — продажи премиума\n' +
       '🖥 /server — нагрузка сервера\n' +
@@ -82,7 +83,12 @@ export class TelegramController {
         }
 
         if (!this.isAuthorized(chatId)) {
-          if (text === BOT_PASSWORD) {
+          const botPassword = this.config.get('TELEGRAM_BOT_PASSWORD');
+          if (!botPassword) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Bot not configured');
+            return { ok: true };
+          }
+          if (text === botPassword) {
             this.authorizedChats.add(chatId);
             await this.telegram.sendMessageToChat(chatId, '✅ <b>Добро пожаловать!</b>');
             await this.sendMenu(chatId);
@@ -98,6 +104,49 @@ export class TelegramController {
           }));
           await this.telegram.sendMessageToChat(chatId,
             '🌍 <b>Выбери страну</b>', countryButtons);
+          return { ok: true };
+        }
+
+        if (cmd === '/report') {
+          const reportId = text.replace('/report', '').trim();
+          if (!reportId) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔎 <b>Введите ID репорта</b>\nПример: <code>/report abc123</code>');
+            return { ok: true };
+          }
+          try {
+            const report = await this.reports.getReportById(reportId);
+            if (!report) {
+              await this.telegram.sendMessageToChat(chatId, '❌ Репорт не найден');
+              return { ok: true };
+            }
+            const emoji = TYPE_EMOJI[report.type] || '📌';
+            const severityBar = '🔴'.repeat(Math.min(report.severity || 3, 5)) + '⚪'.repeat(5 - Math.min(report.severity || 3, 5));
+            const mapLink = `https://www.google.com/maps?q=${report.lat},${report.lng}`;
+            const time = report.createdAt ? new Date(report.createdAt).toLocaleString('ru-RU') : '—';
+
+            let caption = `${emoji} <b>${report.type}</b>\n`;
+            caption += `━━━━━━━━━━━━━━━\n`;
+            caption += `🕐 <b>Время:</b> ${time}\n`;
+            caption += `⚠️ <b>Серьёзность:</b> ${severityBar} (${report.severity}/5)\n`;
+            caption += `📊 <b>Статус:</b> ${report.status}\n`;
+            caption += `📍 <b>Координаты:</b> ${report.lat.toFixed(5)}, ${report.lng.toFixed(5)}\n`;
+            caption += `🗺 <a href="${mapLink}">Открыть на карте</a>\n`;
+            if (report.address) caption += `📮 <b>Адрес:</b> ${report.address}\n`;
+            if (report.description) caption += `📝 <b>Описание:</b> ${report.description}\n`;
+            caption += `👍 <b>Подтверждений:</b> ${report.confirmedBy || 0} | 👎 <b>Отклонений:</b> ${report.rejectedBy || 0}\n`;
+            caption += `━━━━━━━━━━━━━━━\n`;
+            caption += `🆔 <code>${report.id}</code>`;
+
+            const images = Array.isArray(report.images) ? report.images : [];
+            if (images.length > 0) {
+              await this.telegram.sendPhotoToChat(chatId, images[0], caption);
+            } else {
+              await this.telegram.sendMessageToChat(chatId, caption);
+            }
+          } catch (e) {
+            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${e}`);
+          }
           return { ok: true };
         }
 

@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   ParseBoolPipe,
   UploadedFile,
   UploadedFiles,

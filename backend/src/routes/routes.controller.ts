@@ -28,7 +28,7 @@ export class RoutesController {
   @Post('calculate')
   @ApiOperation({ summary: 'Calculate route options' })
   async calculate(@Body() dto: CalculateRouteDto, @CurrentUser('id') userId?: string) {
-    return this.routesService.calculateRoute(dto, userId);
+    return this.routesService.calculateRoute(dto, userId || undefined);
   }
 
   @Post('save')

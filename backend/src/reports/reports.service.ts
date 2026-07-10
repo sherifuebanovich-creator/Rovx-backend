@@ -131,8 +131,8 @@ export class ReportsService {
   ): Promise<{ valid: boolean; reason?: string }> {
     const apiKey = this.config.get('OPENAI_API_KEY');
     if (!apiKey) {
-      this.logger.warn('No AI API key, skipping photo validation');
-      return { valid: true };
+      this.logger.warn('No AI API key configured, rejecting photo (fail-closed)');
+      return { valid: false, reason: 'AI validation unavailable' };
     }
 
     const visionModel = this.config.get('AI_VISION_MODEL', '');
@@ -212,12 +212,12 @@ export class ReportsService {
           this.logger.error(`AI request failed (attempt ${attempt + 1}): ${msg}`);
         }
         if (attempt === 0) continue;
-        return { valid: true };
+        return { valid: false, reason: 'AI validation request failed' };
       }
     }
 
-    this.logger.warn('AI returned unparseable JSON after 2 attempts, accepting photo (fail-open)');
-    return { valid: true };
+    this.logger.warn('AI returned unparseable JSON after 2 attempts, rejecting photo (fail-closed)');
+    return { valid: false, reason: 'AI could not validate photo' };
   }
 
   private extractJson(raw: string): Record<string, unknown> | null {
@@ -237,8 +237,8 @@ export class ReportsService {
   async validateDescription(description: string, reportType?: string): Promise<{ valid: boolean; reason?: string }> {
     const apiKey = this.config.get('OPENAI_API_KEY');
     if (!apiKey) {
-      this.logger.warn('No AI API key, skipping description validation');
-      return { valid: true };
+      this.logger.warn('No AI API key configured, rejecting description (fail-closed)');
+      return { valid: false, reason: 'AI validation unavailable' };
     }
 
     const typeLabel = reportType ? (REPORT_TYPE_LABELS[reportType] || reportType) : 'дорожная ситуация';
@@ -293,7 +293,7 @@ export class ReportsService {
       const content = response.data.choices?.[0]?.message?.content;
       if (!content) {
         this.logger.warn('Description validation: empty response from AI');
-        return { valid: true };
+        return { valid: false, reason: 'AI returned empty response' };
       }
 
       const result = JSON.parse(content);
@@ -306,7 +306,7 @@ export class ReportsService {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Description validation error: ${msg}`);
-      return { valid: true };
+      return { valid: false, reason: 'AI validation request failed' };
     }
   }
 
@@ -547,6 +547,15 @@ export class ReportsService {
     return { deleted: true };
   }
 
+  async getReportById(id: string) {
+    return this.prisma.report.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, displayName: true, avatar: true } },
+      },
+    });
+  }
+
   async getReportsByUser(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [reports, total] = await Promise.all([
@@ -626,7 +635,8 @@ export class ReportsService {
 
       // 5. Send to users in the same city
       const cityUserIds = await this.getUsersInCity(city).catch(() => []);
-      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumUserIds.includes(uid)))];
+      const premiumSet = new Set(premiumUserIds);
+      const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumSet.has(uid)))];
       if (uniqueIds.length > 0) {
         await this.prisma.notification.createMany({
           data: uniqueIds.map(uid => ({

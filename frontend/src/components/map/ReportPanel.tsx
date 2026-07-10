@@ -111,7 +111,8 @@ export function ReportPanel() {
           toast.error(t('reportPanel.photoRejected') + (result.reason ? ': ' + result.reason : ''));
         }
       } catch {
-        newValidations.push(true);
+        newValidations.push(false);
+        toast.error(t('reportPanel.photoLoadFailed'));
       }
     }
 
