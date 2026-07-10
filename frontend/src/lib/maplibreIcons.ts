@@ -202,6 +202,138 @@ export function createUserMarkerElement(heading = 0): HTMLDivElement {
   return el;
 }
 
+export interface BlueDotElements {
+  container: HTMLDivElement;
+  pulseRing: HTMLDivElement;
+  dotOuter: HTMLDivElement;
+  dotInner: HTMLDivElement;
+  headingCone: HTMLDivElement;
+  accuracyCircle: HTMLDivElement;
+}
+
+export function createBlueDotElements(): BlueDotElements {
+  const container = document.createElement('div');
+  container.className = 'rovx-user-location';
+  container.style.cssText = 'position:relative;width:0;height:0;pointer-events:none;';
+
+  const accuracyCircle = document.createElement('div');
+  accuracyCircle.className = 'rovx-accuracy-circle';
+  accuracyCircle.style.cssText = `
+    position:absolute;
+    border-radius:50%;
+    background:rgba(14,165,233,0.08);
+    border:1.5px solid rgba(14,165,233,0.2);
+    transform:translate(-50%,-50%);
+    transition:width 0.8s ease, height 0.8s ease;
+    pointer-events:none;
+  `;
+  container.appendChild(accuracyCircle);
+
+  const pulseRing = document.createElement('div');
+  pulseRing.className = 'rovx-pulse-ring';
+  pulseRing.style.cssText = `
+    position:absolute;
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    background:rgba(14,165,233,0.12);
+    transform:translate(-50%,-50%) translate(0,-10px);
+    animation:rovx-pulse 2.5s cubic-bezier(0,0,0.2,1) infinite;
+    pointer-events:none;
+  `;
+  container.appendChild(pulseRing);
+
+  const headingCone = document.createElement('div');
+  headingCone.className = 'rovx-heading-cone';
+  headingCone.style.cssText = `
+    position:absolute;
+    width:0;
+    height:0;
+    border-left:14px solid transparent;
+    border-right:14px solid transparent;
+    border-bottom:28px solid rgba(14,165,233,0.25);
+    transform:translate(-50%,-100%) translate(0,-10px) rotate(0deg);
+    transform-origin:center bottom;
+    transition:transform 0.4s cubic-bezier(0.33,1,0.68,1);
+    filter:blur(1px);
+    pointer-events:none;
+  `;
+  container.appendChild(headingCone);
+
+  const dotOuter = document.createElement('div');
+  dotOuter.className = 'rovx-dot-outer';
+  dotOuter.style.cssText = `
+    position:absolute;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background:#0ea5e9;
+    border:3px solid white;
+    box-shadow:0 2px 10px rgba(0,0,0,0.3), 0 0 0 2px rgba(14,165,233,0.3);
+    transform:translate(-50%,-50%) translate(0,-10px);
+    transition:box-shadow 0.3s ease;
+    pointer-events:auto;
+    cursor:pointer;
+  `;
+  container.appendChild(dotOuter);
+
+  const dotInner = document.createElement('div');
+  dotInner.className = 'rovx-dot-inner';
+  dotInner.style.cssText = `
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:white;
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+  `;
+  dotOuter.appendChild(dotInner);
+
+  return { container, pulseRing, dotOuter, dotInner, headingCone, accuracyCircle };
+}
+
+export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: number, mapZoom: number) {
+  const metersPerPixel = 156543.03392 * Math.cos((el.container.ownerDocument.defaultView as any)?.__mapCenterLat ?? 0) / Math.pow(2, mapZoom);
+  const diameterPx = (accuracyMeters / metersPerPixel) * 2;
+  const clamped = Math.min(Math.max(diameterPx, 24), 400);
+
+  el.accuracyCircle.style.width = `${clamped}px`;
+  el.accuracyCircle.style.height = `${clamped}px`;
+}
+
+export function updateBlueDotHeading(el: BlueDotElements, heading: number) {
+  el.headingCone.style.transform = `translate(-50%,-100%) translate(0,-10px) rotate(${heading}deg)`;
+}
+
+export function metersToPixelsAtLat(meters: number, lat: number, zoom: number): number {
+  const latRad = (lat * Math.PI) / 180;
+  const metersPerPixel = (156543.03392 * Math.cos(latRad)) / Math.pow(2, zoom);
+  return meters / metersPerPixel;
+}
+
+export function accuracyCircleGeoJSON(lat: number, lng: number, radiusMeters: number, segments = 64): GeoJSON.Feature<GeoJSON.Polygon> {
+  const coords: [number, number][] = [];
+  const earthRadius = 6371000;
+  const dLat = radiusMeters / earthRadius;
+  const dLng = dLat / Math.cos((lat * Math.PI) / 180);
+
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    const pLat = lat + (dLat * Math.sin(angle)) * (180 / Math.PI);
+    const pLng = lng + (dLng * Math.cos(angle)) * (180 / Math.PI);
+    coords.push([pLng, pLat]);
+  }
+
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'Polygon', coordinates: [coords] },
+  };
+}
+
 export function createPopupContent(
   name: string,
   category: string,

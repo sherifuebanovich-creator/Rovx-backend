@@ -14,6 +14,7 @@ interface MapState {
   userLocation: Coordinates | null;
   userHeading: number;
   userSpeed: number;
+  userAccuracy: number;
   locationError: string | null;
 
   // Map view
@@ -65,7 +66,7 @@ interface MapState {
   darkMode: boolean;
 
   // Actions
-  setUserLocation: (loc: Coordinates, heading?: number, speed?: number) => void;
+  setUserLocation: (loc: Coordinates, heading?: number, speed?: number, accuracy?: number) => void;
   setLocationError: (err: string | null) => void;
   setMapCenter: (center: Coordinates, zoom?: number) => void;
   setZoom: (zoom: number) => void;
@@ -108,6 +109,7 @@ export const useMapStore = create<MapState>((set) => ({
   userLocation: null,
   userHeading: 0,
   userSpeed: 0,
+  userAccuracy: 0,
   locationError: null,
 
   // Map view
@@ -178,8 +180,8 @@ export const useMapStore = create<MapState>((set) => ({
   darkMode: true,
 
   // Actions
-  setUserLocation: (loc, heading = 0, speed = 0) =>
-    set({ userLocation: loc, userHeading: heading, userSpeed: speed, locationError: null }),
+  setUserLocation: (loc, heading = 0, speed = 0, accuracy = 0) =>
+    set({ userLocation: loc, userHeading: heading, userSpeed: speed, userAccuracy: accuracy, locationError: null }),
 
   setLocationError: (err) => set({ locationError: err }),
 

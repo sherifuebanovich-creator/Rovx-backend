@@ -29,7 +29,7 @@ class ErrorBoundaryInner extends Component<Props, State> {
             </div>
             <h2 className="text-xl font-bold">{this.props.t?.('errorBoundary.title') ?? 'Something went wrong'}</h2>
             <p className="text-sm text-gray-400 font-mono bg-white/5 p-3 rounded-xl text-left overflow-auto max-h-32">
-              {this.state.error?.message || this.props.t?.('errorBoundary.unknown') ?? 'Unknown error'}
+              {this.state.error?.message || (this.props.t?.('errorBoundary.unknown') ?? 'Unknown error')}
             </p>
             <button
               onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}

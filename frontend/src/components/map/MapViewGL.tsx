@@ -8,11 +8,11 @@ import { MapObject, Report } from '@/types';
 import {
   createCategoryMarker,
   createReportMarker,
-  createUserMarkerElement,
   createPopupContent,
   createTrafficSignalMarker,
 } from '@/lib/maplibreIcons';
 import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
+import UserLocationLayer from './UserLocationLayer';
 
 function escapeHtml(text: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -25,25 +25,20 @@ export default function MapViewGL() {
   const objectMarkersRef = useRef<maplibregl.Marker[]>([]);
   const reportMarkersRef = useRef<maplibregl.Marker[]>([]);
   const trafficMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const objectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const reportTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
-  const followBackTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const mapCenter = useMapStore(s => s.mapCenter);
   const zoom = useMapStore(s => s.zoom);
   const mapStyle = useMapStore(s => s.mapStyle);
-  const userLocation = useMapStore(s => s.userLocation);
-  const userHeading = useMapStore(s => s.userHeading);
   const selectedRoute = useMapStore(s => s.selectedRoute);
   const setVisibleObjects = useMapStore(s => s.setVisibleObjects);
   const setSelectedObject = useMapStore(s => s.setSelectedObject);
   const setSelectedReport = useMapStore(s => s.setSelectedReport);
   const setReports = useMapStore(s => s.setReports);
-  const followUser = useMapStore(s => s.followUser);
   const activeCategories = useMapStore(s => s.activeCategories);
   const darkMode = useMapStore(s => s.darkMode);
   const show3D = useMapStore(s => s.show3D);
@@ -52,12 +47,8 @@ export default function MapViewGL() {
   const isNavigatingRef = useRef(false);
   isNavigatingRef.current = navigation.isNavigating;
 
-  const userLocationRef = useRef(userLocation);
-  userLocationRef.current = userLocation;
-
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
-  const setFollowUser = useMapStore(s => s.setFollowUser);
 
   const cleanupMarkers = useCallback((markers: maplibregl.Marker[]) => {
     markers.forEach(m => m.remove());
@@ -86,17 +77,6 @@ export default function MapViewGL() {
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-
-    map.on('dragstart', () => {
-      if (isNavigatingRef.current) return;
-      setFollowUser(false);
-      clearTimeout(followBackTimerRef.current);
-      followBackTimerRef.current = setTimeout(() => {
-        if (mapRef.current && userLocationRef.current) {
-          setFollowUser(true);
-        }
-      }, 3000);
-    });
 
     map.on('moveend', () => {
       const center = map.getCenter();
@@ -136,12 +116,9 @@ export default function MapViewGL() {
     return () => {
       clearTimeout(objectTimerRef.current);
       clearTimeout(reportTimerRef.current);
-      clearTimeout(followBackTimerRef.current);
       cleanupMarkers(objectMarkersRef.current);
       cleanupMarkers(reportMarkersRef.current);
       cleanupMarkers(trafficMarkersRef.current);
-      userMarkerRef.current?.remove();
-      userMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -169,33 +146,7 @@ export default function MapViewGL() {
     });
   }, [mapStyle]);
 
-  // User location marker
-  useEffect(() => {
-    if (!mapRef.current || !userLocation) return;
-
-    const el = createUserMarkerElement(userHeading || 0);
-
-    if (userMarkerRef.current) {
-      userMarkerRef.current.setLngLat([userLocation.lng, userLocation.lat]);
-      const oldEl = userMarkerRef.current.getElement();
-      if (oldEl.parentNode) oldEl.parentNode.replaceChild(el, oldEl);
-    } else {
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([userLocation.lng, userLocation.lat])
-        .addTo(mapRef.current);
-      userMarkerRef.current = marker;
-    }
-
-    if (followUser) {
-      const cur = mapRef.current.getCenter();
-      const dx = cur.lng - userLocation.lng;
-      const dy = cur.lat - userLocation.lat;
-      const dist = Math.hypot(dx * 111000, dy * 111000);
-      if (dist > 50) {
-        mapRef.current.easeTo({ center: [userLocation.lng, userLocation.lat], duration: 800 });
-      }
-    }
-  }, [userLocation, userHeading, followUser]);
+  // User location marker is handled by <UserLocationLayer />
 
   // Route polyline
   useEffect(() => {
@@ -490,6 +441,7 @@ export default function MapViewGL() {
   return (
     <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>
       <div ref={containerRef} className="w-full h-full" />
+      <UserLocationLayer map={mapRef.current} />
       <style>{`
         @keyframes gl-pulse {
           0%, 100% { opacity: 0.4; transform: scale(1); }
