@@ -1,10 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
-import { TelegramService } from '../telegram/telegram.service';
+import axios from 'axios';
 
 export const PREMIUM_TIERS = [
   {
@@ -49,8 +49,6 @@ export class PremiumService {
     private xsolla: XsollaService,
     private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
-    @Inject(forwardRef(() => TelegramService))
-    private telegram: TelegramService,
   ) {}
 
   getTiers(lang = 'en') {
@@ -536,11 +534,8 @@ export class PremiumService {
 
     try {
       const adminChat = this.config.get('TELEGRAM_CHAT_ID');
-      if (adminChat && this.telegram.isConfigured) {
-        const buttons = [
-          { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
-          { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
-        ];
+      const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
+      if (adminChat && botToken) {
         const msg = `💰 <b>НОВАЯ ОПЛАТА (Ожидает)</b>\n\n` +
           `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
           `💎 Тариф: <b>${tier.label_en}</b>\n` +
@@ -549,7 +544,19 @@ export class PremiumService {
           `🆔 Payment ID: <code>${paymentId}</code>\n` +
           `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
           `⏳ <i>Ожидает подтверждения администратором</i>`;
-        await this.telegram.sendMessageToChat(+adminChat, msg, buttons);
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          chat_id: adminChat,
+          text: msg,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
+                { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
+              ],
+            ],
+          },
+        }, { timeout: 10000 });
       }
     } catch (e) {
       this.logger.warn(`Failed to send admin payment notification: ${e}`);
