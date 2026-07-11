@@ -476,9 +476,9 @@ export class PremiumService {
 
   async getPaymentDetails() {
     return {
-      cardNumber: this.config.get('PAYMENT_CARD_NUMBER') || '0000 0000 0000 0000',
-      cardHolder: this.config.get('PAYMENT_CARD_HOLDER') || 'ROVX',
-      cardBank: this.config.get('PAYMENT_CARD_BANK') || 'UzCard/HUMO',
+      cardNumber: this.config.get('PAYMENT_CARD_NUMBER') || '5614 6805 7053 0846',
+      cardHolder: this.config.get('PAYMENT_CARD_HOLDER') || 'N/S Uzcard',
+      cardBank: this.config.get('PAYMENT_CARD_BANK') || 'UzCard',
       amount: this.config.get('PAYMENT_AMOUNT') || '6.49',
       currency: this.config.get('PAYMENT_CURRENCY') || 'USD',
     };
