@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
-import axios from 'axios';
 
 export const PREMIUM_TIERS = [
   {
@@ -544,19 +543,24 @@ export class PremiumService {
           `🆔 Payment ID: <code>${paymentId}</code>\n` +
           `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
           `⏳ <i>Ожидает подтверждения администратором</i>`;
-        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          chat_id: adminChat,
-          text: msg,
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
-                { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: adminChat,
+            text: msg,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
+                  { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
+                ],
               ],
-            ],
-          },
-        }, { timeout: 10000 });
+            },
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
       }
     } catch (e) {
       this.logger.warn(`Failed to send admin payment notification: ${e}`);
