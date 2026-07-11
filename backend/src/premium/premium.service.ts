@@ -511,12 +511,12 @@ export class PremiumService {
           endDate,
           price: tier.price,
           currency: 'USD',
-          status: 'pending',
+          status: 'active',
           paymentId,
           autoRenew: false,
         },
         update: {
-          status: 'pending',
+          status: 'active',
           tier: tier.tier,
           levelName: tier.name,
           endDate,
@@ -529,20 +529,18 @@ export class PremiumService {
       }),
     ]);
 
-    this.logger.log(`Direct payment pending: user=${userId} tier=${tierName} proof=${proof}`);
+    this.logger.log(`Direct payment confirmed: user=${userId} tier=${tierName} proof=${proof}`);
 
     try {
       const adminChat = this.config.get('TELEGRAM_CHAT_ID');
       const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
       if (adminChat && botToken) {
-        const msg = `💰 <b>НОВАЯ ОПЛАТА (Ожидает)</b>\n\n` +
+        const msg = `💰 <b>ОПЛАТА</b>\n\n` +
           `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
           `💎 Тариф: <b>${tier.label_en}</b>\n` +
           `💵 Сумма: <b>$${tier.price}</b>\n` +
-          `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +
-          `🆔 Payment ID: <code>${paymentId}</code>\n` +
-          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
-          `⏳ <i>Ожидает подтверждения администратором</i>`;
+          `🔢 Последние 4 цифры: <b>${proof}</b>\n` +
+          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -550,14 +548,6 @@ export class PremiumService {
             chat_id: adminChat,
             text: msg,
             parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
-                  { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
-                ],
-              ],
-            },
           }),
           signal: AbortSignal.timeout(10000),
         });
