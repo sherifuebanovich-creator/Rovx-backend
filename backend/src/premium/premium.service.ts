@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
+import { LavaTopService } from './lava-top.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -44,6 +45,7 @@ export class PremiumService {
     private prisma: PrismaService,
     private config: ConfigService,
     private xsolla: XsollaService,
+    private lavaTop: LavaTopService,
   ) {}
 
   getTiers(lang = 'en') {
@@ -144,6 +146,55 @@ export class PremiumService {
     }
   }
 
+  async createLavaTopCheckout(userId: string, tierName: string): Promise<{ url: string; invoiceId: string }> {
+    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+    if (!tier || tier.tier === 0) {
+      throw new BadRequestException('Invalid tier');
+    }
+
+    if (!this.lavaTop.configured) {
+      throw new BadRequestException('Lava.top payment is not configured');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const offerId = this.config.get('LAVA_TOP_OFFER_ID');
+    if (!offerId) throw new BadRequestException('LAVA_TOP_OFFER_ID not configured');
+
+    const { invoiceUrl, invoiceId } = await this.lavaTop.createInvoice({
+      email: user.email,
+      offerId,
+      amount: tier.price,
+      currency: 'RUB',
+    });
+
+    await this.prisma.premiumSubscription.upsert({
+      where: { userId },
+      create: {
+        userId,
+        tier: tier.tier,
+        levelName: tier.name,
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        price: tier.price,
+        currency: 'RUB',
+        status: 'pending',
+        paymentId: invoiceId,
+        autoRenew: false,
+      },
+      update: {
+        tier: tier.tier,
+        levelName: tier.name,
+        price: tier.price,
+        paymentId: invoiceId,
+        status: 'pending',
+      },
+    });
+
+    this.logger.log(`User ${userId} initiated lava.top invoice=${invoiceId}`);
+    return { url: invoiceUrl, invoiceId };
+  }
+
   async handleWebhook(rawBody: string, authHeader: string): Promise<any> {
     const xsollaService = this.xsolla;
 
@@ -226,6 +277,80 @@ export class PremiumService {
       } else if (status === 'canceled' || status === 'failed') {
         await this.prisma.premiumSubscription.updateMany({
           where: { userId, status: 'pending' },
+          data: { status: 'cancelled' },
+        });
+      }
+    }
+
+    return { received: true };
+  }
+
+  async handleLavaTopWebhook(body: any): Promise<any> {
+    const eventType = body.eventType || body.event_type;
+    const status = body.status;
+    const invoiceId = body.invoiceId || body.invoice_id;
+
+    this.logger.log(`Lava.top webhook: event=${eventType} status=${status} invoice=${invoiceId}`);
+
+    if (eventType === 'payment.success' || status === 'success') {
+      const email = body.buyer?.email || body.email;
+      if (!email) {
+        this.logger.warn('Lava.top webhook missing buyer email');
+        return { received: true };
+      }
+
+      const user = await this.prisma.user.findFirst({ where: { email } });
+      if (!user) {
+        this.logger.warn(`Lava.top webhook: user not found for email ${email}`);
+        return { received: true };
+      }
+
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId: user.id } });
+      if (existingSub?.status === 'active') {
+        this.logger.log(`Lava.top invoice ${invoiceId} already processed — skipping`);
+        return { received: true };
+      }
+
+      const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+      const tier = this.getTierInfo(tierName);
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await this.prisma.$transaction([
+        this.prisma.premiumSubscription.upsert({
+          where: { userId: user.id },
+          create: {
+            userId: user.id,
+            tier: tier.tier,
+            levelName: tierName,
+            endDate,
+            price: body.amount || tier.price,
+            currency: 'RUB',
+            status: 'active',
+            paymentId: invoiceId,
+            autoRenew: false,
+          },
+          update: {
+            status: 'active',
+            tier: tier.tier,
+            levelName: tierName,
+            endDate,
+            paymentId: invoiceId,
+          },
+        }),
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: { subscription: tierName, subscriptionEnd: endDate },
+        }),
+      ]);
+
+      this.logger.log(`User ${user.id} subscribed to ${tierName} via lava.top`);
+    } else if (status === 'failed' || status === 'cancelled') {
+      const sub = await this.prisma.premiumSubscription.findFirst({
+        where: { paymentId: invoiceId },
+      });
+      if (sub) {
+        await this.prisma.premiumSubscription.update({
+          where: { userId: sub.userId },
           data: { status: 'cancelled' },
         });
       }

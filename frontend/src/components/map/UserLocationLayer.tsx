@@ -32,12 +32,8 @@ export default function UserLocationLayer({ map }: Props) {
 
   const userDragRef = useRef(false);
   const followTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const compassModeRef = useRef(false);
-
   const [followActive, setFollowActive] = useState(true);
-  const [compassMode, setCompassMode] = useState(false);
   const followActiveRef = useRef(true);
-  const compassModeRefState = useRef(false);
 
   const userLocation = useMapStore((s) => s.userLocation);
   const userHeading = useMapStore((s) => s.userHeading);
@@ -79,22 +75,20 @@ export default function UserLocationLayer({ map }: Props) {
     if (!map) return;
 
     const onUserDrag = () => {
-      if (!compassModeRef.current) {
-        userDragRef.current = true;
-        if (followActiveRef.current) {
-          followActiveRef.current = false;
-          setFollowActive(false);
-          setFollowUser(false);
-        }
-        clearTimeout(followTimeoutRef.current);
-        followTimeoutRef.current = setTimeout(() => {
-          if (map && useMapStore.getState().userLocation) {
-            followActiveRef.current = true;
-            setFollowActive(true);
-            setFollowUser(true);
-          }
-        }, 5000);
+      userDragRef.current = true;
+      if (followActiveRef.current) {
+        followActiveRef.current = false;
+        setFollowActive(false);
+        setFollowUser(false);
       }
+      clearTimeout(followTimeoutRef.current);
+      followTimeoutRef.current = setTimeout(() => {
+        if (map && useMapStore.getState().userLocation) {
+          followActiveRef.current = true;
+          setFollowActive(true);
+          setFollowUser(true);
+        }
+      }, 5000);
     };
 
     map.on('dragstart', onUserDrag);
@@ -128,11 +122,6 @@ export default function UserLocationLayer({ map }: Props) {
     };
   }, [map, initAccuracySource, setFollowUser]);
 
-  useEffect(() => {
-    compassModeRef.current = compassMode;
-    compassModeRefState.current = compassMode;
-  }, [compassMode]);
-
   // Auto-bear/pitch/zoom during navigation (Yandex style)
   useEffect(() => {
     if (!map) return;
@@ -146,16 +135,10 @@ export default function UserLocationLayer({ map }: Props) {
 
       map.easeTo({ pitch: 60, duration: 800 });
 
-      compassModeRef.current = true;
-      compassModeRefState.current = true;
       followActiveRef.current = true;
       setFollowActive(true);
       setFollowUser(true);
     } else if (!navigation.isNavigating && wasNavigating) {
-      compassModeRef.current = false;
-      compassModeRefState.current = false;
-      setCompassMode(false);
-
       map.easeTo({
         pitch: prevPitchRef.current,
         bearing: 0,
@@ -208,15 +191,6 @@ export default function UserLocationLayer({ map }: Props) {
 
       markerRef.current.setLngLat([lng, lat]);
       updateBlueDotHeading(blueDotRef.current, heading);
-
-      if (compassModeRefState.current && map) {
-        const currentBearing = map.getBearing();
-        const targetBearing = -heading;
-        const bearingDiff = normalizeAngle(targetBearing - currentBearing);
-        if (Math.abs(bearingDiff) > 0.5) {
-          map.rotateTo(currentBearing + bearingDiff * 0.15, { duration: 0 });
-        }
-      }
 
       if (t < 1) {
         rafIdRef.current = requestAnimationFrame(interpolate);
@@ -286,18 +260,6 @@ export default function UserLocationLayer({ map }: Props) {
     });
   }, [map, userLocation, setFollowUser]);
 
-  const handleToggleCompass = useCallback(() => {
-    setCompassMode((prev) => {
-      const next = !prev;
-      if (next && map && userLocation) {
-        map.rotateTo(-userHeading, { duration: 400 });
-      } else if (!next && map) {
-        map.rotateTo(0, { duration: 400 });
-      }
-      return next;
-    });
-  }, [map, userLocation, userHeading]);
-
   return (
     <>
       {!followActive && userLocation && !navigation.isNavigating && (
@@ -305,7 +267,7 @@ export default function UserLocationLayer({ map }: Props) {
           onClick={handleRecenter}
           className="absolute z-40 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"
           style={{
-            bottom: '140px',
+            bottom: '200px',
             right: '16px',
             width: '48px',
             height: '48px',
@@ -321,40 +283,6 @@ export default function UserLocationLayer({ map }: Props) {
             <line x1="12" y1="18" x2="12" y2="22" />
             <line x1="2" y1="12" x2="6" y2="12" />
             <line x1="18" y1="12" x2="22" y2="12" />
-          </svg>
-        </button>
-      )}
-
-      {userLocation && userSpeed > 2 && !navigation.isNavigating && (
-        <button
-          onClick={handleToggleCompass}
-          className="absolute z-40 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"
-          style={{
-            bottom: '200px',
-            right: '16px',
-            width: '40px',
-            height: '40px',
-            background: compassMode ? 'rgba(14,165,233,0.95)' : 'rgba(30,30,30,0.8)',
-            backdropFilter: 'blur(8px)',
-            border: `2px solid ${compassMode ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.15)'}`,
-            transition: 'all 0.3s ease',
-          }}
-          aria-label="Toggle compass mode"
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ transform: compassMode ? `rotate(${userHeading}deg)` : 'none', transition: 'transform 0.4s ease' }}
-          >
-            <polygon points="12,2 15,10 12,8 9,10" fill="white" stroke="none" />
-            <polygon points="12,22 9,14 12,16 15,14" fill="rgba(255,255,255,0.4)" stroke="none" />
-            <circle cx="12" cy="12" r="10" strokeOpacity="0.4" />
           </svg>
         </button>
       )}

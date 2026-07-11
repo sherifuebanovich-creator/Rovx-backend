@@ -40,6 +40,17 @@ export class PremiumController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Post('lava-checkout')
+  @ApiOperation({ summary: 'Create lava.top checkout session' })
+  createLavaCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string },
+  ) {
+    return this.premiumService.createLavaTopCheckout(userId, body.tierName);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Post('cancel')
   @ApiOperation({ summary: 'Cancel subscription' })
   cancel(@CurrentUser('id') userId: string) {
@@ -61,5 +72,13 @@ export class PremiumController {
     const authHeader = req.headers['authorization'] as string || '';
     const rawBody = (req as any).rawBody || '';
     return this.premiumService.handleWebhook(rawBody, authHeader);
+  }
+
+  @Public()
+  @Post('webhook-lava')
+  @ApiExcludeEndpoint()
+  async webhookLava(@Req() req: Request) {
+    const body = (req as any).rawBody || req.body;
+    return this.premiumService.handleLavaTopWebhook(body);
   }
 }
