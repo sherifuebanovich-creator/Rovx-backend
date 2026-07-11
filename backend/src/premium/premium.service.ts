@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
@@ -49,6 +49,7 @@ export class PremiumService {
     private xsolla: XsollaService,
     private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
+    @Inject(forwardRef(() => TelegramService))
     private telegram: TelegramService,
   ) {}
 
@@ -513,12 +514,12 @@ export class PremiumService {
           endDate,
           price: tier.price,
           currency: 'USD',
-          status: 'active',
+          status: 'pending',
           paymentId,
           autoRenew: false,
         },
         update: {
-          status: 'active',
+          status: 'pending',
           tier: tier.tier,
           levelName: tier.name,
           endDate,
@@ -531,25 +532,154 @@ export class PremiumService {
       }),
     ]);
 
-    this.logger.log(`Direct payment confirmed: user=${userId} tier=${tierName} proof=${proof}`);
+    this.logger.log(`Direct payment pending: user=${userId} tier=${tierName} proof=${proof}`);
 
     try {
       const adminChat = this.config.get('TELEGRAM_CHAT_ID');
       if (adminChat && this.telegram.isConfigured) {
-        const msg = `💰 <b>НОВАЯ ОПЛАТА (Direct Pay)</b>\n\n` +
+        const buttons = [
+          { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
+          { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
+        ];
+        const msg = `💰 <b>НОВАЯ ОПЛАТА (Ожидает)</b>\n\n` +
           `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
           `💎 Тариф: <b>${tier.label_en}</b>\n` +
           `💵 Сумма: <b>$${tier.price}</b>\n` +
           `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +
           `🆔 Payment ID: <code>${paymentId}</code>\n` +
-          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
-        await this.telegram.sendMessageToChat(+adminChat, msg);
+          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
+          `⏳ <i>Ожидает подтверждения администратором</i>`;
+        await this.telegram.sendMessageToChat(+adminChat, msg, buttons);
       }
     } catch (e) {
       this.logger.warn(`Failed to send admin payment notification: ${e}`);
     }
 
-    return { success: true, message: `Premium ${tier.label_en} activated until ${endDate.toLocaleDateString()}` };
+    return { success: true, message: `Платёж принят! Ожидает подтверждения администратором. Обычно до 30 минут.` };
+  }
+
+  async approvePayment(userId: string): Promise<{ success: boolean; message: string }> {
+    const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+    if (!sub || sub.status !== 'pending') {
+      return { success: false, message: 'Нет ожидающего платежа' };
+    }
+
+    await this.prisma.premiumSubscription.update({
+      where: { userId },
+      data: { status: 'active' },
+    });
+
+    return { success: true, message: `Подписка ${sub.levelName} активирована для пользователя` };
+  }
+
+  async rejectPayment(userId: string): Promise<{ success: boolean; message: string }> {
+    const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+    if (!sub || sub.status !== 'pending') {
+      return { success: false, message: 'Нет ожидающего платежа' };
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.premiumSubscription.delete({ where: { userId } }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { subscription: 'FREE', subscriptionEnd: null },
+      }),
+    ]);
+
+    return { success: true, message: `Платёж отклонён, подписка сброшена` };
+  }
+
+  async getPendingPayments() {
+    const subs = await this.prisma.premiumSubscription.findMany({
+      where: { status: 'pending' },
+      include: { user: { select: { displayName: true, email: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return subs;
+  }
+
+  async getAllUsers(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          displayName: true,
+          email: true,
+          username: true,
+          subscription: true,
+          subscriptionEnd: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count(),
+    ]);
+    return { users, total, page, pages: Math.ceil(total / limit) };
+  }
+
+  async findUser(query: string) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { contains: query, mode: 'insensitive' } },
+          { username: { contains: query, mode: 'insensitive' } },
+          { displayName: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        username: true,
+        subscription: true,
+        subscriptionEnd: true,
+        createdAt: true,
+        _count: { select: { reports: true } },
+      },
+    });
+    return user;
+  }
+
+  async deactivateUser(userId: string) {
+    await this.prisma.premiumSubscription.updateMany({
+      where: { userId },
+      data: { status: 'cancelled' },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { subscription: 'FREE', subscriptionEnd: null },
+    });
+    return { success: true };
+  }
+
+  async getAdminStats() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [totalUsers, activeSubs, pendingPayments, todayPayments, weekPayments, monthPayments, totalRevenue] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.premiumSubscription.count({ where: { status: 'active' } }),
+      this.prisma.premiumSubscription.count({ where: { status: 'pending' } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: today } } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: weekAgo } } }),
+      this.prisma.premiumSubscription.count({ where: { createdAt: { gte: monthAgo } } }),
+      this.prisma.premiumSubscription.aggregate({ where: { status: 'active' }, _sum: { price: true } }),
+    ]);
+
+    return {
+      totalUsers,
+      activeSubs,
+      pendingPayments,
+      todayPayments,
+      weekPayments,
+      monthPayments,
+      totalRevenue: totalRevenue._sum.price || 0,
+    };
   }
 
   async cancelSubscription(userId: string) {

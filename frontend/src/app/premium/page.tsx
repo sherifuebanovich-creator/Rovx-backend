@@ -3,9 +3,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { premiumApi } from '@/lib/api';
-import { PremiumTier, PremiumSubscription, User } from '@/types';
-import { motion } from 'framer-motion';
-import { FaCrown, FaCheck, FaArrowLeft, FaTimes } from 'react-icons/fa';
+import { PremiumTier, PremiumSubscription } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FaCrown, FaCheck, FaArrowLeft, FaTimes, FaCopy, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -41,6 +41,155 @@ export default function PremiumPageWrapper() {
   );
 }
 
+function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose: () => void; onSuccess: () => void }) {
+  const { t } = useTranslation();
+  const [proof, setProof] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [cardDetails, setCardDetails] = useState<any>(null);
+  const [step, setStep] = useState<'details' | 'confirm' | 'done'>('details');
+
+  useEffect(() => {
+    premiumApi.getPaymentDetails().then(res => {
+      setCardDetails(res.data?.data || res.data);
+    }).catch(() => {});
+  }, []);
+
+  const copyCard = () => {
+    if (cardDetails?.cardNumber) {
+      navigator.clipboard.writeText(cardDetails.cardNumber.replace(/\s/g, ''));
+      toast.success('Номер скопирован');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!proof.trim()) { toast.error('Введите подтверждение'); return; }
+    setLoading(true);
+    try {
+      const res = await premiumApi.confirmPayment(tier.name, proof.trim());
+      const data = res.data?.data || res.data;
+      if (data?.success) {
+        setStep('done');
+        setTimeout(() => { onSuccess(); onClose(); }, 2000);
+      } else {
+        toast.error(data?.message || 'Ошибка');
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Ошибка подтверждения');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md bg-[#0d1117] border border-white/10 rounded-2xl p-6 shadow-2xl"
+      >
+        {step === 'done' ? (
+          <div className="text-center py-8">
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}>
+              <FaCheckCircle size={64} className="text-green-400 mx-auto mb-4" />
+            </motion.div>
+            <h3 className="text-xl font-bold text-white mb-2">{t('premium.paymentSuccess')}</h3>
+            <p className="text-gray-400 text-sm">{tier.label} активирован!</p>
+          </div>
+        ) : step === 'details' ? (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <FaCreditCard className="text-primary-400" /> Оплата {tier.label}
+              </h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+              <p className="text-xs text-gray-400 mb-2">Переведите на карту:</p>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xl font-mono font-bold text-white tracking-wider">{cardDetails?.cardNumber || '•••• •••• •••• ••••'}</span>
+                <button onClick={copyCard} className="text-primary-400 hover:text-primary-300 p-2"><FaCopy size={16} /></button>
+              </div>
+              {cardDetails?.cardHolder && (
+                <p className="text-xs text-gray-400">Получатель: <span className="text-white">{cardDetails.cardHolder}</span></p>
+              )}
+              {cardDetails?.cardBank && (
+                <p className="text-xs text-gray-500 mt-1">{cardDetails.cardBank}</p>
+              )}
+            </div>
+
+            <div className="bg-primary-900/20 border border-primary-500/30 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Сумма:</span>
+                <span className="text-2xl font-black text-white">${tier.price}</span>
+              </div>
+            </div>
+
+            <ol className="text-xs text-gray-400 space-y-2 mb-5 pl-4 list-decimal">
+              <li>Скопируйте номер карты выше</li>
+              <li>Откройте своё банковское приложение</li>
+              <li>Переведите <span className="text-white font-bold">${tier.price}</span> на эту карту</li>
+              <li>Нажмите «Я оплатил» и введите последние 4 цифры вашей карты</li>
+            </ol>
+
+            <button
+              onClick={() => setStep('confirm')}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-primary-600 to-primary-500 text-white font-bold text-sm hover:opacity-90 transition-all"
+            >
+              Я оплатил
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Подтверждение оплаты</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+              <p className="text-sm text-gray-300 mb-1">Переведено: <span className="text-white font-bold">${tier.price}</span></p>
+              <p className="text-sm text-gray-300">Карта: <span className="text-white font-mono">{cardDetails?.cardNumber || '••••'}</span></p>
+            </div>
+
+            <label className="block text-xs text-gray-400 mb-2">Последние 4 цифры вашей карты (с которой переводили):</label>
+            <input
+              type="text"
+              maxLength={4}
+              pattern="[0-9]{4}"
+              value={proof}
+              onChange={e => setProof(e.target.value.replace(/\D/g, ''))}
+              placeholder="1234"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl font-mono tracking-[0.3em] mb-4 focus:outline-none focus:border-primary-500 transition-all"
+              autoFocus
+            />
+
+            <button
+              onClick={handleConfirm}
+              disabled={loading || proof.length < 4}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-green-600 to-green-500 text-white font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaCheck size={14} />}
+              Подтвердить оплату
+            </button>
+
+            <button onClick={() => setStep('details')} className="w-full mt-3 text-gray-500 text-xs hover:text-white transition-all">
+              ← Назад к реквизитам
+            </button>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function PremiumPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -51,25 +200,10 @@ function PremiumPage() {
   const [mySub, setMySub] = useState<PremiumSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribeLoading, setSubscribeLoading] = useState<string | null>(null);
+  const [paymentTier, setPaymentTier] = useState<PremiumTier | null>(null);
 
   useEffect(() => {
-    const success = searchParams.get('success');
-    const canceled = searchParams.get('canceled');
-    const testMode = searchParams.get('test_mode');
-    if (success === 'true') {
-      if (testMode === 'true') {
-        toast.success(t('premium.testModeActivated'));
-      } else {
-        toast.success(t('premium.paymentSuccess'));
-      }
-      fetchData();
-      router.replace('/premium');
-    } else if (canceled === 'true') {
-      toast(t('premium.paymentCanceled'), { icon: '💳' });
-      router.replace('/premium');
-    } else {
-      fetchData();
-    }
+    fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -92,21 +226,8 @@ function PremiumPage() {
     }
   };
 
-  const handleSubscribe = async (tierName: string) => {
-    setSubscribeLoading(tierName);
-    try {
-      const res = await premiumApi.createCheckout(tierName, 1);
-      const { url } = res.data?.data || res.data;
-      if (url) {
-        window.location.href = url;
-      } else {
-        toast.error(t('premium.checkoutError'));
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || t('premium.subscribeError'));
-    } finally {
-      setSubscribeLoading(null);
-    }
+  const handleSubscribe = async (tier: PremiumTier) => {
+    setPaymentTier(tier);
   };
 
   const handleCancel = async () => {
@@ -243,7 +364,7 @@ function PremiumPage() {
                   </div>
 
                   <button
-                    onClick={() => isActive ? handleCancel() : handleSubscribe(tier.name)}
+                    onClick={() => isActive ? handleCancel() : handleSubscribe(tier)}
                     disabled={subscribeLoading === tier.name}
                     className={`w-full mt-5 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2 ${
                       isActive
@@ -271,6 +392,16 @@ function PremiumPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {paymentTier && (
+          <PaymentModal
+            tier={paymentTier}
+            onClose={() => setPaymentTier(null)}
+            onSuccess={fetchData}
+          />
+        )}
+      </AnimatePresence>
 
       <style jsx global>{`
         @keyframes pulse-slow {

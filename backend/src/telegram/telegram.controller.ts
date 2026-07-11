@@ -3,6 +3,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
 import { ReportsService } from '../reports/reports.service';
+import { PremiumService } from '../premium/premium.service';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 
@@ -41,6 +42,7 @@ export class TelegramController implements OnModuleInit {
     private telegram: TelegramService,
     private admin: AdminService,
     private reports: ReportsService,
+    private premium: PremiumService,
     private config: ConfigService,
     private redis: RedisService,
   ) {}
@@ -77,7 +79,12 @@ export class TelegramController implements OnModuleInit {
       '🔎 /report <id> — детали репорта\n' +
       '🟢 /online — кто сейчас онлайн\n' +
       '💎 /premium — продажи премиума\n' +
-      '🖥 /server — нагрузка сервера\n' +
+      '🖥 /server — нагрузка сервера\n\n' +
+      '━━ <b>АДМИН</b> ━━\n' +
+      '💰 /payments — ожидающие оплаты\n' +
+      '📊 /stats — статистика\n' +
+      '👥 /users — пользователи\n' +
+      '🔍 /find <запрос> — поиск пользователя\n' +
       '🚪 /logout — выйти');
   }
 
@@ -222,6 +229,70 @@ export class TelegramController implements OnModuleInit {
           }
           return { ok: true };
         }
+
+        if (cmd === '/payments') {
+          await this.sendPendingPayments(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/stats') {
+          await this.sendAdminStats(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/users') {
+          await this.sendUsersList(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/find') {
+          const query = text.replace('/find', '').trim();
+          if (!query) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔍 <b>Введите имя, email или username</b>\nПример: <code>/find Иван</code>');
+            return { ok: true };
+          }
+          await this.sendFindUser(chatId, query);
+          return { ok: true };
+        }
+
+        if (cmd === '/approve') {
+          const userId = text.replace('/approve', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Укажи user ID');
+            return { ok: true };
+          }
+          const result = await this.premium.approvePayment(userId);
+          await this.telegram.sendMessageToChat(chatId, result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
+          if (result.success) {
+            try {
+              await this.telegram.sendMessageToChat(+userId, '🎉 <b>Ваша подписка активирована!</b>\n\nPremium функции теперь доступны.');
+            } catch {}
+          }
+          return { ok: true };
+        }
+
+        if (cmd === '/reject') {
+          const userId = text.replace('/reject', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Укажи user ID');
+            return { ok: true };
+          }
+          const result = await this.premium.rejectPayment(userId);
+          await this.telegram.sendMessageToChat(chatId, result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
+          return { ok: true };
+        }
+
+        if (cmd === '/deactivate') {
+          const userId = text.replace('/deactivate', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Укажи user ID');
+            return { ok: true };
+          }
+          await this.premium.deactivateUser(userId);
+          await this.telegram.sendMessageToChat(chatId, `✅ Подписка деактивирована для ${userId}`);
+          return { ok: true };
+        }
       }
 
       if (body.callback_query) {
@@ -250,6 +321,37 @@ export class TelegramController implements OnModuleInit {
           } catch {
             await this.telegram.answerCallbackQuery(cbId, '❌ Премиум не найден');
           }
+        }
+
+        if (data?.startsWith('pay_approve_')) {
+          const userId = data.replace('pay_approve_', '');
+          const result = await this.premium.approvePayment(userId);
+          if (result.success) {
+            await this.telegram.answerCallbackQuery(cbId, '✅ Платёж одобрен!');
+            if (chatId) {
+              await this.telegram.sendMessageToChat(chatId, `✅ Платёж одобрен!\nПользователь ${userId.slice(0, 8)}... получил премиум.`);
+            }
+            try {
+              await this.telegram.sendMessageToChat(+userId, '🎉 <b>Ваша подписка активирована!</b>\n\nPremium функции теперь доступны. Приятного использования!');
+            } catch {}
+          } else {
+            await this.telegram.answerCallbackQuery(cbId, `❌ ${result.message}`);
+          }
+          return { ok: true };
+        }
+
+        if (data?.startsWith('pay_reject_')) {
+          const userId = data.replace('pay_reject_', '');
+          const result = await this.premium.rejectPayment(userId);
+          if (result.success) {
+            await this.telegram.answerCallbackQuery(cbId, '❌ Платёж отклонён');
+            if (chatId) {
+              await this.telegram.sendMessageToChat(chatId, `❌ Платёж отклонён.\nПользователь ${userId.slice(0, 8)}... — подписка сброшена.`);
+            }
+          } else {
+            await this.telegram.answerCallbackQuery(cbId, `❌ ${result.message}`);
+          }
+          return { ok: true };
         }
 
         if (data?.startsWith('country_')) {
@@ -379,6 +481,93 @@ export class TelegramController implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to send online', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении списка онлайн');
+    }
+  }
+
+  private async sendPendingPayments(chatId: number) {
+    try {
+      const payments = await this.premium.getPendingPayments();
+      if (!payments.length) {
+        await this.telegram.sendMessageToChat(chatId, '✅ Нет ожидающих платежей');
+        return;
+      }
+      let msg = `💰 <b>ОЖИДАЮЩИЕ ОПЛАТЫ (${payments.length})</b>\n━━━━━━━━━━━━━━━\n\n`;
+      for (const p of payments) {
+        const name = p.user?.displayName || p.user?.email || '—';
+        const time = p.createdAt ? new Date(p.createdAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '';
+        msg += `👤 <b>${name}</b>\n`;
+        msg += `💎 ${p.levelName} — $${p.price}\n`;
+        msg += `🔢 Последние 4: ${p.paymentId?.slice(-4) || '?'}\n`;
+        msg += `🕐 ${time}\n`;
+        msg += `🆔 <code>${p.userId}</code>\n\n`;
+      }
+      msg += `Для одобрения: <code>/approve userId</code>\nДля отклонения: <code>/reject userId</code>`;
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to send pending payments', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении платежей');
+    }
+  }
+
+  private async sendAdminStats(chatId: number) {
+    try {
+      const stats = await this.premium.getAdminStats();
+      const msg = `📊 <b>СТАТИСТИКА ROVX</b>\n━━━━━━━━━━━━━━━\n\n` +
+        `👥 Всего пользователей: <b>${stats.totalUsers}</b>\n` +
+        `💎 Активных подписок: <b>${stats.activeSubs}</b>\n` +
+        `⏳ Ожидают оплаты: <b>${stats.pendingPayments}</b>\n\n` +
+        `📅 <b>Платежи:</b>\n` +
+        `  Сегодня: ${stats.todayPayments}\n` +
+        `  За неделю: ${stats.weekPayments}\n` +
+        `  За месяц: ${stats.monthPayments}\n\n` +
+        `💰 Общий доход: <b>$${stats.totalRevenue}</b>`;
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to send admin stats', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении статистики');
+    }
+  }
+
+  private async sendUsersList(chatId: number) {
+    try {
+      const { users, total } = await this.premium.getAllUsers(1, 10);
+      let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ (показано ${users.length} из ${total})</b>\n━━━━━━━━━━━━━━━\n\n`;
+      for (const u of users) {
+        const name = u.displayName || u.username || u.email || '—';
+        const sub = u.subscription === 'FREE' ? '🆓' : '💎';
+        const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
+        msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n\n`;
+      }
+      msg += `Для поиска: <code>/find имя</code>`;
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to send users', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении пользователей');
+    }
+  }
+
+  private async sendFindUser(chatId: number, query: string) {
+    try {
+      const user = await this.premium.findUser(query);
+      if (!user) {
+        await this.telegram.sendMessageToChat(chatId, `🔍 Пользователь «${query}» не найден`);
+        return;
+      }
+      const name = user.displayName || user.username || '—';
+      const subEnd = user.subscriptionEnd ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU') : '—';
+      const msg = `👤 <b>${name}</b>\n━━━━━━━━━━━━━━━\n` +
+        `📧 ${user.email || '—'}\n` +
+        `🏷 Username: ${user.username || '—'}\n` +
+        `💎 Подписка: ${user.subscription}\n` +
+        `📅 Действует до: ${subEnd}\n` +
+        `📝 Репортов: ${user._count?.reports || 0}\n` +
+        `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
+        `🆔 <code>${user.id}</code>\n\n` +
+        `Для деактивации: <code>/deactivate ${user.id}</code>`;
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to find user', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка поиска');
     }
   }
 }
