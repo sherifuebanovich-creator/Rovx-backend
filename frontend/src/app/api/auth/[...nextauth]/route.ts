@@ -27,12 +27,14 @@ const authOptions: NextAuthOptions = {
     error: '/auth/login',
   },
   callbacks: {
-    async signIn({ user, account }) {
-      if (account?.provider === 'google') {
+    async signIn({ account }) {
+      if (account?.provider === 'google') return true;
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      if (account && user) {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
         try {
-          let lang = 'en';
-
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
           const res = await fetch(`${apiUrl}/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -41,37 +43,28 @@ const authOptions: NextAuthOptions = {
               displayName: user.name,
               avatar: user.image,
               googleId: account.providerAccountId,
-              lang,
+              lang: 'en',
             }),
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.data?.accessToken) {
-              (user as any).accessToken = data.data.accessToken;
-              (user as any).refreshToken = data.data.refreshToken;
-            } else {
-              console.warn('[Auth] Backend returned OK but no accessToken — proceeding without backend sync');
+            const accessToken = data.data?.accessToken || data.accessToken;
+            const refreshToken = data.data?.refreshToken || data.refreshToken;
+            const rovxUser = data.data?.user || data.user;
+            if (accessToken) {
+              token.accessToken = accessToken;
+              token.refreshToken = refreshToken;
+              token.rovxUser = rovxUser;
             }
-          } else {
-            const errBody = await res.text().catch(() => '');
-            console.warn(`[Auth] Backend rejected Google sign-in [${res.status}]: ${errBody.slice(0, 200)} — proceeding without backend sync`);
           }
-        } catch (err) {
-          console.warn('[Auth] Backend unreachable — proceeding without backend sync:', (err as Error).message);
-        }
-      }
-      return true;
-    },
-    async jwt({ token, user }) {
-      if (user) {
-        token.accessToken = (user as any).accessToken ?? token.accessToken;
-        token.refreshToken = (user as any).refreshToken ?? token.refreshToken;
+        } catch {}
       }
       return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken;
       session.refreshToken = token.refreshToken;
+      session.rovxUser = token.rovxUser;
       return session;
     },
   },

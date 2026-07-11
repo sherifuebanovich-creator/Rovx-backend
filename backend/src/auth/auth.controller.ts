@@ -5,10 +5,13 @@ import {
   Headers,
   UseGuards,
   Get,
+  Req,
+  Res,
   HttpCode,
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -35,18 +38,72 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Login with email/username and password' })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(dto);
+    if ((result as any).refreshToken) {
+      res.cookie('refresh_token', (result as any).refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
+    return result;
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
-  async refresh(@Headers('x-refresh-token') refreshToken: string) {
+  async refresh(
+    @Headers('x-refresh-token') headerToken: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = headerToken || (req as any).cookies?.refresh_token;
     if (!refreshToken) {
       throw new BadRequestException('Refresh token required');
     }
-    return this.authService.refresh(refreshToken);
+
+    const tokens = await this.authService.refresh(refreshToken);
+
+    res.cookie('refresh_token', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    return tokens;
+  }
+
+  @Post('refresh-cookie')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token via httpOnly cookie' })
+  async refreshCookie(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = (req as any).cookies?.refresh_token;
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token required');
+    }
+
+    const tokens = await this.authService.refresh(refreshToken);
+
+    res.cookie('refresh_token', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    return tokens;
   }
 
   @Post('logout')

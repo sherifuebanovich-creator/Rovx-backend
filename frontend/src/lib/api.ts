@@ -52,28 +52,17 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = Cookies.get('refresh_token');
-      if (!refreshToken) {
-        isRefreshing = false;
-        Cookies.remove('access_token', { path: '/' });
-        Cookies.remove('refresh_token', { path: '/' });
-        return Promise.reject(error);
-      }
-
       try {
         const res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
-          headers: { 'x-refresh-token': refreshToken, 'Content-Type': 'application/json' },
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' },
         });
 
         const data = res.data?.data || res.data || {};
         const accessToken = data.accessToken || data.access_token;
-        const newRefresh = data.refreshToken || data.refresh_token;
         if (!accessToken) throw new Error('Invalid refresh response');
 
         Cookies.set('access_token', accessToken, { expires: 1 / 96, path: '/' }); // 15min
-        if (newRefresh) {
-          Cookies.set('refresh_token', newRefresh, { expires: 30, path: '/' });
-        }
 
         api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
@@ -83,7 +72,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         Cookies.remove('access_token', { path: '/' });
-        Cookies.remove('refresh_token', { path: '/' });
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
         }

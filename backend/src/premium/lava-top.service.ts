@@ -62,21 +62,15 @@ export class LavaTopService {
     };
   }
 
-  verifyWebhookSignature(body: any, receivedSignature: string): boolean {
+  verifyWebhookSignature(rawBody: string, receivedSignature: string): boolean {
     if (!this.webhookKey) {
       this.logger.warn('LAVA_TOP_WEBHOOK_KEY not configured — rejecting webhook');
       return false;
     }
 
-    const sortedKeys = Object.keys(body).sort();
-    const signString = sortedKeys
-      .filter(k => k !== 'signature')
-      .map(k => `${k}=${typeof body[k] === 'object' ? JSON.stringify(body[k]) : body[k]}`)
-      .join('&');
-
     const expected = crypto
       .createHmac('sha256', this.webhookKey)
-      .update(signString)
+      .update(rawBody)
       .digest('hex');
 
     const expectedBuf = Buffer.from(expected, 'hex');

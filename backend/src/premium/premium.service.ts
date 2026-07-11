@@ -64,8 +64,8 @@ export class PremiumService {
     return this.lemonSqueezy.verifyWebhookSignature(rawBody, signature);
   }
 
-  verifyLavaTopWebhook(body: any, signature: string): boolean {
-    return this.lavaTop.verifyWebhookSignature(body, signature);
+  verifyLavaTopWebhook(rawBody: string, signature: string): boolean {
+    return this.lavaTop.verifyWebhookSignature(rawBody, signature);
   }
 
   getTiers(lang = 'en') {
@@ -260,7 +260,12 @@ export class PremiumService {
           return { received: true };
         }
 
-        const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+        const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
+        const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
+        const tierName = matchedTier?.name || existingSub?.levelName || 'PREMIUM_BASIC';
+        if (matchedTier && matchedTier.price > 0) {
+          this.logger.log(`Xsolla: detected tier ${tierName} from paid amount ${paidAmount}`);
+        }
         const tier = this.getTierInfo(tierName);
 
         await this.prisma.$transaction([
@@ -602,7 +607,7 @@ export class PremiumService {
     };
   }
 
-  async confirmDirectPayment(userId: string, tierName: string, proof: string): Promise<{ success: boolean; message: string }> {
+  async confirmDirectPayment(userId: string, tierName: string, proof: string): Promise<{ success: boolean; message: string; status: string }> {
     const tier = PREMIUM_TIERS.find(t => t.name === tierName);
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
@@ -613,10 +618,9 @@ export class PremiumService {
 
     const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
     if (existingSub?.status === 'active') {
-      return { success: true, message: 'Already active' };
+      return { success: true, message: 'Already active', status: 'active' };
     }
 
-    const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const paymentId = `direct_${Date.now()}_${userId.slice(0, 8)}`;
 
     await this.prisma.premiumSubscription.upsert({
@@ -625,7 +629,7 @@ export class PremiumService {
         userId,
         tier: tier.tier,
         levelName: tier.name,
-        endDate,
+        endDate: new Date(0),
         price: tier.price,
         currency: 'USD',
         status: 'pending',
@@ -636,7 +640,7 @@ export class PremiumService {
         status: 'pending',
         tier: tier.tier,
         levelName: tier.name,
-        endDate,
+        endDate: new Date(0),
         paymentId,
       },
     });
@@ -652,7 +656,7 @@ export class PremiumService {
           `💎 Тариф: <b>${tier.label_en}</b>\n` +
           `💵 Сумма: <b>$${tier.price}</b>\n` +
           `🔢 Последние 4 цифры: <b>${proof}</b>\n` +
-          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
+          `⏳ Статус: <b>Ожидает подтверждения</b>`;
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -668,7 +672,7 @@ export class PremiumService {
       this.logger.warn(`Failed to send admin payment notification: ${e}`);
     }
 
-    return { success: true, message: `Платёж принят! Ожидает подтверждения администратором. Обычно до 30 минут.` };
+    return { success: true, message: `Платёж принят! Ожидает подтверждения администратором. Обычно до 30 минут.`, status: 'pending' };
   }
 
   async approvePayment(userId: string): Promise<{ success: boolean; message: string }> {
@@ -677,7 +681,7 @@ export class PremiumService {
       return { success: false, message: 'Нет ожидающего платежа' };
     }
 
-    const endDate = sub.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const endDate = (sub.endDate && sub.endDate.getTime() > 0) ? sub.endDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await this.prisma.$transaction([
       this.prisma.premiumSubscription.update({

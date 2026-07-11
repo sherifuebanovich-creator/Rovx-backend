@@ -69,9 +69,9 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  // verification: {
-  //   google: 'ВАШ_КОД_ПРОВЕРКИ_SEARCH_CONSOLE',
-  // },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION || '',
+  },
   alternates: {
     canonical: 'https://rovx-app-livid.vercel.app',
   },

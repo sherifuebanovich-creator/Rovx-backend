@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { FaEnvelope, FaArrowLeft } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '@/store/auth.store';
 import { authApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -24,6 +25,7 @@ function VerifyForm() {
   const [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const { setUser, setTokens } = useAuthStore();
 
   useEffect(() => {
     if (!email) router.replace('/auth/login');
@@ -57,9 +59,17 @@ function VerifyForm() {
     setIsVerifying(true);
     setError('');
     try {
-      await authApi.verifyEmail(email, fullCode);
-      toast.success(t('auth.verify.success'));
-      router.push('/auth/login');
+      const res = await authApi.verifyEmail(email, fullCode);
+      const data = res.data?.data || res.data || {};
+      if (data.accessToken) {
+        setTokens(data.accessToken, data.refreshToken || '');
+        setUser(data.user);
+        toast.success(t('auth.verify.success'));
+        router.push('/');
+      } else {
+        toast.success(t('auth.verify.success'));
+        router.push('/auth/login');
+      }
     } catch (err: any) {
       setError(err?.response?.data?.message || t('auth.verify.failed'));
     } finally {

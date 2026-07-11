@@ -23,49 +23,6 @@ export function SessionSync() {
 
       if (sessionToken && cookieToken !== sessionToken) {
         setTokens(sessionToken, refreshToken || '');
-        if (rovxUser) {
-          setUser({
-            id: rovxUser.id || '',
-            email: rovxUser.email || (session as any).user?.email || '',
-            username: rovxUser.username || '',
-            displayName: rovxUser.displayName || (session as any).user?.name || 'User',
-            avatar: rovxUser.avatar || (session as any).user?.image || '',
-            role: rovxUser.role || 'USER',
-            subscription: rovxUser.subscription || 'FREE',
-            preferredLang: rovxUser.preferredLang || 'ru',
-            preferredVehicle: rovxUser.preferredVehicle || 'CAR',
-            driverScore: rovxUser.driverScore ?? 5.0,
-            reputation: rovxUser.reputation ?? 0,
-            totalTrips: rovxUser.totalTrips ?? 0,
-            totalDistance: rovxUser.totalDistance ?? 0,
-          });
-        }
-      }
-
-      if (!sessionToken && !rovxUser && googleUser?.email && !syncedRef.current) {
-        const pendingLang = typeof window !== 'undefined' ? localStorage.getItem('pending_lang') : null;
-        api.post('/auth/google', {
-          email: googleUser.email,
-          displayName: googleUser.name || '',
-          avatar: googleUser.image || '',
-          googleId: googleUser.id || googleUser.email,
-          lang: pendingLang || 'en',
-        }).then((res) => {
-          const data = res.data?.data || res.data || {};
-          const accessToken = data.accessToken || data.access_token;
-          const newRefresh = data.refreshToken || data.refresh_token;
-          const userData = data.user || data;
-          if (accessToken) {
-            setTokens(accessToken, newRefresh || '');
-          }
-          if (userData?.id) {
-            setUser(userData);
-          }
-          syncedRef.current = true;
-        }).catch(() => {
-          syncedRef.current = true;
-        });
-        return;
       }
 
       if (rovxUser && !syncedRef.current) {
@@ -91,7 +48,6 @@ export function SessionSync() {
           workLng: rovxUser.workLng || storeUser?.workLng,
           city: rovxUser.city || storeUser?.city,
         });
-        syncedRef.current = true;
 
         if (!langAppliedRef.current) {
           langAppliedRef.current = true;

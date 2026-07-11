@@ -100,6 +100,10 @@ export class AuthService {
       throw new UnauthorizedException('Account has been banned');
     }
 
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -339,13 +343,14 @@ export class AuthService {
     return { message: 'Verification code sent' };
   }
 
-  async verifyEmail(email: string, code: string): Promise<{ message: string }> {
+  async verifyEmail(email: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
       throw new BadRequestException('User not found');
     }
     if (user.isVerified) {
-      return { message: 'Email already verified' };
+      const tokens = await this.generateTokens(user.id, user.email, user.role);
+      return { message: 'Email already verified', user: this.sanitizeUser(user), ...tokens };
     }
 
     const valid = await this.verificationService.verifyCode(email, code);
@@ -358,8 +363,11 @@ export class AuthService {
       data: { isVerified: true },
     });
 
+    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    await this.saveRefreshToken(user.id, tokens.refreshToken);
+
     this.logger.log(`Email verified for ${email}`);
-    return { message: 'Email verified successfully' };
+    return { message: 'Email verified successfully', user: this.sanitizeUser(user), ...tokens };
   }
 
   private sanitizeUser(user: any) {

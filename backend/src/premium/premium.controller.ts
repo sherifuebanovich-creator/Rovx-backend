@@ -73,15 +73,19 @@ export class PremiumController {
       return { ok: true };
     }
 
-    try {
-      const event = this.premiumService.verifyStripeWebhook(rawBody, sig);
-      if (event) {
-        await this.premiumService.handleStripeWebhook(event);
-      }
-    } catch (e) {
-      this.logger?.error('Stripe webhook error', e);
+    const event = this.premiumService.verifyStripeWebhook(rawBody, sig);
+    if (!event) {
+      this.logger?.warn('Stripe webhook signature verification failed');
+      return { received: false };
     }
-    return { ok: true };
+
+    try {
+      await this.premiumService.handleStripeWebhook(event);
+    } catch (e) {
+      this.logger?.error('Stripe webhook processing error', e);
+      throw e;
+    }
+    return { received: true };
   }
 
   @ApiBearerAuth()
@@ -162,7 +166,7 @@ export class PremiumController {
     const body = (req as any).body || req.body;
     const signature = req.headers['x-webhook-signature'] as string || req.headers['x-lava-signature'] as string || '';
 
-    if (!this.premiumService.verifyLavaTopWebhook(body, signature)) {
+    if (!this.premiumService.verifyLavaTopWebhook(rawBody, signature)) {
       this.logger.warn('Lava.top webhook signature verification failed — rejecting');
       return { received: false };
     }

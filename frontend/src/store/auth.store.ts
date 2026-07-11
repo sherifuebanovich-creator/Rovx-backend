@@ -42,17 +42,10 @@ export const useAuthStore = create<AuthState>()(
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
         });
-        Cookies.set('refresh_token', refreshToken, {
-          expires: 30,
-          path: '/',
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-        });
       },
 
       logout: () => {
         Cookies.remove('access_token', { path: '/' });
-        Cookies.remove('refresh_token', { path: '/' });
         set({ user: null, isAuthenticated: false, preferences: null, accessToken: null, refreshToken: null });
       },
 
@@ -81,23 +74,17 @@ export const useAuthStore = create<AuthState>()(
             set({ isInitDone: true, isLoading: false });
           }
         } catch {
-          const refreshToken = state.refreshToken || Cookies.get('refresh_token');
-          if (refreshToken) {
-            try {
-              const api = (await import('@/lib/api')).default;
-              const res = await api.post('/auth/refresh', null, {
-                headers: { 'x-refresh-token': refreshToken },
-              });
-              const payload = res.data?.data || res.data || {};
-              const newAccess = payload.accessToken || payload.access_token;
-              const newRefresh = payload.refreshToken || payload.refresh_token;
-              if (newAccess) {
-                get().setTokens(newAccess, newRefresh || refreshToken);
-                set({ isInitDone: true, isLoading: false });
-                return;
-              }
-            } catch {}
-          }
+          try {
+            const api = (await import('@/lib/api')).default;
+            const res = await api.post('/auth/refresh-cookie', null, { withCredentials: true });
+            const payload = res.data?.data || res.data || {};
+            const newAccess = payload.accessToken || payload.access_token;
+            if (newAccess) {
+              get().setTokens(newAccess, '');
+              set({ isInitDone: true, isLoading: false });
+              return;
+            }
+          } catch {}
           get().logout();
           set({ isInitDone: true, isLoading: false });
         }
