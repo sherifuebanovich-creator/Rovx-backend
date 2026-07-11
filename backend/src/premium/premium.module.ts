@@ -5,11 +5,12 @@ import { PremiumService } from './premium.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
+import { StripeService } from './stripe.service';
 
 @Module({
   imports: [ConfigModule],
   controllers: [PremiumController],
-  providers: [PremiumService, XsollaService, LavaTopService, LemonSqueezyService],
+  providers: [PremiumService, XsollaService, LavaTopService, LemonSqueezyService, StripeService],
   exports: [PremiumService],
 })
 export class PremiumModule {}

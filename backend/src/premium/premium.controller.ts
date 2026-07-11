@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query, Req, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { PremiumService } from './premium.service';
@@ -9,6 +9,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @ApiTags('Premium')
 @Controller('premium')
 export class PremiumController {
+  private readonly logger = new Logger(PremiumController.name);
   constructor(private premiumService: PremiumService) {}
 
   @Get('tiers')
@@ -47,6 +48,40 @@ export class PremiumController {
     @Body() body: { tierName: string },
   ) {
     return this.premiumService.createLavaTopCheckout(userId, body.tierName);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('stripe-checkout')
+  @ApiOperation({ summary: 'Create Stripe checkout session' })
+  createStripeCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string },
+  ) {
+    return this.premiumService.createStripeCheckout(userId, body.tierName);
+  }
+
+  @Public()
+  @Post('webhook-stripe')
+  @ApiExcludeEndpoint()
+  async webhookStripe(@Req() req: Request) {
+    const sig = req.headers['stripe-signature'] as string;
+    const rawBody = (req as any).rawBody || '';
+    const body = (req as any).body;
+
+    if (!this.premiumService.isStripeConfigured()) {
+      return { ok: true };
+    }
+
+    try {
+      const event = this.premiumService.verifyStripeWebhook(rawBody, sig);
+      if (event) {
+        await this.premiumService.handleStripeWebhook(event);
+      }
+    } catch (e) {
+      this.logger?.error('Stripe webhook error', e);
+    }
+    return { ok: true };
   }
 
   @ApiBearerAuth()

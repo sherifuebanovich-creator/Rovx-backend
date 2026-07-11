@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
+import { StripeService } from './stripe.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -48,7 +49,16 @@ export class PremiumService {
     private xsolla: XsollaService,
     private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
+    private stripeService: StripeService,
   ) {}
+
+  isStripeConfigured(): boolean {
+    return this.stripeService.configured;
+  }
+
+  verifyStripeWebhook(rawBody: string | Buffer, signature: string): any {
+    return this.stripeService.verifyWebhookSignature(rawBody, signature);
+  }
 
   getTiers(lang = 'en') {
     return PREMIUM_TIERS.map(t => ({
@@ -472,6 +482,102 @@ export class PremiumService {
     }
 
     return { received: true };
+  }
+
+  async createStripeCheckout(userId: string, tierName: string): Promise<{ url: string; sessionId: string }> {
+    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+    if (!tier || tier.tier === 0) {
+      throw new BadRequestException('Invalid tier');
+    }
+
+    if (!this.stripeService.configured) {
+      throw new BadRequestException('Stripe is not configured');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+    if (existingSub?.status === 'active') {
+      throw new BadRequestException('Already subscribed');
+    }
+
+    return this.stripeService.createCheckoutSession({
+      email: user.email,
+      tierName: tier.name,
+      tierLabel: tier.label_en,
+      amount: tier.price,
+      currency: 'USD',
+      userId,
+    });
+  }
+
+  async handleStripeWebhook(event: any): Promise<void> {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const userId = session.metadata?.userId;
+      const tierName = session.metadata?.tierName;
+
+      if (!userId || !tierName) {
+        this.logger.error('Stripe webhook missing metadata');
+        return;
+      }
+
+      const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+      if (!tier) return;
+
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const paymentId = `stripe_${session.id}`;
+
+      await this.prisma.$transaction([
+        this.prisma.premiumSubscription.upsert({
+          where: { userId },
+          create: {
+            userId,
+            tier: tier.tier,
+            levelName: tier.name,
+            endDate,
+            price: tier.price,
+            currency: 'USD',
+            status: 'active',
+            paymentId,
+            autoRenew: false,
+          },
+          update: {
+            status: 'active',
+            tier: tier.tier,
+            levelName: tier.name,
+            endDate,
+            paymentId,
+          },
+        }),
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { subscription: tierName, subscriptionEnd: endDate },
+        }),
+      ]);
+
+      this.logger.log(`Stripe payment confirmed: user=${userId} tier=${tierName}`);
+
+      try {
+        const adminChat = this.config.get('TELEGRAM_CHAT_ID');
+        const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
+        if (adminChat && botToken) {
+          const user = await this.prisma.user.findUnique({ where: { id: userId } });
+          const msg = `💰 <b>ОПЛАТА (Stripe)</b>\n\n` +
+            `👤 Пользователь: <b>${user?.displayName || user?.email || userId}</b>\n` +
+            `💎 Тариф: <b>${tier.label_en}</b>\n` +
+            `💵 Сумма: <b>$${tier.price}</b>\n` +
+            `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: adminChat, text: msg, parse_mode: 'HTML' }),
+            signal: AbortSignal.timeout(10000),
+          });
+        }
+      } catch {}
+    }
   }
 
   async getPaymentDetails() {

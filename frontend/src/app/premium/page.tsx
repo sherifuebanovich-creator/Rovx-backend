@@ -46,13 +46,30 @@ function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose
   const [proof, setProof] = useState('');
   const [loading, setLoading] = useState(false);
   const [cardDetails, setCardDetails] = useState<any>(null);
-  const [step, setStep] = useState<'details' | 'confirm' | 'done'>('details');
+  const [step, setStep] = useState<'choose' | 'details' | 'confirm' | 'done'>('choose');
 
   useEffect(() => {
     premiumApi.getPaymentDetails().then(res => {
       setCardDetails(res.data?.data || res.data);
     }).catch(() => {});
   }, []);
+
+  const handleStripe = async () => {
+    setLoading(true);
+    try {
+      const res = await premiumApi.stripeCheckout(tier.name);
+      const data = res.data?.data || res.data;
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error('Stripe не настроен');
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Ошибка Stripe');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const copyCard = () => {
     if (cardDetails?.cardNumber) {
@@ -103,6 +120,38 @@ function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose
             <h3 className="text-xl font-bold text-white mb-2">{t('premium.paymentSuccess')}</h3>
             <p className="text-gray-400 text-sm">{tier.label} активирован!</p>
           </div>
+        ) : step === 'choose' ? (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <FaCreditCard className="text-primary-400" /> Оплата {tier.label}
+              </h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
+            </div>
+
+            <div className="bg-primary-900/20 border border-primary-500/30 rounded-xl p-4 mb-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Сумма:</span>
+                <span className="text-2xl font-black text-white">${tier.price}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleStripe}
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 mb-3"
+            >
+              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaCreditCard size={14} />}
+              Оплатить картой (Stripe)
+            </button>
+
+            <button
+              onClick={() => setStep('details')}
+              className="w-full py-3.5 rounded-xl bg-white/10 text-white font-bold text-sm hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+            >
+              Перевод на карту
+            </button>
+          </>
         ) : step === 'details' ? (
           <>
             <div className="flex items-center justify-between mb-5">
@@ -203,6 +252,11 @@ function PremiumPage() {
   const [paymentTier, setPaymentTier] = useState<PremiumTier | null>(null);
 
   useEffect(() => {
+    const success = searchParams.get('success');
+    if (success) {
+      toast.success(t('premium.paymentSuccess') || 'Оплата прошла успешно!');
+      fetchData();
+    }
     fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
