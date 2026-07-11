@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
+import { LemonSqueezyService } from './lemon-squeezy.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -46,6 +47,7 @@ export class PremiumService {
     private config: ConfigService,
     private xsolla: XsollaService,
     private lavaTop: LavaTopService,
+    private lemonSqueezy: LemonSqueezyService,
   ) {}
 
   getTiers(lang = 'en') {
@@ -354,6 +356,119 @@ export class PremiumService {
           data: { status: 'cancelled' },
         });
       }
+    }
+
+    return { received: true };
+  }
+
+  async createLemonSqueezyCheckout(userId: string, tierName: string): Promise<{ url: string; checkoutId: string }> {
+    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+    if (!tier || tier.tier === 0) {
+      throw new BadRequestException('Invalid tier');
+    }
+
+    if (!this.lemonSqueezy.configured) {
+      throw new BadRequestException('Lemon Squeezy payment is not configured');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const amountInCents = tier.price * 100;
+
+    try {
+      const { checkoutUrl, checkoutId } = await this.lemonSqueezy.createCheckout({
+        email: user.email,
+        userId,
+        amount: amountInCents,
+        productName: `ROVX Premium - ${tier.label_en}`,
+      });
+
+      await this.prisma.premiumSubscription.upsert({
+        where: { userId },
+        create: {
+          userId,
+          tier: tier.tier,
+          levelName: tier.name,
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          price: tier.price,
+          currency: 'USD',
+          status: 'pending',
+          paymentId: checkoutId,
+          autoRenew: false,
+        },
+        update: {
+          tier: tier.tier,
+          levelName: tier.name,
+          price: tier.price,
+          paymentId: checkoutId,
+          status: 'pending',
+        },
+      });
+
+      this.logger.log(`User ${userId} initiated Lemon Squeezy checkout=${checkoutId}`);
+      return { url: checkoutUrl, checkoutId };
+    } catch (err: any) {
+      this.logger.error(`Lemon Squeezy checkout failed: ${err.message}`);
+      throw new BadRequestException('Payment initiation failed. Please try again.');
+    }
+  }
+
+  async handleLemonSqueezyWebhook(body: any): Promise<any> {
+    const eventName = body?.meta?.event_name;
+    const orderData = body?.data?.attributes;
+
+    this.logger.log(`Lemon Squeezy webhook: event=${eventName} status=${orderData?.status}`);
+
+    if (eventName === 'order_created' && orderData?.status === 'success') {
+      const customData = orderData?.checkout_data?.custom || {};
+      const userId = customData.user_id;
+      const orderId = body?.data?.id;
+
+      if (!userId) {
+        this.logger.warn('Lemon Squeezy webhook missing user_id in custom data');
+        return { received: true };
+      }
+
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active') {
+        this.logger.log(`Lemon Squeezy order ${orderId} already processed — skipping`);
+        return { received: true };
+      }
+
+      const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+      const tier = this.getTierInfo(tierName);
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await this.prisma.$transaction([
+        this.prisma.premiumSubscription.upsert({
+          where: { userId },
+          create: {
+            userId,
+            tier: tier.tier,
+            levelName: tierName,
+            endDate,
+            price: orderData?.total || tier.price,
+            currency: 'USD',
+            status: 'active',
+            paymentId: orderId,
+            autoRenew: false,
+          },
+          update: {
+            status: 'active',
+            tier: tier.tier,
+            levelName: tierName,
+            endDate,
+            paymentId: orderId,
+          },
+        }),
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { subscription: tierName, subscriptionEnd: endDate },
+        }),
+      ]);
+
+      this.logger.log(`User ${userId} subscribed to ${tierName} via Lemon Squeezy`);
     }
 
     return { received: true };

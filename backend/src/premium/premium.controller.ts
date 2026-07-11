@@ -51,6 +51,27 @@ export class PremiumController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Post('lemon-squeezy-checkout')
+  @ApiOperation({ summary: 'Create Lemon Squeezy checkout session' })
+  createLemonSqueezyCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string },
+  ) {
+    return this.premiumService.createLemonSqueezyCheckout(userId, body.tierName);
+  }
+
+  @Public()
+  @Post('webhook-lemon-squeezy')
+  @ApiExcludeEndpoint()
+  async webhookLemonSqueezy(@Req() req: Request) {
+    const rawBody = (req as any).rawBody || '';
+    const signature = req.headers['x-signature'] as string || '';
+    const body = (req as any).body || JSON.parse(rawBody || '{}');
+    return this.premiumService.handleLemonSqueezyWebhook(body);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Post('cancel')
   @ApiOperation({ summary: 'Cancel subscription' })
   cancel(@CurrentUser('id') userId: string) {

@@ -4,11 +4,12 @@ import { PremiumController } from './premium.controller';
 import { PremiumService } from './premium.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
+import { LemonSqueezyService } from './lemon-squeezy.service';
 
 @Module({
   imports: [ConfigModule],
   controllers: [PremiumController],
-  providers: [PremiumService, XsollaService, LavaTopService],
+  providers: [PremiumService, XsollaService, LavaTopService, LemonSqueezyService],
   exports: [PremiumService],
 })
 export class PremiumModule {}
