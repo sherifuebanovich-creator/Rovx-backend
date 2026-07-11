@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -48,6 +49,7 @@ export class PremiumService {
     private xsolla: XsollaService,
     private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
+    private telegram: TelegramService,
   ) {}
 
   getTiers(lang = 'en') {
@@ -472,6 +474,82 @@ export class PremiumService {
     }
 
     return { received: true };
+  }
+
+  async getPaymentDetails() {
+    return {
+      cardNumber: this.config.get('PAYMENT_CARD_NUMBER') || '0000 0000 0000 0000',
+      cardHolder: this.config.get('PAYMENT_CARD_HOLDER') || 'ROVX',
+      cardBank: this.config.get('PAYMENT_CARD_BANK') || 'UzCard/HUMO',
+      amount: this.config.get('PAYMENT_AMOUNT') || '6.49',
+      currency: this.config.get('PAYMENT_CURRENCY') || 'USD',
+    };
+  }
+
+  async confirmDirectPayment(userId: string, tierName: string, proof: string): Promise<{ success: boolean; message: string }> {
+    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+    if (!tier || tier.tier === 0) {
+      throw new BadRequestException('Invalid tier');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+    if (existingSub?.status === 'active') {
+      return { success: true, message: 'Already active' };
+    }
+
+    const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const paymentId = `direct_${Date.now()}_${userId.slice(0, 8)}`;
+
+    await this.prisma.$transaction([
+      this.prisma.premiumSubscription.upsert({
+        where: { userId },
+        create: {
+          userId,
+          tier: tier.tier,
+          levelName: tier.name,
+          endDate,
+          price: tier.price,
+          currency: 'USD',
+          status: 'active',
+          paymentId,
+          autoRenew: false,
+        },
+        update: {
+          status: 'active',
+          tier: tier.tier,
+          levelName: tier.name,
+          endDate,
+          paymentId,
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { subscription: tierName, subscriptionEnd: endDate },
+      }),
+    ]);
+
+    this.logger.log(`Direct payment confirmed: user=${userId} tier=${tierName} proof=${proof}`);
+
+    try {
+      const adminChat = this.config.get('TELEGRAM_CHAT_ID');
+      if (adminChat && this.telegram.isConfigured) {
+        const msg = `💰 <b>НОВАЯ ОПЛАТА (Direct Pay)</b>\n\n` +
+          `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
+          `💎 Тариф: <b>${tier.label_en}</b>\n` +
+          `💵 Сумма: <b>$${tier.price}</b>\n` +
+          `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +
+          `🆔 Payment ID: <code>${paymentId}</code>\n` +
+          `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
+        await this.telegram.sendMessageToChat(+adminChat, msg);
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to send admin payment notification: ${e}`);
+    }
+
+    return { success: true, message: `Premium ${tier.label_en} activated until ${endDate.toLocaleDateString()}` };
   }
 
   async cancelSubscription(userId: string) {

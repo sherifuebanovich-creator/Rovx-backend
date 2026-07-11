@@ -70,6 +70,24 @@ export class PremiumController {
     return this.premiumService.handleLemonSqueezyWebhook(body);
   }
 
+  @Public()
+  @Get('payment-details')
+  @ApiOperation({ summary: 'Get payment card details' })
+  getPaymentDetails() {
+    return this.premiumService.getPaymentDetails();
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('confirm-payment')
+  @ApiOperation({ summary: 'Confirm direct payment and activate premium' })
+  confirmPayment(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string; proof: string },
+  ) {
+    return this.premiumService.confirmDirectPayment(userId, body.tierName, body.proof);
+  }
+
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('cancel')
