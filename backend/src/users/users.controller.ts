@@ -26,6 +26,16 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  private deleteOldAvatar(avatarUrl?: string | null) {
+    if (!avatarUrl || !avatarUrl.startsWith('/uploads/avatars/')) return;
+    try {
+      const filePath = join(process.cwd(), avatarUrl);
+      if (existsSync(filePath)) {
+        unlinkSync(filePath);
+      }
+    } catch {}
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -74,6 +84,12 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
+
+    const currentProfile = await this.usersService.getProfile(userId) as any;
+    if (currentProfile?.avatar) {
+      this.deleteOldAvatar(currentProfile.avatar);
+    }
+
     const avatarUrl = `/uploads/avatars/${file.filename}`;
     return this.usersService.updateProfile(userId, { avatar: avatarUrl });
   }

@@ -97,7 +97,7 @@ export class AuthService {
     }
 
     if (user.isBanned) {
-      throw new UnauthorizedException(`Account banned: ${user.bannedReason}`);
+      throw new UnauthorizedException('Account has been banned');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
@@ -113,21 +113,7 @@ export class AuthService {
     await this.saveRefreshToken(user.id, tokens.refreshToken, dto.deviceInfo);
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        role: user.role,
-        subscription: user.subscription,
-        preferredLang: user.preferredLang,
-        driverScore: user.driverScore,
-        reputation: user.reputation,
-        totalTrips: user.totalTrips,
-        totalDistance: user.totalDistance,
-        preferredVehicle: user.preferredVehicle,
-      },
+      user: this.sanitizeUser(user),
       ...tokens,
     };
   }
@@ -163,6 +149,8 @@ export class AuthService {
       await this.saveRefreshToken(user.id, tokens.refreshToken);
       return tokens;
     } catch (e) {
+      if (e instanceof UnauthorizedException) throw e;
+      this.logger.error(`Token refresh failed: ${e instanceof Error ? e.message : String(e)}`);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
@@ -281,21 +269,42 @@ export class AuthService {
         finalUsername = `${username}${counter++}`;
       }
 
-      user = await this.prisma.user.create({
-        data: {
-          email: data.email,
-          username: finalUsername,
-          displayName: data.displayName || finalUsername,
-          avatar: data.avatar,
-          passwordHash: '',
-          preferredLang: data.lang || 'ru',
-          googleId: data.googleId,
-          isVerified: true,
-          preferences: {
-            create: {},
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: data.email,
+            username: finalUsername,
+            displayName: data.displayName || finalUsername,
+            avatar: data.avatar,
+            passwordHash: '',
+            preferredLang: data.lang || 'ru',
+            googleId: data.googleId,
+            isVerified: true,
+            preferences: {
+              create: {},
+            },
           },
-        },
-      });
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          const fallback = `${finalUsername}_${Date.now().toString(36)}`;
+          user = await this.prisma.user.create({
+            data: {
+              email: data.email,
+              username: fallback,
+              displayName: data.displayName || fallback,
+              avatar: data.avatar,
+              passwordHash: '',
+              preferredLang: data.lang || 'ru',
+              googleId: data.googleId,
+              isVerified: true,
+              preferences: { create: {} },
+            },
+          });
+        } else {
+          throw err;
+        }
+      }
     } else if (!user.googleId) {
       // Link Google to existing account
       user = await this.prisma.user.update({

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
+import { randomInt, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class VerificationService {
@@ -13,7 +14,7 @@ export class VerificationService {
       throw new Error('Too many attempts. Try again in 30 minutes.');
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 999999).toString();
     await this.redis.set(`verify:code:${email}`, code, 600);
     this.logger.log(`Verification code generated for ${email}`);
     return code;
@@ -29,7 +30,9 @@ export class VerificationService {
       return false;
     }
 
-    if (storedCode === code) {
+    const a = Buffer.from(storedCode);
+    const b = Buffer.from(code);
+    if (a.length === b.length && timingSafeEqual(a, b)) {
       await this.redis.del(`verify:code:${email}`);
       await this.redis.del(`verify:attempts:${email}`);
       return true;

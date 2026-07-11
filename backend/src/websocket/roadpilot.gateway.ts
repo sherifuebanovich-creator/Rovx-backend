@@ -39,6 +39,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private readonly connectedUsers = new Map<string, string>();
   private readonly userConnections = new Map<string, Set<string>>();
   private readonly USER_ONLINE_TTL = 1800;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private jwtService: JwtService,
@@ -51,7 +52,14 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   afterInit(server: Server) {
     this.gatewayService.setServer(server);
     this.logger.log('WebSocket Gateway initialized');
-    setInterval(() => this.cleanupStaleOnlineUsers(), 600_000);
+    this.cleanupInterval = setInterval(() => this.cleanupStaleOnlineUsers(), 600_000);
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 
   async handleConnection(client: Socket) {
@@ -138,17 +146,26 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return;
     }
 
+    const sanitized = {
+      lat: data.lat,
+      lng: data.lng,
+      speed: typeof data.speed === 'number' && isFinite(data.speed) ? Math.max(0, data.speed) : undefined,
+      heading: typeof data.heading === 'number' && isFinite(data.heading)
+        ? ((data.heading % 360) + 360) % 360
+        : undefined,
+    };
+
     try {
       await this.redis.set(
         `location:${userId}`,
-        JSON.stringify({ ...data, updatedAt: Date.now() }),
+        JSON.stringify({ ...sanitized, updatedAt: Date.now() }),
         300,
       );
     } catch (err) {
       this.logger.warn(`Redis set location failed for ${userId}: ${(err as Error).message}`);
     }
 
-    const gridCells = this.getNearbyCells(data.lat, data.lng);
+    const gridCells = this.getNearbyCells(sanitized.lat, sanitized.lng);
     const currentRooms = [...client.rooms];
 
     for (const room of currentRooms) {
@@ -171,7 +188,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         for (const group of memberGroups) {
           this.server.to(`group:${group.groupId}`).emit('convoy:location', {
             userId,
-            ...data,
+            ...sanitized,
             updatedAt: Date.now(),
           });
         }
@@ -243,6 +260,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
           severity: 5,
           description: `SOS ALERT from ${user.displayName}: ${sosAlert.message}`,
           status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
 

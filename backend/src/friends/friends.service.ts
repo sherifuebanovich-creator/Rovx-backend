@@ -182,10 +182,14 @@ export class FriendsService {
 
   private async getValidOnlineUserIds(): Promise<string[]> {
     const onlineIds = await this.redis.smembers('online:users');
+    if (onlineIds.length === 0) return [];
+
+    const keys = onlineIds.map(uid => `online:ts:${uid}`);
+    const results = await this.redis.mget(...keys);
+
     const validIds: string[] = [];
-    for (const uid of onlineIds) {
-      const ts = await this.redis.get(`online:ts:${uid}`);
-      if (ts) validIds.push(uid);
+    for (let i = 0; i < onlineIds.length; i++) {
+      if (results[i]) validIds.push(onlineIds[i]);
     }
     return validIds;
   }

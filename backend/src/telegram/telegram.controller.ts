@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Logger, OnModuleInit } from '@nestjs/common';
+import { Controller, Post, Body, Headers, Logger, OnModuleInit } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
@@ -90,7 +90,16 @@ export class TelegramController implements OnModuleInit {
 
   @Public()
   @Post('webhook')
-  async webhook(@Body() body: any) {
+  async webhook(@Body() body: any, @Headers('x-telegram-bot-api-secret-token') secretToken?: string) {
+    const expectedSecret = this.config.get('TELEGRAM_WEBHOOK_SECRET');
+    if (expectedSecret) {
+      if (!secretToken) return { ok: false };
+      const a = Buffer.from(secretToken);
+      const b = Buffer.from(expectedSecret);
+      if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
+        return { ok: false };
+      }
+    }
     try {
       if (body.message?.text) {
         const text = body.message.text.trim();
@@ -264,11 +273,6 @@ export class TelegramController implements OnModuleInit {
           }
           const result = await this.premium.approvePayment(userId);
           await this.telegram.sendMessageToChat(chatId, result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
-          if (result.success) {
-            try {
-              await this.telegram.sendMessageToChat(+userId, '🎉 <b>Ваша подписка активирована!</b>\n\nPremium функции теперь доступны.');
-            } catch {}
-          }
           return { ok: true };
         }
 
@@ -331,9 +335,6 @@ export class TelegramController implements OnModuleInit {
             if (chatId) {
               await this.telegram.sendMessageToChat(chatId, `✅ Платёж одобрен!\nПользователь ${userId.slice(0, 8)}... получил премиум.`);
             }
-            try {
-              await this.telegram.sendMessageToChat(+userId, '🎉 <b>Ваша подписка активирована!</b>\n\nPremium функции теперь доступны. Приятного использования!');
-            } catch {}
           } else {
             await this.telegram.answerCallbackQuery(cbId, `❌ ${result.message}`);
           }

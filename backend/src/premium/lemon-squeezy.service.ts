@@ -86,13 +86,19 @@ export class LemonSqueezyService {
   }
 
   verifyWebhookSignature(body: string, signature: string): boolean {
-    if (!this.webhookSecret) return true;
+    if (!this.webhookSecret) {
+      this.logger.warn('LEMON_SQUEEZY_WEBHOOK_SECRET not configured — rejecting webhook');
+      return false;
+    }
 
     const expected = crypto
       .createHmac('sha256', this.webhookSecret)
       .update(body)
       .digest('hex');
 
-    return expected === signature;
+    const expectedBuf = Buffer.from(expected, 'hex');
+    const sigBuf = Buffer.from(signature, 'hex');
+    if (expectedBuf.length !== sigBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, sigBuf);
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -95,7 +95,7 @@ export class RoutesService {
   ): Promise<RouteResult> {
     // OSRM routing engine
     const osrmBase = this.config.get('OSRM_URL', 'https://router.project-osrm.org');
-    const profile = dto.vehicleType === 'TRUCK' ? 'driving' : 'driving';
+    const profile = dto.vehicleType === 'TRUCK' ? 'truck' : 'driving';
     const excludeParts: string[] = [];
     if (dto.vehicleType === 'TRUCK') {
       excludeParts.push('motorway');
@@ -357,25 +357,30 @@ export class RoutesService {
   async endTrip(tripId: string, userId: string, stats: Partial<any>) {
     const trip = await this.prisma.trip.findFirst({ where: { id: tripId, userId } });
     if (!trip) throw new NotFoundException('Trip not found');
+    if (trip.status !== 'active') throw new BadRequestException('Trip is not active');
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        totalTrips: { increment: 1 },
-        totalDistance: { increment: stats.distance || trip.distance || 0 },
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id: tripId },
+        data: {
+          status: 'completed',
+          endedAt: new Date(),
+          duration: stats.duration,
+          fuelUsed: stats.fuelUsed,
+          avgSpeed: stats.avgSpeed,
+          maxSpeed: stats.maxSpeed,
+        },
+      });
 
-    return this.prisma.trip.update({
-      where: { id: tripId },
-      data: {
-        status: 'completed',
-        endedAt: new Date(),
-        duration: stats.duration,
-        fuelUsed: stats.fuelUsed,
-        avgSpeed: stats.avgSpeed,
-        maxSpeed: stats.maxSpeed,
-      },
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          totalTrips: { increment: 1 },
+          totalDistance: { increment: stats.distance || trip.distance || 0 },
+        },
+      });
+
+      return { id: tripId, status: 'completed' };
     });
   }
 }

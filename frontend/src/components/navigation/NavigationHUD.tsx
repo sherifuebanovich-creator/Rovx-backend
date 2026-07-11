@@ -42,6 +42,8 @@ export function NavigationHUD() {
   const userSpeedRef = useRef(userSpeed);
   const legAnnouncedRef = useRef(-1);
   const engineInitRef = useRef(false);
+  const handleArrivalRef = useRef<() => Promise<void>>(async () => {});
+  const handleRerouteRef = useRef<() => Promise<void>>(async () => {});
   userLocationRef.current = userLocation;
   userHeadingRef.current = userHeading;
   userSpeedRef.current = userSpeed;
@@ -113,6 +115,9 @@ export function NavigationHUD() {
     }
   }, [userLocation, destination, setNavigation, setSelectedRoute, speak, t]);
 
+  handleArrivalRef.current = handleArrival;
+  handleRerouteRef.current = handleReroute;
+
   // Navigation engine — runs on every position update
   useEffect(() => {
     if (!navigation.isNavigating || !selectedRoute || !userLocation) return;
@@ -144,11 +149,11 @@ export function NavigationHUD() {
 
     if (update.isArrived && !engineInitRef.current) {
       engineInitRef.current = true;
-      handleArrival();
+      handleArrivalRef.current();
     }
 
     if (update.shouldReroute) {
-      handleReroute();
+      handleRerouteRef.current();
     }
   }, [userLocation?.lat, userLocation?.lng, userHeading, navigation.isNavigating]);
 
@@ -177,12 +182,14 @@ export function NavigationHUD() {
 
   // Speed camera monitoring
   useEffect(() => {
+    if (!userLocation) return;
+
     if (!monitorRef.current) {
       monitorRef.current = createSpeedCameraMonitor();
     }
     const mon = monitorRef.current;
 
-    mapApi.getObjects({ categories: 'SPEED_CAMERA', limit: 100, minLat: -90, maxLat: 90, minLng: -180, maxLng: 180 })
+    mapApi.getObjects({ categories: 'SPEED_CAMERA', limit: 50, minLat: userLocation.lat - 0.5, maxLat: userLocation.lat + 0.5, minLng: userLocation.lng - 0.5, maxLng: userLocation.lng + 0.5 })
       .then(res => {
         const objects: any[] = res.data.data || res.data || [];
         const cameras: SpeedCamera[] = objects.map((o: any) => ({
@@ -196,7 +203,7 @@ export function NavigationHUD() {
       .catch(() => {});
 
     return () => { mon.setCameras([]); };
-  }, []);
+  }, [userLocation]);
 
   useEffect(() => {
     if (!userLocation) return;

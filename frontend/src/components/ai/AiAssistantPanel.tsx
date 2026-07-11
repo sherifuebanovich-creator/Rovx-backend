@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaBolt, FaCompass, FaGasPump, FaMapMarkerAlt, FaMicrochip, FaMicrophone, FaMicrophoneSlash, FaTimes, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +38,7 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
   ]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const suggestionsFetchedRef = useRef(false);
 
   const lang = user?.preferredLang || 'ru';
 
@@ -80,9 +81,10 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
     }
   }, [transcript, isListening]);
 
-  // Load AI suggestions when location is available
+  // Load AI suggestions when location is available (once)
   useEffect(() => {
-    if (!userLocation) return;
+    if (!userLocation || suggestionsFetchedRef.current) return;
+    suggestionsFetchedRef.current = true;
     aiApi.getSuggestions(userLocation.lat, userLocation.lng)
       .then((res) => {
         const sugs: string[] = res.data.data || res.data || [];

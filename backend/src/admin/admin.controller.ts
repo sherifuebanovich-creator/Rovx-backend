@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Body, Param, Query, UseGuards,
+  Body, Param, Query, UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
@@ -51,6 +51,10 @@ export class AdminController {
 
   @Put('users/:id/role')
   async updateRole(@Param('id') id: string, @Body('role') role: string) {
+    const validRoles = ['USER', 'MODERATOR', 'ADMIN', 'SUPERADMIN'];
+    if (!validRoles.includes(role)) {
+      throw new BadRequestException(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+    }
     return this.adminService.updateUserRole(id, role);
   }
 

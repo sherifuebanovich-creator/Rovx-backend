@@ -60,6 +60,14 @@ export class PremiumService {
     return this.stripeService.verifyWebhookSignature(rawBody, signature);
   }
 
+  verifyLemonSqueezyWebhook(rawBody: string, signature: string): boolean {
+    return this.lemonSqueezy.verifyWebhookSignature(rawBody, signature);
+  }
+
+  verifyLavaTopWebhook(body: any, signature: string): boolean {
+    return this.lavaTop.verifyWebhookSignature(body, signature);
+  }
+
   getTiers(lang = 'en') {
     return PREMIUM_TIERS.map(t => ({
       ...t,
@@ -208,9 +216,7 @@ export class PremiumService {
   }
 
   async handleWebhook(rawBody: string, authHeader: string): Promise<any> {
-    const xsollaService = this.xsolla;
-
-    if (!xsollaService.verifyWebhookSignature(rawBody, authHeader)) {
+    if (!this.xsolla.verifyWebhookSignature(rawBody, authHeader)) {
       this.logger.error('Xsolla webhook signature verification failed — rejecting event');
       throw new BadRequestException('Invalid webhook signature');
     }
@@ -361,10 +367,16 @@ export class PremiumService {
         where: { paymentId: invoiceId },
       });
       if (sub) {
-        await this.prisma.premiumSubscription.update({
-          where: { userId: sub.userId },
-          data: { status: 'cancelled' },
-        });
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.update({
+            where: { userId: sub.userId },
+            data: { status: 'cancelled' },
+          }),
+          this.prisma.user.update({
+            where: { id: sub.userId },
+            data: { subscription: 'FREE', subscriptionEnd: null },
+          }),
+        ]);
       }
     }
 
@@ -607,33 +619,27 @@ export class PremiumService {
     const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const paymentId = `direct_${Date.now()}_${userId.slice(0, 8)}`;
 
-    await this.prisma.$transaction([
-      this.prisma.premiumSubscription.upsert({
-        where: { userId },
-        create: {
-          userId,
-          tier: tier.tier,
-          levelName: tier.name,
-          endDate,
-          price: tier.price,
-          currency: 'USD',
-          status: 'active',
-          paymentId,
-          autoRenew: false,
-        },
-        update: {
-          status: 'active',
-          tier: tier.tier,
-          levelName: tier.name,
-          endDate,
-          paymentId,
-        },
-      }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { subscription: tierName, subscriptionEnd: endDate },
-      }),
-    ]);
+    await this.prisma.premiumSubscription.upsert({
+      where: { userId },
+      create: {
+        userId,
+        tier: tier.tier,
+        levelName: tier.name,
+        endDate,
+        price: tier.price,
+        currency: 'USD',
+        status: 'pending',
+        paymentId,
+        autoRenew: false,
+      },
+      update: {
+        status: 'pending',
+        tier: tier.tier,
+        levelName: tier.name,
+        endDate,
+        paymentId,
+      },
+    });
 
     this.logger.log(`Direct payment confirmed: user=${userId} tier=${tierName} proof=${proof}`);
 
@@ -671,10 +677,18 @@ export class PremiumService {
       return { success: false, message: 'Нет ожидающего платежа' };
     }
 
-    await this.prisma.premiumSubscription.update({
-      where: { userId },
-      data: { status: 'active' },
-    });
+    const endDate = sub.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.$transaction([
+      this.prisma.premiumSubscription.update({
+        where: { userId },
+        data: { status: 'active' },
+      }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { subscription: sub.levelName, subscriptionEnd: endDate },
+      }),
+    ]);
 
     return { success: true, message: `Подписка ${sub.levelName} активирована для пользователя` };
   }

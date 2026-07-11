@@ -70,8 +70,12 @@ export default function GroupChatPage() {
     const ws = getSocket();
 
     // Listen for messages
+    const MAX_MESSAGES = 200;
     const onMessage = (msg: GroupMessage) => {
-      setMessages(prev => [...prev, msg]);
+      setMessages(prev => {
+        const next = [...prev, msg];
+        return next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next;
+      });
     };
     ws?.on('group:message', onMessage);
 

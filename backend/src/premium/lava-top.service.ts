@@ -63,7 +63,10 @@ export class LavaTopService {
   }
 
   verifyWebhookSignature(body: any, receivedSignature: string): boolean {
-    if (!this.webhookKey) return true;
+    if (!this.webhookKey) {
+      this.logger.warn('LAVA_TOP_WEBHOOK_KEY not configured — rejecting webhook');
+      return false;
+    }
 
     const sortedKeys = Object.keys(body).sort();
     const signString = sortedKeys
@@ -76,6 +79,9 @@ export class LavaTopService {
       .update(signString)
       .digest('hex');
 
-    return expected === receivedSignature;
+    const expectedBuf = Buffer.from(expected, 'hex');
+    const receivedBuf = Buffer.from(receivedSignature, 'hex');
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
   }
 }

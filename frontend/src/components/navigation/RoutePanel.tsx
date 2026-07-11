@@ -5,6 +5,7 @@ import { FaBolt, FaCar, FaChevronRight, FaChevronDown, FaClock, FaCompass, FaDol
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { routesApi, usersApi } from '@/lib/api';
+import { resetRerouteCooldown } from '@/lib/navigationEngine';
 import { RouteResult, RouteType, Vehicle } from '@/types';
 import { getWeather, WeatherData } from '@/lib/weather';
 import { useTranslation } from 'react-i18next';
@@ -122,6 +123,7 @@ export function RoutePanel() {
 
       const tripId = res.data?.data?.id || res.data?.id;
       if (tripId) setActiveTrip(tripId);
+      resetRerouteCooldown();
       setNavigation({ isNavigating: true });
       toast.success(t('routePanel.navigationStarted'));
     } catch {

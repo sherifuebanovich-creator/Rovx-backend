@@ -255,7 +255,6 @@ function PremiumPage() {
     const success = searchParams.get('success');
     if (success) {
       toast.success(t('premium.paymentSuccess') || 'Оплата прошла успешно!');
-      fetchData();
     }
     fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps

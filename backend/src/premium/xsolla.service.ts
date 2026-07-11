@@ -68,9 +68,10 @@ export class XsollaService {
       );
 
       const token = res.data.token as string;
+      const domain = this.isSandbox ? 'sandbox-secure.xsolla.com' : 'secure.xsolla.com';
       return {
         token,
-        url: `https://sandbox-secure.xsolla.com/paystation3/?token=${token}`,
+        url: `https://${domain}/paystation3/?token=${token}`,
       };
     } catch (err: any) {
       const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
@@ -81,8 +82,8 @@ export class XsollaService {
 
   verifyWebhookSignature(rawBody: string, authHeader: string): boolean {
     if (!this.webhookSecret || !authHeader) {
-      this.logger.warn('Xsolla webhook verification skipped — missing secret or header');
-      return true;
+      this.logger.error('Xsolla webhook verification FAILED — missing secret or header (rejecting)');
+      return false;
     }
 
     const parts = authHeader.split(' ');

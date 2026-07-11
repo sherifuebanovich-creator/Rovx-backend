@@ -91,6 +91,8 @@ const OSM_TAG_MAP: Record<string, string[]> = {
   WEIGH_STATION: ['["amenity"="weighbridge"]', '["highway"="weigh_station"]'],
   BORDER_CROSSING: ['["border"="border_control"]'],
   CUSTOMS: ['["amenity"="customs"]'],
+  REST_AREA: ['["highway"="rest_area"]', '["amenity"="rest_area"]'],
+  TOURIST_ATTRACTION: ['["tourism"="information"]', '["tourism"="artwork"]', '["tourism"="theme_park"]'],
   POLICE: ['["amenity"="police"]'],
   TRAFFIC_LIGHT: ['["highway"="traffic_signals"]'],
 };

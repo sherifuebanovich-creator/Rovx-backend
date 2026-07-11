@@ -296,11 +296,16 @@ export class ReportsService {
         return { valid: false, reason: 'AI returned empty response' };
       }
 
-      const result = JSON.parse(content);
+      const result = this.extractJson(content);
+      if (!result || typeof result.valid !== 'boolean') {
+        this.logger.warn(`Description validation: unparseable AI response: ${content.slice(0, 300)}`);
+        return { valid: false, reason: 'AI validation returned invalid response' };
+      }
+
       this.logger.log(`Description validation: ${result.valid ? 'ACCEPTED' : 'REJECTED'}`);
 
       if (!result.valid) {
-        return { valid: false, reason: result.reason || 'Описание не соответствует заявленному типу' };
+        return { valid: false, reason: String(result.reason) || 'Описание не соответствует заявленному типу' };
       }
       return { valid: true };
     } catch (error) {
@@ -495,6 +500,11 @@ export class ReportsService {
   async voteReport(reportId: string, userId: string, isConfirm: boolean) {
     const report = await this.prisma.report.findUnique({ where: { id: reportId } });
     if (!report) throw new NotFoundException('Report not found');
+    if (report.userId === userId) throw new ForbiddenException('Cannot vote on own report');
+
+    if (report.status === ReportStatus.EXPIRED || report.status === ReportStatus.REJECTED) {
+      throw new BadRequestException('Cannot vote on expired or rejected report');
+    }
 
     await this.prisma.reportVote.upsert({
       where: { reportId_userId: { reportId, userId } },
@@ -601,25 +611,25 @@ export class ReportsService {
       description: dto.description,
     });
 
-    for (const uid of premiumUserIds) {
-      if (uid === userId) continue;
-      const premiumNotif = await this.prisma.notification.create({
-        data: {
+    const premiumIds = premiumUserIds.filter(uid => uid !== userId);
+    if (premiumIds.length > 0) {
+      const premiumNotifs = await this.prisma.notification.createMany({
+        data: premiumIds.map(uid => ({
           userId: uid,
           type: 'report_premium',
           title: `⚠️ ${typeLabel}`,
           body: dto.description || `Новый репорт: ${typeLabel}`,
           data: notificationData,
-        },
-      }).catch(() => null);
-      if (premiumNotif) {
-        await this.gateway.sendToUser(uid, 'notification:new', premiumNotif).catch(() => {});
+        })),
+      }).catch(e => { this.logger.error('Failed to batch-create premium notifications', e); return null; });
+
+      for (const uid of premiumIds) {
+        await this.gateway.sendToUser(uid, 'report:new', {
+          ...report,
+          premiumNotification: true,
+          time: timeStr,
+        }).catch(() => {});
       }
-      await this.gateway.sendToUser(uid, 'report:new', {
-        ...report,
-        premiumNotification: true,
-        time: timeStr,
-      }).catch(() => {});
     }
 
     // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MapService } from './map.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -63,17 +63,34 @@ export class MapController {
     @Query('categories') categories?: string,
     @Query('limit') limit?: number,
   ) {
+    const nMinLat = +minLat, nMaxLat = +maxLat, nMinLng = +minLng, nMaxLng = +maxLng;
+    if ([nMinLat, nMaxLat, nMinLng, nMaxLng].some(v => !isFinite(v))) {
+      throw new BadRequestException('Invalid coordinates');
+    }
+    if (nMinLat < -90 || nMaxLat > 90 || nMinLng < -180 || nMaxLng > 180) {
+      throw new BadRequestException('Coordinates out of range');
+    }
+    if (nMinLat >= nMaxLat || nMinLng >= nMaxLng) {
+      throw new BadRequestException('minLat must be less than maxLat, minLng less than maxLng');
+    }
+    const latSpan = nMaxLat - nMinLat;
+    const lngSpan = nMaxLng - nMinLng;
+    if (latSpan > 10 || lngSpan > 10) {
+      throw new BadRequestException('Bounding box too large (max 10° per axis)');
+    }
+
     const cats = categories
       ? (categories.split(',') as MapObjectCategory[])
       : undefined;
+    const cappedLimit = Math.min(limit ? +limit : 200, 500);
 
     return this.mapService.getObjectsInBounds({
-      minLat: +minLat,
-      maxLat: +maxLat,
-      minLng: +minLng,
-      maxLng: +maxLng,
+      minLat: nMinLat,
+      maxLat: nMaxLat,
+      minLng: nMinLng,
+      maxLng: nMaxLng,
       categories: cats,
-      limit: limit ? +limit : 200,
+      limit: cappedLimit,
     });
   }
 
@@ -133,7 +150,8 @@ export class MapController {
     @Query('lng') lng?: number,
     @Query('radius') radius = 50,
   ) {
-    return this.mapService.searchObjects(query, lat ? +lat : undefined, lng ? +lng : undefined, +radius);
+    if (!query || query.length > 200) throw new BadRequestException('Query must be 1-200 characters');
+    return this.mapService.searchObjects(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined, Math.min(+radius, 100));
   }
 
   @Get('suggest')
@@ -143,7 +161,8 @@ export class MapController {
     @Query('lat') lat?: number,
     @Query('lng') lng?: number,
   ) {
-    return this.mapService.getSuggestions(query, lat ? +lat : undefined, lng ? +lng : undefined);
+    if (!query || query.length > 200) throw new BadRequestException('Query must be 1-200 characters');
+    return this.mapService.getSuggestions(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined);
   }
 
   @Get('reverse-geocode')

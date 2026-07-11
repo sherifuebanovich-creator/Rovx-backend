@@ -36,6 +36,7 @@ export default function CreateGroupPage() {
       return;
     }
     setAvatarFile(file);
+    if (avatar) URL.revokeObjectURL(avatar);
     const preview = URL.createObjectURL(file);
     setAvatar(preview);
   };

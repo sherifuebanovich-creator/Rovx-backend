@@ -1,5 +1,6 @@
-import { IsNumber, IsOptional, IsEnum, IsString, IsArray, IsBoolean } from 'class-validator';
+import { IsNumber, IsOptional, IsEnum, IsString, IsArray, IsBoolean, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 const RouteType = {
   FASTEST: 'FASTEST',
   SHORTEST: 'SHORTEST',
@@ -49,6 +50,8 @@ export class CalculateRouteDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WaypointDto)
   waypoints?: WaypointDto[];
 
   @ApiPropertyOptional({ enum: RouteType })
@@ -113,6 +116,8 @@ export class SaveRouteDto {
 
   @IsOptional()
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WaypointDto)
   waypoints?: WaypointDto[];
 
   @IsOptional()

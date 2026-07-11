@@ -102,6 +102,12 @@ export class PremiumController {
     const rawBody = (req as any).rawBody || '';
     const signature = req.headers['x-signature'] as string || '';
     const body = (req as any).body || JSON.parse(rawBody || '{}');
+
+    if (!this.premiumService.verifyLemonSqueezyWebhook(rawBody, signature)) {
+      this.logger.warn('Lemon Squeezy webhook signature verification failed — rejecting');
+      return { received: false };
+    }
+
     return this.premiumService.handleLemonSqueezyWebhook(body);
   }
 
@@ -152,7 +158,15 @@ export class PremiumController {
   @Post('webhook-lava')
   @ApiExcludeEndpoint()
   async webhookLava(@Req() req: Request) {
-    const body = (req as any).rawBody || req.body;
+    const rawBody = (req as any).rawBody || '';
+    const body = (req as any).body || req.body;
+    const signature = req.headers['x-webhook-signature'] as string || req.headers['x-lava-signature'] as string || '';
+
+    if (!this.premiumService.verifyLavaTopWebhook(body, signature)) {
+      this.logger.warn('Lava.top webhook signature verification failed — rejecting');
+      return { received: false };
+    }
+
     return this.premiumService.handleLavaTopWebhook(body);
   }
 }

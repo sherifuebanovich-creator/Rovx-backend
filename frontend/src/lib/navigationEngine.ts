@@ -18,12 +18,22 @@ const LEG_ADVANCE_DISTANCE_METERS = 25;
 let lastRerouteTime = 0;
 const REROUTE_COOLDOWN_MS = 15000;
 
+export function resetRerouteCooldown() {
+  lastRerouteTime = 0;
+}
+
 export function findClosestPointOnPolyline(
   userLat: number,
   userLng: number,
   polyline: Coordinates[],
 ): { index: number; distance: number; fraction: number } {
   if (!polyline.length) return { index: 0, distance: Infinity, fraction: 0 };
+
+  const destLat = polyline[polyline.length - 1].lat;
+  const destLng = polyline[polyline.length - 1].lng;
+  if (userLat === destLat && userLng === destLng) {
+    return { index: polyline.length - 1, distance: 0, fraction: 1 };
+  }
 
   let minDist = Infinity;
   let bestIdx = 0;

@@ -1,5 +1,6 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Controller, Get, Logger, Res, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Response } from 'express';
 import { PrismaService } from './prisma/prisma.service';
 import { RedisService } from './redis/redis.service';
 
@@ -15,7 +16,7 @@ export class HealthController {
 
   @Get()
   @ApiOperation({ summary: 'Check API and services health' })
-  async health() {
+  async health(@Res() res: Response) {
     let dbStatus = 'ok';
     let redisStatus = 'ok';
 
@@ -35,6 +36,7 @@ export class HealthController {
 
     const isHealthy = dbStatus === 'ok' && redisStatus === 'ok';
     const status = isHealthy ? 'ok' : 'degraded';
+    const httpStatus = isHealthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
 
     const healthResponse = {
       status,
@@ -44,6 +46,6 @@ export class HealthController {
       services: { database: dbStatus, redis: redisStatus },
     };
 
-    return healthResponse;
+    return res.status(httpStatus).json(healthResponse);
   }
 }

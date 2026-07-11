@@ -13,6 +13,7 @@ import {
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { mapApi, routesApi, usersApi } from '@/lib/api';
+import { resetRerouteCooldown } from '@/lib/navigationEngine';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 import { useTranslation } from 'react-i18next';
 import { MapObject, RouteResult, RouteType, SearchSuggestion, Vehicle } from '@/types';
@@ -309,6 +310,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     setDestination({ lat: selectedItem.lat, lng: selectedItem.lng, name: selectedItem.name });
     setCalculatedRoutes(localRoutes);
     setSelectedRoute(selectedLocalRoute);
+    resetRerouteCooldown();
     setNavigation({ isNavigating: true });
 
     const mins = Math.round(selectedLocalRoute.duration / 60);
@@ -400,6 +402,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
               duration: route.duration,
             });
             useMapStore.getState().setActiveTrip(trip.data.data.id);
+            resetRerouteCooldown();
             setNavigation({ isNavigating: true });
 
             const mins = Math.round(route.duration / 60);
@@ -433,6 +436,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
               duration: route.duration,
             });
             useMapStore.getState().setActiveTrip(trip.data.data.id);
+            resetRerouteCooldown();
             setNavigation({ isNavigating: true });
 
             const mins = Math.round(route.duration / 60);
@@ -473,6 +477,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       if (!route) { toast.error(t('searchPanel.routesNotFound')); setIsGoing(false); return; }
       setCalculatedRoutes([route]);
       setSelectedRoute(route);
+      resetRerouteCooldown();
       setNavigation({ isNavigating: true });
       const trip = await routesApi.startTrip({
         originName: t('searchPanel.myLocation'),
@@ -654,7 +659,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
                 const selected = selectedTypes.includes(opt.key);
                 return (
                   <button key={opt.key} onClick={() => setSelectedTypes(prev =>
-                    prev.includes(opt.key) ? prev.filter(t => t !== opt.key) : [...prev, opt.key]
+                    prev.includes(opt.key) ? prev.filter(rt => rt !== opt.key) : [...prev, opt.key]
                   )}
                     className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
                       selected
@@ -703,7 +708,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
                 <div className="flex items-center gap-2 text-xs text-gray-400 bg-white/5 rounded-xl px-3 py-2">
                   <span>{weatherData.icon}</span>
                   <span>{Math.round(weatherData.temp)}°C, {weatherData.condition}</span>
-                  <span className="text-gray-500">{' · '}{Math.round(weatherData.windSpeed)} м/с</span>
+                  <span className="text-gray-500">{' · '}{Math.round(weatherData.windSpeed)} {t('searchPanel.ms', 'м/с')}</span>
                 </div>
               )}
 

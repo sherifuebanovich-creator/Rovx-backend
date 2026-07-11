@@ -74,13 +74,17 @@ export class RedisService implements OnModuleDestroy {
       } else {
         await this.client.set(key, value);
       }
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis SET ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async del(key: string): Promise<void> {
     try {
       await this.client.del(key);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis DEL ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async exists(key: string): Promise<boolean> {
@@ -95,13 +99,17 @@ export class RedisService implements OnModuleDestroy {
   async expire(key: string, seconds: number): Promise<void> {
     try {
       await this.client.expire(key, seconds);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis EXPIRE ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async hset(key: string, field: string, value: string): Promise<void> {
     try {
       await this.client.hset(key, field, value);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis HSET ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async hget(key: string, field: string): Promise<string | null> {
@@ -115,7 +123,9 @@ export class RedisService implements OnModuleDestroy {
   async hdel(key: string, field: string): Promise<void> {
     try {
       await this.client.hdel(key, field);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis HDEL ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async hgetall(key: string): Promise<Record<string, string>> {
@@ -129,13 +139,17 @@ export class RedisService implements OnModuleDestroy {
   async sadd(key: string, ...members: string[]): Promise<void> {
     try {
       await this.client.sadd(key, ...members);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis SADD ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async srem(key: string, member: string): Promise<void> {
     try {
       await this.client.srem(key, member);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis SREM ${key} failed: ${(e as Error).message}`);
+    }
   }
 
   async smembers(key: string): Promise<string[]> {
@@ -146,10 +160,21 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  async mget(...keys: string[]): Promise<(string | null)[]> {
+    try {
+      if (keys.length === 0) return [];
+      return await this.client.mget(...keys);
+    } catch (e) {
+      return keys.map(() => null);
+    }
+  }
+
   async publish(channel: string, message: string): Promise<void> {
     try {
       await this.client.publish(channel, message);
-    } catch (e) {}
+    } catch (e) {
+      this.logger.debug(`Redis PUBLISH ${channel} failed: ${(e as Error).message}`);
+    }
   }
 
   async incr(key: string): Promise<number> {

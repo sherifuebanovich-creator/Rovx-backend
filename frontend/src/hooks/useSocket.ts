@@ -18,6 +18,7 @@ export function useSocket() {
     if (socketInstance?.connected) return socketInstance;
 
     if (socketInstance) {
+      socketInstance.removeAllListeners();
       socketInstance.disconnect();
       socketInstance = null;
     }
@@ -31,18 +32,16 @@ export function useSocket() {
       reconnectionDelayMax: 5000,
     });
 
-    socketRef.current = socketInstance;
-
     socketInstance.on('connect', () => {
-      // connected
-    });
-
-    socketInstance.on('disconnect', (reason) => {
-      // disconnected
-    });
-
-    socketInstance.on('connect_error', (err) => {
-      // connection error
+      const latestToken = Cookies.get('access_token');
+      if (latestToken && latestToken !== token) {
+        socketInstance?.removeAllListeners();
+        socketInstance?.disconnect();
+        socketInstance = null;
+        socketRef.current = null;
+        connect();
+        return;
+      }
     });
 
     socketInstance.on('message:received', (message: any) => {
@@ -87,6 +86,7 @@ export function useSocket() {
       }
     });
 
+    socketRef.current = socketInstance;
     return socketInstance;
   }, []);
 

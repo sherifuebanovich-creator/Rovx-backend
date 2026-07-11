@@ -79,6 +79,7 @@ export default function ProfilePage() {
       return;
     }
     setAvatarFile(file);
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
     const preview = URL.createObjectURL(file);
     setAvatarPreview(preview);
   };

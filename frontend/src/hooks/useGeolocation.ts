@@ -156,7 +156,7 @@ export function useGeolocation() {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     const onDeviceOrientation = (e: DeviceOrientationEvent) => {
-      const heading = (e as any).webkitCompassHeading ?? e.alpha != null ? (360 - e.alpha) : null;
+      const heading = (e as any).webkitCompassHeading ?? (e.alpha != null ? (360 - e.alpha) : null);
       if (heading != null && !isNaN(heading)) {
         deviceHeadingRef.current = heading;
       }
@@ -174,8 +174,11 @@ export function useGeolocation() {
       window.addEventListener('deviceorientation', onDeviceOrientation, true);
     }
 
+    let permissionResult: PermissionStatus | null = null;
+
     if (navigator.permissions) {
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        permissionResult = result;
         setPermissionState(result.state as any);
         result.addEventListener('change', () => {
           setPermissionState(result.state as any);
@@ -187,6 +190,9 @@ export function useGeolocation() {
       stopWatching();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('deviceorientation', onDeviceOrientation, true);
+      if (permissionResult) {
+        permissionResult.removeEventListener('change', () => {});
+      }
     };
   }, [startWatching, stopWatching]);
 

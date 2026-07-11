@@ -93,7 +93,7 @@ export class SocialService {
         OR: [{ senderId: userId }, { receiverId: userId }],
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: Math.max(limit * 5, 100),
       include: {
         sender: { select: { id: true, displayName: true, avatar: true } },
         receiver: { select: { id: true, displayName: true, avatar: true } },
@@ -252,7 +252,7 @@ export class SocialService {
 
   async joinGroupByName(userId: string, groupName: string) {
     const group = await this.prisma.group.findFirst({
-      where: { name: { equals: groupName } },
+      where: { name: { equals: groupName, mode: 'insensitive' } },
     });
     if (!group) throw new NotFoundException('Группа с таким именем не найдена');
     if (!group.isPublic) throw new ForbiddenException('Группа закрытая');
@@ -273,13 +273,10 @@ export class SocialService {
       }
     }
 
-    await this.prisma.groupMember.create({
-      data: { groupId: group.id, userId },
-    });
-    await this.prisma.group.update({
-      where: { id: group.id },
-      data: { memberCount: { increment: 1 } },
-    });
+    await this.prisma.$transaction([
+      this.prisma.groupMember.create({ data: { groupId: group.id, userId } }),
+      this.prisma.group.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } }),
+    ]);
 
     await this.gateway.broadcastToGroup(group.id, 'group:member_joined', { userId });
     return { joined: true, group };
@@ -288,6 +285,8 @@ export class SocialService {
   async joinGroup(userId: string, groupId: string) {
     const group = await this.prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new NotFoundException('Group not found');
+
+    if (!group.isPublic) throw new ForbiddenException('Группа закрытая');
 
     const existing = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
@@ -304,11 +303,10 @@ export class SocialService {
       }
     }
 
-    await this.prisma.groupMember.create({ data: { groupId, userId } });
-    await this.prisma.group.update({
-      where: { id: groupId },
-      data: { memberCount: { increment: 1 } },
-    });
+    await this.prisma.$transaction([
+      this.prisma.groupMember.create({ data: { groupId, userId } }),
+      this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { increment: 1 } } }),
+    ]);
 
     await this.gateway.broadcastToGroup(groupId, 'group:member_joined', { userId });
     return { joined: true };
@@ -442,12 +440,12 @@ export class SocialService {
 
   async sendCityMessage(userId: string, city: string, content: string) {
     if (!city || !content?.trim()) throw new BadRequestException('City and content required');
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true, avatar: true },
-    });
+    const trimmed = content.trim();
+    if (trimmed.length > 2000) throw new BadRequestException('Message too long (max 2000 characters)');
+    if (trimmed.length < 1) throw new BadRequestException('Message cannot be empty');
+
     const message = await this.prisma.cityChatMessage.create({
-      data: { city: city.toLowerCase(), userId, content: content.trim() },
+      data: { city: city.toLowerCase(), userId, content: trimmed },
       include: {
         user: { select: { id: true, displayName: true, avatar: true } },
       },

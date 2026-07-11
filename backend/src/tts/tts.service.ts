@@ -64,19 +64,26 @@ export class TtsService {
     try {
       const textSafe = text.replace(/["\n\r\t]/g, ' ').substring(0, 5000);
       const child = spawn('edge-tts', ['--voice', voice, '--text', textSafe, '--write-media', tmpFile], {
-        timeout: 30000,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+
+      const killTimeout = setTimeout(() => {
+        child.kill('SIGTERM');
+      }, 30000);
 
       let stderr = '';
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       await new Promise<void>((resolve, reject) => {
         child.on('close', (code) => {
+          clearTimeout(killTimeout);
           if (code === 0) resolve();
           else reject(new Error(`edge-tts exited with code ${code}: ${stderr || 'unknown error'}`));
         });
-        child.on('error', reject);
+        child.on('error', (err) => {
+          clearTimeout(killTimeout);
+          reject(err);
+        });
       });
 
       if (stderr) {
