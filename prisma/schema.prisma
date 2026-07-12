@@ -74,19 +74,19 @@ model User {
 }
 
 model PremiumSubscription {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  tier        Int      @default(1)
-  levelName   String   @default("PREMIUM_BASIC")
-  startDate   DateTime @default(now())
-  endDate     DateTime
-  autoRenew   Boolean  @default(false)
-  price       Float    @default(0)
-  currency    String   @default("USD")
-  paymentId   String?
-  provider    String   @default("xsolla")
-  status      String   @default("pending")
-  createdAt   DateTime @default(now())
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  tier          Int      @default(1)
+  levelName     String   @default("PREMIUM_BASIC")
+  startDate     DateTime @default(now())
+  endDate       DateTime
+  autoRenew     Boolean  @default(true)
+  price         Float    @default(0)
+  currency      String   @default("USD")
+  paymentId     String?
+  provider      String   @default("xsolla")
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("premium_subscriptions")
 }
@@ -131,6 +131,7 @@ model FuelLog {
   notes        String?
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@index([userId])
   @@index([lat, lng])
   @@map("fuel_logs")
 }
@@ -190,6 +191,7 @@ model Session {
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
   @@map("sessions")
 }
 
@@ -284,6 +286,7 @@ model Trip {
   createdAt       DateTime  @default(now())
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  @@index([userId])
   @@index([originLat, originLng])
   @@index([destLat, destLng])
   @@map("trips")
@@ -357,6 +360,7 @@ model Report {
   lat         Float
   lng         Float
   address     String?
+  city        String?
   description String?
   images      String?
   videos      String?
@@ -369,8 +373,10 @@ model Report {
   updatedAt   DateTime     @updatedAt
   user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   votes ReportVote[]
+  @@index([userId])
   @@index([lat, lng])
   @@index([type, status])
+  @@index([city])
   @@map("reports")
 }
 
@@ -422,6 +428,8 @@ model Follow {
   follower  User @relation("Followers", fields: [followerId], references: [id], onDelete: Cascade)
   following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
   @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
   @@map("follows")
 }
 
@@ -464,6 +472,9 @@ model Message {
   createdAt   DateTime @default(now())
   sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([senderId, receiverId])
   @@map("messages")
 }
 
@@ -511,10 +522,10 @@ model Notification {
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([userId, isRead])
   @@map("notifications")
 }
-
-
 
 model Advertisement {
   id          String   @id @default(uuid())
