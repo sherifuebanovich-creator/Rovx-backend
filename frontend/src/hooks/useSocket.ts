@@ -10,7 +10,8 @@ let socketInstance: Socket | null = null;
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
-  const userLocation = useMapStore(s => s.userLocation);
+  const userLocationLat = useMapStore(s => s.userLocation?.lat);
+  const userLocationLng = useMapStore(s => s.userLocation?.lng);
 
   const connect = useCallback(() => {
     const token = Cookies.get('access_token');
@@ -153,13 +154,13 @@ export function useSocket() {
   // Update location to server (throttled)
   const lastSocketUpdateRef = useRef(0);
   useEffect(() => {
-    if (!userLocation || !socketInstance?.connected) return;
+    if (userLocationLat == null || userLocationLng == null || !socketInstance?.connected) return;
     const now = Date.now();
     if (now - lastSocketUpdateRef.current < 5000) return;
     lastSocketUpdateRef.current = now;
-    updateLocation(userLocation.lat, userLocation.lng);
-    subscribeToArea(userLocation.lat, userLocation.lng);
-  }, [userLocation, updateLocation, subscribeToArea]);
+    updateLocation(userLocationLat, userLocationLng);
+    subscribeToArea(userLocationLat, userLocationLng);
+  }, [userLocationLat, userLocationLng, updateLocation, subscribeToArea]);
 
   return { connect, disconnect, socket: socketRef, updateLocation, sendMessage, joinGroup, joinCity, sendCityMessage };
 }

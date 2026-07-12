@@ -175,14 +175,15 @@ export function useGeolocation() {
     }
 
     let permissionResult: PermissionStatus | null = null;
+    const onPermChange = () => {
+      if (permissionResult) setPermissionState(permissionResult.state as any);
+    };
 
     if (navigator.permissions) {
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         permissionResult = result;
         setPermissionState(result.state as any);
-        result.addEventListener('change', () => {
-          setPermissionState(result.state as any);
-        });
+        result.addEventListener('change', onPermChange);
       }).catch(() => {});
     }
 
@@ -191,7 +192,7 @@ export function useGeolocation() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('deviceorientation', onDeviceOrientation, true);
       if (permissionResult) {
-        permissionResult.removeEventListener('change', () => {});
+        permissionResult.removeEventListener('change', onPermChange);
       }
     };
   }, [startWatching, stopWatching]);

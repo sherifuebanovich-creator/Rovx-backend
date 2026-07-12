@@ -69,11 +69,13 @@ export function ReportPanel() {
     }).catch(() => {});
   }, []);
 
+  const photoValidationIdRef = useRef(0);
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const newFileCount = Math.min(files.length, 3 - photoFiles.length);
+    const currentCount = photos.length;
+    const newFileCount = Math.min(files.length, 3 - currentCount);
     if (newFileCount <= 0) return;
     const filesToAdd = files.slice(0, newFileCount);
 
@@ -90,15 +92,16 @@ export function ReportPanel() {
       }
     }
 
-    const allPhotos = [...photos, ...addedPhotos];
-    const allFiles = [...photoFiles, ...addedFiles];
-    setPhotos(allPhotos);
-    setPhotoFiles(allFiles);
+    if (addedPhotos.length === 0) return;
 
-    const prevValidated = [...photoValidated];
-    setPhotoValidated([...prevValidated, ...addedPhotos.map(() => false)]);
+    const myValidationId = ++photoValidationIdRef.current;
+    const startIndex = currentCount;
 
+    setPhotos(prev => [...prev, ...addedPhotos]);
+    setPhotoFiles(prev => [...prev, ...addedFiles]);
+    setPhotoValidated(prev => [...prev, ...addedPhotos.map(() => false)]);
     setPhotoChecking(true);
+
     const newValidations: boolean[] = [];
     for (let i = 0; i < addedPhotos.length; i++) {
       try {
@@ -116,7 +119,15 @@ export function ReportPanel() {
       }
     }
 
-    setPhotoValidated([...prevValidated, ...newValidations]);
+    if (myValidationId !== photoValidationIdRef.current) return;
+
+    setPhotoValidated(prev => {
+      const copy = [...prev];
+      for (let i = 0; i < newValidations.length; i++) {
+        copy[startIndex + i] = newValidations[i];
+      }
+      return copy;
+    });
     setPhotoChecking(false);
 
     if (newValidations.every(v => v) && newValidations.length > 0) {

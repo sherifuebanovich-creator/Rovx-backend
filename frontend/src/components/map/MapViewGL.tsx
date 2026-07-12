@@ -32,6 +32,8 @@ export default function MapViewGL() {
   const show3DRef = useRef(true);
 
   const mapStyle = useMapStore(s => s.mapStyle);
+  const mapStyleRef = useRef(mapStyle);
+  mapStyleRef.current = mapStyle;
   const selectedRoute = useMapStore(s => s.selectedRoute);
   const setVisibleObjects = useMapStore(s => s.setVisibleObjects);
   const setSelectedObject = useMapStore(s => s.setSelectedObject);
@@ -95,7 +97,7 @@ export default function MapViewGL() {
     });
 
     map.on('idle', () => {
-      if (!has3DBuildingsRef.current && mapStyle !== 'satellite' && show3DRef.current) {
+      if (!has3DBuildingsRef.current && mapStyleRef.current !== 'satellite' && show3DRef.current) {
         try {
           add3DBuildings(map);
           has3DBuildingsRef.current = true;
@@ -105,7 +107,7 @@ export default function MapViewGL() {
 
     map.on('style.load', () => {
       has3DBuildingsRef.current = false;
-      if (mapStyle !== 'satellite' && show3DRef.current) {
+      if (mapStyleRef.current !== 'satellite' && show3DRef.current) {
         add3DBuildings(map);
         has3DBuildingsRef.current = true;
       }
@@ -298,7 +300,7 @@ export default function MapViewGL() {
             limit: 200,
           });
 
-          const objects: MapObject[] = res.data.data || res.data || [];
+          const objects: MapObject[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
           setVisibleObjects(objects);
           renderObjectMarkers(objects);
         } catch (err) {
@@ -332,7 +334,7 @@ export default function MapViewGL() {
             minLng: bounds.getWest(),
             maxLng: bounds.getEast(),
           });
-          const reports: Report[] = res.data.data || res.data || [];
+          const reports: Report[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
           setReports(reports);
 
           cleanupMarkers(reportMarkersRef.current);
@@ -402,7 +404,7 @@ export default function MapViewGL() {
         categories: 'TRAFFIC_LIGHT',
         limit: 100,
       }).then((res) => {
-        const signals: MapObject[] = res.data.data || res.data || [];
+        const signals: MapObject[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
         cleanupMarkers(trafficMarkersRef.current);
 
         signals.forEach((s) => {

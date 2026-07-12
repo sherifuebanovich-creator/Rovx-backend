@@ -77,21 +77,24 @@ export const useAuthStore = create<AuthState>()(
           } else {
             set({ isInitDone: true, isLoading: false });
           }
-        } catch {
-          try {
-            const api = (await import('@/lib/api')).default;
-            const res = await api.post('/auth/refresh-cookie', null, { withCredentials: true });
-            const raw = res.data;
-            const payload = raw?.data ?? raw;
-            const inner = payload?.data ?? payload;
-            const newAccess = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
-            if (newAccess) {
-              get().setTokens(newAccess, payload?.refreshToken || inner?.refreshToken || '');
-              set({ isInitDone: true, isLoading: false });
-              return;
-            }
-          } catch {}
-          get().logout();
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 401) {
+            try {
+              const api = (await import('@/lib/api')).default;
+              const res = await api.post('/auth/refresh-cookie', null, { withCredentials: true });
+              const raw = res.data;
+              const payload = raw?.data ?? raw;
+              const inner = payload?.data ?? payload;
+              const newAccess = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
+              if (newAccess) {
+                get().setTokens(newAccess, payload?.refreshToken || inner?.refreshToken || '');
+                set({ isInitDone: true, isLoading: false });
+                return;
+              }
+            } catch {}
+            get().logout();
+          }
           set({ isInitDone: true, isLoading: false });
         }
       },

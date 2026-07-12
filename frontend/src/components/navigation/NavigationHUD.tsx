@@ -180,9 +180,14 @@ export function NavigationHUD() {
     }
   }, [navigation.currentLeg, navigation.isNavigating, selectedRoute, isAiCoDriverEnabled, announceNavigation]);
 
-  // Speed camera monitoring
+  // Speed camera monitoring — throttled to avoid API flood
+  const lastCameraFetchRef = useRef(0);
   useEffect(() => {
     if (!userLocation) return;
+
+    const now = Date.now();
+    if (now - lastCameraFetchRef.current < 15000) return;
+    lastCameraFetchRef.current = now;
 
     if (!monitorRef.current) {
       monitorRef.current = createSpeedCameraMonitor();
@@ -191,7 +196,7 @@ export function NavigationHUD() {
 
     mapApi.getObjects({ categories: 'SPEED_CAMERA', limit: 50, minLat: userLocation.lat - 0.5, maxLat: userLocation.lat + 0.5, minLng: userLocation.lng - 0.5, maxLng: userLocation.lng + 0.5 })
       .then(res => {
-        const objects: any[] = res.data.data || res.data || [];
+        const objects: any[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
         const cameras: SpeedCamera[] = objects.map((o: any) => ({
           id: o.id, lat: o.lat, lng: o.lng, name: o.name || '',
           cameraType: (o.data?.cameraType || 'STATIONARY') as any,
@@ -199,23 +204,15 @@ export function NavigationHUD() {
           direction: o.data?.direction || undefined,
         }));
         mon.setCameras(cameras);
+
+        return mapApi.getSpeedCameras(userLocation.lat, userLocation.lng, 50);
       })
-      .catch(() => {});
-
-    return () => { mon.setCameras([]); };
-  }, [userLocation]);
-
-  useEffect(() => {
-    if (!userLocation) return;
-    mapApi.getSpeedCameras(userLocation.lat, userLocation.lng, 50)
       .then(res => {
-        const osmCameras: any[] = res.data.data || res.data || [];
-        const mon = monitorRef.current;
-        if (mon) {
-          const existing = mon.getCameras();
-          const dbCameras = existing.filter(c => !c.id.startsWith('osm-cam-'));
-          mon.setCameras([...dbCameras, ...osmCameras]);
-        }
+        if (!res) return;
+        const osmCameras: any[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+        const existing = mon.getCameras();
+        const dbCameras = existing.filter(c => !c.id.startsWith('osm-cam-'));
+        mon.setCameras([...dbCameras, ...osmCameras]);
       })
       .catch(() => {});
   }, [userLocation?.lat, userLocation?.lng]);

@@ -195,12 +195,14 @@ export class RoutesService {
   }
 
   private getRouteBounds(route: RouteSegment[]) {
-    return {
-      minLat: Math.min(...route.map((p) => p.lat)),
-      maxLat: Math.max(...route.map((p) => p.lat)),
-      minLng: Math.min(...route.map((p) => p.lng)),
-      maxLng: Math.max(...route.map((p) => p.lng)),
-    };
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const p of route) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    }
+    return { minLat, maxLat, minLng, maxLng };
   }
 
   private calculateEcoScore(distance: number, type: RouteType, fuel: number): number {

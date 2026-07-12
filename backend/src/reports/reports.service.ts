@@ -455,6 +455,7 @@ export class ReportsService {
         _count: { select: { votes: true } },
       },
       orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
+      take: 200,
     });
     return reports.map((r) => this.formatReport(r));
   }

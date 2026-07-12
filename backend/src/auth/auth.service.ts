@@ -180,7 +180,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (user && (await bcrypt.compare(password, user.passwordHash))) {
+    if (user && user.passwordHash && (await bcrypt.compare(password, user.passwordHash))) {
       const { passwordHash, ...result } = user;
       return result;
     }
@@ -349,8 +349,7 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
     if (user.isVerified) {
-      const tokens = await this.generateTokens(user.id, user.email, user.role);
-      return { message: 'Email already verified', user: this.sanitizeUser(user), ...tokens };
+      throw new BadRequestException('Email already verified');
     }
 
     const valid = await this.verificationService.verifyCode(email, code);

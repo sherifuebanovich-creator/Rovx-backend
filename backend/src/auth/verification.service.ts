@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { randomInt, timingSafeEqual } from 'crypto';
 
@@ -11,7 +11,7 @@ export class VerificationService {
   async generateCode(email: string): Promise<string> {
     const blocked = await this.redis.exists(`verify:blocked:${email}`);
     if (blocked) {
-      throw new Error('Too many attempts. Try again in 30 minutes.');
+      throw new HttpException('Too many attempts. Try again in 30 minutes.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const code = randomInt(100000, 999999).toString();

@@ -107,6 +107,8 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const [selectedItem, setSelectedItem] = useState<SearchSuggestion | null>(selectedSearchResult);
   const [showOrigin, setShowOrigin] = useState(false);
   const [isGoing, setIsGoing] = useState(false);
+  const isGoingRef = useRef(false);
+  useEffect(() => { isGoingRef.current = isGoing; }, [isGoing]);
   const [inputMode, setInputMode] = useState<'search' | 'origin' | 'destination'>('search');
   const [selectedTypes, setSelectedTypes] = useState<RouteType[]>([activeRouteType || 'FASTEST']);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -456,7 +458,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   };
 
   const navigateToPlace = useCallback(async (name: string, lat: number, lng: number, label: string) => {
-    if (isGoing) return;
+    if (isGoingRef.current) return;
     setIsGoing(true);
     const loc = origin || userLocation;
     if (!loc) {

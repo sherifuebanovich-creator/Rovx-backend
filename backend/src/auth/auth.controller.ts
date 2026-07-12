@@ -125,7 +125,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user' })
   async me(@CurrentUser() user: any) {
-    return { data: { user } };
+    return { user };
   }
 
   @Post('google')

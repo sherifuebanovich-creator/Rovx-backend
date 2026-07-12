@@ -131,7 +131,7 @@ export function buildCameraAlertText(
 export function detectCameraTypeFromTags(tags: Record<string, string>): CameraType {
   if (tags['camera:type'] === 'fixed' || tags.fixed === 'yes' || !tags.mobile) return 'STATIONARY';
   if (tags.man_mobile === 'yes' || tags.mobile === 'yes') return 'MOBILE';
-  if (tags['camera:type'] === 'tripos' || tags['tripod'] === 'yes') return 'TRIPOD';
+  if (tags['camera:type'] === 'tripod' || tags['tripod'] === 'yes') return 'TRIPOD';
   if (tags['camera:type'] === 'red_light' || tags['red_light_camera'] === 'yes') return 'RED_LIGHT';
   if (tags['camera:type'] === 'average_speed' || tags['average_speed'] === 'yes') return 'AVERAGE_SPEED';
   if (tags.enforcement === 'bus_lane') return 'BUS_LANE';
