@@ -1,9 +1,12 @@
-import { Controller, Post, Body, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Res, Logger, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TtsService } from './tts.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('TTS')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('tts')
 export class TtsController {
   private readonly logger = new Logger(TtsController.name);
@@ -18,6 +21,10 @@ export class TtsController {
   ) {
     if (!body.text) {
       return res.status(400).json({ message: 'Text is required' });
+    }
+
+    if (body.text.length > 500) {
+      return res.status(400).json({ message: 'Text too long (max 500 characters)' });
     }
 
     try {

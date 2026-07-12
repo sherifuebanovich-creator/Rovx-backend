@@ -185,6 +185,18 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  async setnx(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+    try {
+      const result = await this.client.setnx(key, value);
+      if (result && ttlSeconds) {
+        await this.client.expire(key, ttlSeconds);
+      }
+      return result === 1;
+    } catch (e) {
+      return false;
+    }
+  }
+
   getClient(): Redis {
     return this.client;
   }

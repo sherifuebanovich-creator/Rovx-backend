@@ -6,7 +6,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/current-user.decorator';
+import { Roles, CurrentUser } from '../common/decorators/current-user.decorator';
 import { USER_ROLES } from '../common/constants/roles';
 
 @ApiTags('Admin')
@@ -40,22 +40,22 @@ export class AdminController {
   }
 
   @Post('users/:id/ban')
-  async banUser(@Param('id') id: string, @Body('reason') reason: string) {
-    return this.adminService.banUser(id, reason);
+  async banUser(@Param('id') id: string, @Body('reason') reason: string, @CurrentUser() user: any) {
+    return this.adminService.banUser(id, reason, user.id);
   }
 
   @Post('users/:id/unban')
-  async unbanUser(@Param('id') id: string) {
-    return this.adminService.unbanUser(id);
+  async unbanUser(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.adminService.unbanUser(id, user.id);
   }
 
   @Put('users/:id/role')
-  async updateRole(@Param('id') id: string, @Body('role') role: string) {
+  async updateRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: any) {
     const validRoles = ['USER', 'MODERATOR', 'ADMIN', 'SUPERADMIN'];
     if (!validRoles.includes(role)) {
       throw new BadRequestException(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
     }
-    return this.adminService.updateUserRole(id, role);
+    return this.adminService.updateUserRole(id, role, user.id);
   }
 
   // Reports

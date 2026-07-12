@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as os from 'os';
@@ -59,21 +59,30 @@ export class AdminService {
     return safe;
   }
 
-  async banUser(id: string, reason: string) {
+  async banUser(id: string, reason: string, adminId?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
+    if (!user) throw new NotFoundException('User not found');
+    if (adminId && id === adminId) throw new BadRequestException('Cannot ban yourself');
     return this.prisma.user.update({
       where: { id },
       data: { isBanned: true, bannedReason: reason, isActive: false },
     });
   }
 
-  async unbanUser(id: string) {
+  async unbanUser(id: string, adminId?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!user) throw new NotFoundException('User not found');
+    if (adminId && id === adminId) throw new BadRequestException('Cannot unban yourself');
     return this.prisma.user.update({
       where: { id },
       data: { isBanned: false, bannedReason: null, isActive: true },
     });
   }
 
-  async updateUserRole(id: string, role: string) {
+  async updateUserRole(id: string, role: string, adminId?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
+    if (!user) throw new NotFoundException('User not found');
+    if (adminId && id === adminId) throw new BadRequestException('Cannot change your own role');
     return this.prisma.user.update({ where: { id }, data: { role: role as any } });
   }
 
@@ -102,6 +111,12 @@ export class AdminService {
   }
 
   async moderateReport(id: string, status: string) {
+    const validStatuses = ['ACTIVE', 'CONFIRMED', 'EXPIRED', 'REJECTED', 'RESOLVED'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+    const report = await this.prisma.report.findUnique({ where: { id }, select: { id: true } });
+    if (!report) throw new NotFoundException('Report not found');
     return this.prisma.report.update({
       where: { id },
       data: { status: status as any },

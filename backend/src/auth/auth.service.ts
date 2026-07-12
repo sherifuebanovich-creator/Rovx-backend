@@ -133,25 +133,34 @@ export class AuthService {
         secret: refreshSecret,
       });
 
-      // Check Redis first, fall back to DB
-      let storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
-      if (!storedToken || storedToken !== refreshToken) {
+      const lockKey = `refresh:lock:${payload.sub}`;
+      const locked = await this.redis.setnx(lockKey, '1', 5);
+      if (!locked) {
+        throw new UnauthorizedException('Token refresh in progress, try again');
+      }
+
+      try {
+        let storedToken = await this.redis.hget(`refresh:${payload.sub}`, 'token');
+        if (!storedToken || storedToken !== refreshToken) {
+          const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+          storedToken = user?.refreshToken || null;
+        }
+
+        if (!storedToken || storedToken !== refreshToken) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
+
         const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-        storedToken = user?.refreshToken || null;
-      }
+        if (!user || !user.isActive || user.isBanned) {
+          throw new UnauthorizedException('User not active');
+        }
 
-      if (!storedToken || storedToken !== refreshToken) {
-        throw new UnauthorizedException('Invalid refresh token');
+        const tokens = await this.generateTokens(user.id, user.email, user.role);
+        await this.saveRefreshToken(user.id, tokens.refreshToken);
+        return tokens;
+      } finally {
+        await this.redis.del(lockKey);
       }
-
-      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-      if (!user || !user.isActive || user.isBanned) {
-        throw new UnauthorizedException('User not active');
-      }
-
-      const tokens = await this.generateTokens(user.id, user.email, user.role);
-      await this.saveRefreshToken(user.id, tokens.refreshToken);
-      return tokens;
     } catch (e) {
       if (e instanceof UnauthorizedException) throw e;
       this.logger.error(`Token refresh failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -367,6 +376,48 @@ export class AuthService {
 
     this.logger.log(`Email verified for ${email}`);
     return { message: 'Email verified successfully', user: this.sanitizeUser(user), ...tokens };
+  }
+
+  async sendForgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return { message: 'If the email exists, a reset code has been sent.' };
+    }
+    if (!user.passwordHash) {
+      return { message: 'If the email exists, a reset code has been sent.' };
+    }
+
+    const code = await this.verificationService.generateCode(`reset:${email}`);
+    await this.mailService.sendVerificationCode(email, code);
+
+    this.logger.log(`Password reset code sent to ${email}`);
+    return { message: 'If the email exists, a reset code has been sent.' };
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException('Cannot reset password for Google-only accounts');
+    }
+
+    const valid = await this.verificationService.verifyCode(`reset:${email}`, code);
+    if (!valid) {
+      throw new BadRequestException('Invalid or expired reset code');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    await this.logout(user.id);
+
+    this.logger.log(`Password reset for ${email}`);
+    return { message: 'Password reset successfully' };
   }
 
   private sanitizeUser(user: any) {

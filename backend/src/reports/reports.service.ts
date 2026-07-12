@@ -503,8 +503,8 @@ export class ReportsService {
     if (!report) throw new NotFoundException('Report not found');
     if (report.userId === userId) throw new ForbiddenException('Cannot vote on own report');
 
-    if (report.status === ReportStatus.EXPIRED || report.status === ReportStatus.REJECTED) {
-      throw new BadRequestException('Cannot vote on expired or rejected report');
+    if (report.status === ReportStatus.EXPIRED || report.status === ReportStatus.REJECTED || report.status === ReportStatus.RESOLVED) {
+      throw new BadRequestException('Cannot vote on expired, rejected, or resolved report');
     }
 
     await this.prisma.reportVote.upsert({
