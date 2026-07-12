@@ -40,6 +40,10 @@ api.interceptors.response.use(
     const originalRequest = error.config as any;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (originalRequest._skipAuthRedirect) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -58,8 +62,10 @@ api.interceptors.response.use(
           headers: { 'Content-Type': 'application/json' },
         });
 
-        const data = res.data?.data || res.data || {};
-        const accessToken = data.accessToken || data.access_token;
+        const raw = res.data;
+        const payload = raw?.data ?? raw;
+        const inner = payload?.data ?? payload;
+        const accessToken = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
         if (!accessToken) throw new Error('Invalid refresh response');
 
         Cookies.set('access_token', accessToken, { expires: 1 / 96, path: '/' }); // 15min

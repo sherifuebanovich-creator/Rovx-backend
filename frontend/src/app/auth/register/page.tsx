@@ -204,8 +204,9 @@ export default function RegisterPage() {
         lang: form.lang,
       };
       const res = await authApi.register(payload);
-      const { user, accessToken, refreshToken } = res.data.data || res.data || {};
-      const data = res.data.data || res.data;
+      const raw = res.data;
+      const responseData = raw?.data ?? raw;
+      const data = responseData?.data ?? responseData;
 
       if (data?.needsVerification) {
         toast.success(t('auth.verify.codeSent'));
@@ -213,10 +214,18 @@ export default function RegisterPage() {
         return;
       }
 
+      const user = data?.user;
+      const accessToken = data?.accessToken || data?.access_token;
+      const refreshToken = data?.refreshToken;
+
+      if (!accessToken || !user) {
+        toast.error(t('auth.register.failed'));
+        return;
+      }
+
       setTokens(accessToken, refreshToken);
       setUser(user);
 
-      // If vehicle info was filled, save it after registration
       if (form.vehicleMake && form.vehicleModel) {
         usersApi.addVehicle({
           type: form.vehicleType,

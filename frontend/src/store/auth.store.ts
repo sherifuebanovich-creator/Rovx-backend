@@ -35,7 +35,8 @@ export const useAuthStore = create<AuthState>()(
       setPreferences: (preferences) => set({ preferences }),
 
       setTokens: (accessToken, refreshToken) => {
-        set({ accessToken, refreshToken, isAuthenticated: true });
+        if (!accessToken) return;
+        set({ accessToken, refreshToken: refreshToken || '', isAuthenticated: true });
         Cookies.set('access_token', accessToken, {
           expires: 1 / 96,
           path: '/',
@@ -53,11 +54,12 @@ export const useAuthStore = create<AuthState>()(
 
       initAuth: async () => {
         const state = get();
-        if (!state.accessToken && !Cookies.get('access_token')) {
+        const cookieToken = Cookies.get('access_token');
+        if (!state.accessToken && !cookieToken) {
           set({ isInitDone: true, isLoading: false });
           return;
         }
-        const token = state.accessToken || Cookies.get('access_token');
+        const token = state.accessToken || cookieToken;
         if (!token) {
           set({ isInitDone: true, isLoading: false });
           return;
@@ -65,9 +67,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const api = (await import('@/lib/api')).default;
-          const res = await api.get('/auth/me');
-          const payload = res.data?.data || res.data || {};
-          const userData = payload.user || payload;
+          const res = await api.get('/auth/me', { _skipAuthRedirect: true } as any);
+          const raw = res.data;
+          const payload = raw?.data ?? raw;
+          const inner = payload?.data ?? payload;
+          const userData = inner?.user || payload?.user || inner;
           if (userData?.id) {
             set({ user: userData, isAuthenticated: true, isLoading: false, isInitDone: true });
           } else {
@@ -77,10 +81,12 @@ export const useAuthStore = create<AuthState>()(
           try {
             const api = (await import('@/lib/api')).default;
             const res = await api.post('/auth/refresh-cookie', null, { withCredentials: true });
-            const payload = res.data?.data || res.data || {};
-            const newAccess = payload.accessToken || payload.access_token;
+            const raw = res.data;
+            const payload = raw?.data ?? raw;
+            const inner = payload?.data ?? payload;
+            const newAccess = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
             if (newAccess) {
-              get().setTokens(newAccess, '');
+              get().setTokens(newAccess, payload?.refreshToken || inner?.refreshToken || '');
               set({ isInitDone: true, isLoading: false });
               return;
             }

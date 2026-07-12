@@ -45,20 +45,32 @@ function LoginPageContent() {
     setIsLoading(true);
     try {
       const res = await authApi.login({ identifier, password });
-      const { user, accessToken, refreshToken } = res.data.data || res.data || {};
-      setTokens(accessToken, refreshToken);
-      setUser(user);
-      toast.success(t('auth.login.welcomeBack') + `, ${user.displayName}!`);
-      router.push('/');
-    } catch (err: any) {
-      const errData = err?.response?.data;
-      if (errData?.needsVerification) {
-        const email = errData.email || identifier;
+      const raw = res.data;
+      const payload = raw?.data ?? raw;
+      const data = payload?.data ?? payload;
+
+      if (data?.needsVerification) {
+        const email = data.email || identifier;
         toast.success(t('auth.verify.codeSent'));
         router.push(`/auth/verify?email=${encodeURIComponent(email)}`);
         return;
       }
-      toast.error(errData?.message || t('auth.login.failed'));
+
+      const user = data?.user;
+      const accessToken = data?.accessToken || data?.access_token;
+      const refreshToken = data?.refreshToken;
+
+      if (!accessToken || !user) {
+        toast.error(t('auth.login.failed'));
+        return;
+      }
+
+      setTokens(accessToken, refreshToken);
+      setUser(user);
+      toast.success(t('auth.login.welcomeBack') + `, ${user.displayName || user.username}!`);
+      router.push('/');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || t('auth.login.failed'));
     } finally {
       setIsLoading(false);
     }

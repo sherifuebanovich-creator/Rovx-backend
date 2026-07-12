@@ -60,10 +60,14 @@ function VerifyForm() {
     setError('');
     try {
       const res = await authApi.verifyEmail(email, fullCode);
-      const data = res.data?.data || res.data || {};
-      if (data.accessToken) {
-        setTokens(data.accessToken, data.refreshToken || '');
-        setUser(data.user);
+      const raw = res.data;
+      const payload = raw?.data ?? raw;
+      const data = payload?.data ?? payload;
+      const accessToken = data?.accessToken || data?.access_token;
+      const user = data?.user;
+      if (accessToken && user) {
+        setTokens(accessToken, data?.refreshToken || '');
+        setUser(user);
         toast.success(t('auth.verify.success'));
         router.push('/');
       } else {

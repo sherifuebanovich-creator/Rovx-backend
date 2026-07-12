@@ -47,17 +47,21 @@ const authOptions: NextAuthOptions = {
             }),
           });
           if (res.ok) {
-            const data = await res.json();
-            const accessToken = data.data?.accessToken || data.accessToken;
-            const refreshToken = data.data?.refreshToken || data.refreshToken;
-            const rovxUser = data.data?.user || data.user;
+            const raw = await res.json();
+            const payload = raw?.data ?? raw;
+            const inner = payload?.data ?? payload;
+            const accessToken = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
+            const refreshToken = payload?.refreshToken || inner?.refreshToken;
+            const rovxUser = payload?.user || inner?.user;
             if (accessToken) {
               token.accessToken = accessToken;
               token.refreshToken = refreshToken;
               token.rovxUser = rovxUser;
             }
           }
-        } catch {}
+        } catch (err) {
+          console.error('[NextAuth] Failed to sync with ROVX backend:', err);
+        }
       }
       return token;
     },
