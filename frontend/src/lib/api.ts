@@ -7,6 +7,7 @@ export const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 15000,
+  withCredentials: true,
 });
 
 // Request interceptor - attach access token + language
@@ -57,18 +58,30 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
         const res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
           withCredentials: true,
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+          },
         });
 
         const raw = res.data;
         const payload = raw?.data ?? raw;
         const inner = payload?.data ?? payload;
         const accessToken = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
+        const newRefresh = payload?.refreshToken || inner?.refreshToken;
         if (!accessToken) throw new Error('Invalid refresh response');
 
         Cookies.set('access_token', accessToken, { expires: 1 / 96, path: '/' }); // 15min
+        if (newRefresh) {
+          try {
+            const stored = JSON.parse(localStorage.getItem('rovx-auth') || '{}');
+            stored.state = { ...stored.state, refreshToken: newRefresh };
+            localStorage.setItem('rovx-auth', JSON.stringify(stored));
+          } catch {}
+        }
 
         api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;

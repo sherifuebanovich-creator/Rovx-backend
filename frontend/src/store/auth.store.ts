@@ -82,7 +82,11 @@ export const useAuthStore = create<AuthState>()(
           if (status === 401) {
             try {
               const api = (await import('@/lib/api')).default;
-              const res = await api.post('/auth/refresh-cookie', null, { withCredentials: true });
+              const storedRefresh = get().refreshToken;
+              const res = await api.post('/auth/refresh', null, {
+                withCredentials: true,
+                headers: storedRefresh ? { 'x-refresh-token': storedRefresh } : {},
+              });
               const raw = res.data;
               const payload = raw?.data ?? raw;
               const inner = payload?.data ?? payload;
@@ -102,7 +106,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'rovx-auth',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated, preferences: state.preferences }),
+      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated, preferences: state.preferences, refreshToken: state.refreshToken }),
     },
   ),
 );

@@ -23,6 +23,9 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3001);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
+  // Trust proxy (needed for secure cookies behind Render's reverse proxy)
+  app.set('trust proxy', 1);
+
   // Increase body parser limit for photo/video uploads in reports
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
