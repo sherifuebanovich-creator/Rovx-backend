@@ -135,6 +135,23 @@ export class ReportsService {
       return { valid: false, reason: 'AI validation unavailable' };
     }
 
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(imageUrl);
+    } catch {
+      return { valid: false, reason: 'Invalid image URL format' };
+    }
+    if (!['https:', 'http:'].includes(parsedUrl.protocol)) {
+      return { valid: false, reason: 'Only HTTP/HTTPS URLs are allowed' };
+    }
+    if (/^(localhost|127\.|10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.|0\.)/.test(parsedUrl.hostname)) {
+      this.logger.warn(`SSRF attempt blocked: ${imageUrl}`);
+      return { valid: false, reason: 'Internal URLs are not allowed' };
+    }
+    if (imageUrl.length > 2048) {
+      return { valid: false, reason: 'URL too long' };
+    }
+
     const visionModel = this.config.get('AI_VISION_MODEL', '');
     const model = visionModel || this.config.get('AI_MODEL', 'llama-3.3-70b-versatile');
 
@@ -395,6 +412,7 @@ export class ReportsService {
 
     const hoursToExpiry = ttlMap[dto.type] || 24;
     const expiresAt = new Date(Date.now() + hoursToExpiry * 60 * 60 * 1000);
+    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng).catch(() => null));
 
     const report = await this.prisma.report.create({
       data: {
@@ -403,6 +421,7 @@ export class ReportsService {
         lat: dto.lat,
         lng: dto.lng,
         address: dto.address,
+        city: dto.city || reportCity || null,
         description: dto.description,
         severity: dto.severity || 3,
         images: JSON.stringify(dto.images || []),
@@ -426,7 +445,6 @@ export class ReportsService {
       hour: '2-digit', minute: '2-digit',
     });
     const typeLabel = REPORT_TYPE_LABELS[dto.type] || dto.type;
-    const reportCity = dto.city || (await this.getCityFromCoords(dto.lat, dto.lng).catch(() => null));
 
     // Background notifications (don't block response)
     this.sendReportNotifications(report, dto, userId, typeLabel, timeStr, reportCity).catch(e =>
@@ -465,10 +483,20 @@ export class ReportsService {
     const skip = (page - 1) * limit;
     const now = new Date();
     const lower = city.toLowerCase();
-    const where = {
-      status: { in: [ReportStatus.ACTIVE, ReportStatus.CONFIRMED] } as any,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      address: { contains: lower, mode: 'insensitive' as any },
+    const where: any = {
+      status: { in: [ReportStatus.ACTIVE, ReportStatus.CONFIRMED] },
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: now } },
+      ],
+      AND: [
+        {
+          OR: [
+            { city: { equals: lower, mode: 'insensitive' } },
+            { address: { contains: city, mode: 'insensitive' } },
+          ],
+        },
+      ],
     };
     const [reports, total] = await Promise.all([
       this.prisma.report.findMany({

@@ -93,7 +93,7 @@ export class SocialService {
         OR: [{ senderId: userId }, { receiverId: userId }],
       },
       orderBy: { createdAt: 'desc' },
-      take: Math.max(limit * 5, 100),
+      take: Math.min(limit * 3, 150),
       include: {
         sender: { select: { id: true, displayName: true, avatar: true } },
         receiver: { select: { id: true, displayName: true, avatar: true } },

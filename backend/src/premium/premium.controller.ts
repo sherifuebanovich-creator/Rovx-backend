@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, UseGuards, Query, Req, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { PremiumService } from './premium.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
@@ -117,6 +118,7 @@ export class PremiumController {
 
   @Public()
   @Get('payment-details')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Get payment card details' })
   getPaymentDetails() {
     return this.premiumService.getPaymentDetails();

@@ -25,10 +25,10 @@ export class MailService {
     });
   }
 
-  async sendVerificationCode(to: string, code: string): Promise<void> {
+  async sendVerificationCode(to: string, code: string): Promise<boolean> {
     if (!this.transporter) {
       this.logger.warn(`SMTP not configured — skipping email to ${to}`);
-      return;
+      return false;
     }
 
     const from =
@@ -42,8 +42,10 @@ export class MailService {
         html: this.buildVerificationEmail(code),
       });
       this.logger.log(`Verification code sent to ${to}`);
+      return true;
     } catch (err: any) {
-      this.logger.warn(`Failed to send verification email: ${err.message}`);
+      this.logger.error(`Failed to send verification email to ${to}: ${err.message}`);
+      return false;
     }
   }
 

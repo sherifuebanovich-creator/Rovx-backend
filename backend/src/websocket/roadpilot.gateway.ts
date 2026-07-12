@@ -260,6 +260,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
           severity: 5,
           description: `SOS ALERT from ${user.displayName}: ${sosAlert.message}`,
           status: 'ACTIVE',
+          city: user.city || null,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
