@@ -31,8 +31,6 @@ export default function MapViewGL() {
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
 
-  const mapCenter = useMapStore(s => s.mapCenter);
-  const zoom = useMapStore(s => s.zoom);
   const mapStyle = useMapStore(s => s.mapStyle);
   const selectedRoute = useMapStore(s => s.selectedRoute);
   const setVisibleObjects = useMapStore(s => s.setVisibleObjects);
@@ -40,7 +38,6 @@ export default function MapViewGL() {
   const setSelectedReport = useMapStore(s => s.setSelectedReport);
   const setReports = useMapStore(s => s.setReports);
   const activeCategories = useMapStore(s => s.activeCategories);
-  const darkMode = useMapStore(s => s.darkMode);
   const show3D = useMapStore(s => s.show3D);
 
   const navigation = useMapStore(s => s.navigation);
@@ -60,6 +57,7 @@ export default function MapViewGL() {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    const initState = useMapStore.getState();
     const initialStyle = typeof MAP_STYLES[mapStyle] === 'string'
       ? MAP_STYLES[mapStyle] as string
       : MAP_STYLES[mapStyle] as maplibregl.StyleSpecification;
@@ -67,8 +65,8 @@ export default function MapViewGL() {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: initialStyle,
-      center: [mapCenter.lng, mapCenter.lat],
-      zoom,
+      center: [initState.mapCenter.lng, initState.mapCenter.lat],
+      zoom: initState.zoom,
       minZoom: 3,
       maxZoom: 21,
       attributionControl: false,
@@ -435,12 +433,18 @@ export default function MapViewGL() {
     [setSelectedObject, cleanupMarkers],
   );
 
-  // Load traffic signals only after idle, not on every moveend
+  // Load traffic signals only after idle, throttled to avoid cascade
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    let lastTrafficLoad = 0;
+    const TRAFFIC_THROTTLE_MS = 3000;
+
     const handler = () => {
+      const now = Date.now();
+      if (now - lastTrafficLoad < TRAFFIC_THROTTLE_MS) return;
+      lastTrafficLoad = now;
       const bounds = map.getBounds();
       loadTrafficSignals(bounds);
     };
@@ -469,11 +473,13 @@ export default function MapViewGL() {
     loadReportsInBounds(bounds);
   }, [navigation.isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
 
-  return (
-    <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>
-      <div ref={containerRef} className="w-full h-full" />
-      <UserLocationLayer map={mapRef.current} />
-      <style>{`
+  // Inject global map styles once
+  useEffect(() => {
+    const id = 'rovx-map-styles';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
         @keyframes gl-pulse {
           0%, 100% { opacity: 0.4; transform: scale(1); }
           50% { opacity: 0.1; transform: scale(1.8); }
@@ -539,7 +545,14 @@ export default function MapViewGL() {
             max-width: 360px !important;
           }
         }
-      `}</style>
+      `;
+    document.head.appendChild(style);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>
+      <div ref={containerRef} className="w-full h-full" />
+      <UserLocationLayer map={mapRef.current} />
     </div>
   );
 }

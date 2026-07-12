@@ -260,6 +260,22 @@ export default function UserLocationLayer({ map }: Props) {
     });
   }, [map, userLocation, setFollowUser]);
 
+  // Inject pulse animation once
+  useEffect(() => {
+    const id = 'rovx-pulse-style';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+        @keyframes rovx-pulse {
+          0% { transform: translate(-50%,-50%) translate(0,-10px) scale(1); opacity: 0.4; }
+          70% { transform: translate(-50%,-50%) translate(0,-10px) scale(2.2); opacity: 0; }
+          100% { transform: translate(-50%,-50%) translate(0,-10px) scale(2.2); opacity: 0; }
+        }
+      `;
+    document.head.appendChild(style);
+  }, []);
+
   return (
     <>
       {!followActive && userLocation && !navigation.isNavigating && (
@@ -302,14 +318,6 @@ export default function UserLocationLayer({ map }: Props) {
           {locationError}
         </div>
       )}
-
-      <style>{`
-        @keyframes rovx-pulse {
-          0% { transform: translate(-50%,-50%) translate(0,-10px) scale(1); opacity: 0.4; }
-          70% { transform: translate(-50%,-50%) translate(0,-10px) scale(2.2); opacity: 0; }
-          100% { transform: translate(-50%,-50%) translate(0,-10px) scale(2.2); opacity: 0; }
-        }
-      `}</style>
     </>
   );
 }
