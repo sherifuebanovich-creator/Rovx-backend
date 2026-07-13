@@ -82,12 +82,32 @@ export const useAuthStore = create<AuthState>()(
           const status = err?.response?.status;
           if (status === 401) {
             try {
-              const api = (await import('@/lib/api')).default;
+              const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
               const storedRefresh = get().refreshToken;
-              const res = await api.post('/auth/refresh', null, {
-                withCredentials: true,
-                headers: storedRefresh ? { 'x-refresh-token': storedRefresh } : {},
-              });
+              const axiosMod = (await import('axios')).default;
+              let res;
+              try {
+                res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
+                  withCredentials: true,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+                  },
+                });
+              } catch (firstErr: any) {
+                if (firstErr?.response?.status >= 500 || !firstErr?.response) {
+                  await new Promise(r => setTimeout(r, 1500));
+                  res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
+                    withCredentials: true,
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+                    },
+                  });
+                } else {
+                  throw firstErr;
+                }
+              }
               const raw = res.data;
               const payload = raw?.data ?? raw;
               const inner = payload?.data ?? payload;

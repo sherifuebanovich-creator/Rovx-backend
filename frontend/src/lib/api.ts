@@ -45,6 +45,12 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      // Don't let interceptor handle 401 on refresh endpoint itself — initAuth handles it directly
+      const reqUrl = (originalRequest.url || '').toString();
+      if (reqUrl.includes('/auth/refresh')) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -59,13 +65,29 @@ api.interceptors.response.use(
 
       try {
         const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
-        const res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
-          withCredentials: true,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
-          },
-        });
+        const refreshHeaders = {
+          'Content-Type': 'application/json',
+          ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+        };
+
+        let res;
+        try {
+          res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
+            withCredentials: true,
+            headers: refreshHeaders,
+          });
+        } catch (firstErr: any) {
+          // Retry once — Render cold start or transient backend error
+          if (firstErr?.response?.status >= 500 || !firstErr?.response) {
+            await new Promise(r => setTimeout(r, 1500));
+            res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
+              withCredentials: true,
+              headers: refreshHeaders,
+            });
+          } else {
+            throw firstErr;
+          }
+        }
 
         const raw = res.data;
         const payload = raw?.data ?? raw;
@@ -91,9 +113,10 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         Cookies.remove('access_token', { path: '/' });
-        try { localStorage.removeItem('rovx-auth'); } catch {}
+        // Don't remove localStorage here — initAuth/logout handles cleanup.
+        // Small delay before redirect to avoid race with concurrent state updates.
         if (typeof window !== 'undefined') {
-          window.location.href = '/auth/login';
+          setTimeout(() => { window.location.href = '/auth/login'; }, 100);
         }
         return Promise.reject(refreshError);
       } finally {
