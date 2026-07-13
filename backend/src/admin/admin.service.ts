@@ -315,4 +315,52 @@ export class AdminService {
     if (!ad) throw new NotFoundException('Ad not found');
     return this.prisma.advertisement.update({ where: { id }, data: { isActive: !ad.isActive } });
   }
+
+  async grantPremium(userId: string, tierName: string, days: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const tierMap: Record<string, { tier: number; name: string }> = {
+      PREMIUM_BASIC: { tier: 1, name: 'PREMIUM_BASIC' },
+      PREMIUM_STANDARD: { tier: 2, name: 'PREMIUM_STANDARD' },
+      PREMIUM_MAX: { tier: 3, name: 'PREMIUM_MAX' },
+    };
+    const t = tierMap[tierName] || tierMap.PREMIUM_MAX;
+
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + days);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        subscription: t.name as any,
+        subscriptionEnd: endDate,
+      },
+    });
+
+    await this.prisma.premiumSubscription.upsert({
+      where: { userId },
+      create: {
+        userId,
+        tier: t.tier,
+        levelName: t.name,
+        endDate,
+        price: 0,
+        currency: 'ADMIN_GRANT',
+        status: 'active',
+        paymentId: `admin_grant_${Date.now()}`,
+        autoRenew: false,
+      },
+      update: {
+        tier: t.tier,
+        levelName: t.name,
+        endDate,
+        status: 'active',
+        paymentId: `admin_grant_${Date.now()}`,
+      },
+    });
+
+    this.logger.log(`Granted ${t.name} to user ${userId} for ${days} days`);
+    return { success: true, subscription: t.name, endDate };
+  }
 }

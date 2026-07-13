@@ -133,4 +133,15 @@ export class AdminController {
   async toggleAd(@Param('id') id: string) {
     return this.adminService.toggleAd(id);
   }
+
+  @Put('users/:id/premium')
+  @ApiOperation({ summary: 'Grant premium subscription to user' })
+  async grantPremium(
+    @Param('id') id: string,
+    @Body() body: { tier?: string; days?: number },
+  ) {
+    const tier = body.tier || 'PREMIUM_MAX';
+    const days = body.days || 365;
+    return this.adminService.grantPremium(id, tier, days);
+  }
 }
