@@ -17,14 +17,6 @@ import { USER_ROLES } from '../common/constants/roles';
 export class AdminController {
   constructor(private adminService: AdminService) {}
 
-@ApiTags('Admin')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(USER_ROLES.ADMIN)
-@Controller('admin')
-export class AdminController {
-  constructor(private adminService: AdminService) {}
-
   @Get('dashboard')
   @ApiOperation({ summary: 'Dashboard stats' })
   async getDashboard() {
