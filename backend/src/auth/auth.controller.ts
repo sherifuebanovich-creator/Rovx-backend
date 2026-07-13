@@ -23,11 +23,16 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private prisma: PrismaService,
+  ) {}
 
   @Post('register')
   @Throttle({ short: { limit: 3, ttl: 60000 } })
@@ -180,6 +185,43 @@ export class AuthController {
   @ApiOperation({ summary: 'Reset password with code' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
+  }
+
+  @Post('bootstrap-admin')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 1, ttl: 300000 } })
+  @ApiOperation({ summary: 'Create first admin (only works when zero admins exist)' })
+  async bootstrapAdmin(@Body() body: { email: string; password: string }) {
+    if (!body.email || !body.password) {
+      throw new BadRequestException('email and password required');
+    }
+    if (body.password.length < 8) {
+      throw new BadRequestException('password must be at least 8 characters');
+    }
+
+    const adminCount = await this.prisma.user.count({
+      where: { role: { in: ['ADMIN', 'SUPERADMIN'] } },
+    });
+    if (adminCount > 0) {
+      throw new BadRequestException('Admin already exists. Use /admin/users/:id/role to promote users.');
+    }
+
+    const hash = await bcrypt.hash(body.password, 12);
+    const user = await this.prisma.user.upsert({
+      where: { email: body.email },
+      update: { role: 'SUPERADMIN', isVerified: true, passwordHash: hash },
+      create: {
+        email: body.email,
+        username: body.email.split('@')[0],
+        displayName: 'Admin',
+        passwordHash: hash,
+        role: 'SUPERADMIN',
+        isVerified: true,
+        preferences: { create: {} },
+      },
+    });
+
+    return { message: 'Admin created', userId: user.id, email: user.email };
   }
 
   @Get('error')
