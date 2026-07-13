@@ -174,25 +174,25 @@ export default function GroupChatPage() {
   return (
     <div className="min-h-dvh bg-dark-bg flex flex-col pb-safe-bottom">
       {/* Header */}
-      <div className="relative px-4 pt-4 pb-3 flex items-center gap-3 border-b border-white/10">
-        <Link href="/groups" className="text-gray-400 hover:text-white transition-all flex items-center">
+      <div className="relative px-4 pt-4 pb-3 flex items-center gap-3 border-b border-dark-border">
+        <Link href="/groups" className="text-gray-400 hover:text-dark-text transition-all flex items-center">
           <FaArrowLeft size={16} />
         </Link>
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white font-bold text-sm">
           {group.avatar ? <img src={group.avatar} className="w-full h-full object-cover rounded-xl" /> : <FaUsers size={16} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold truncate">{group.name}</p>
+          <p className="text-dark-text font-semibold truncate">{group.name}</p>
           <p className="text-xs text-gray-500">{group.memberCount} {t('groupDetails.members')}</p>
         </div>
         <button onClick={() => setShowMembers(!showMembers)}
-          className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-xs hover:bg-white/10">
+          className="px-3 py-1.5 rounded-lg bg-dark-surface text-gray-400 text-xs hover:bg-dark-border">
           {showMembers ? t('groupDetails.chat') : t('groupDetails.members')}
         </button>
         {isOwner && (
           <div className="flex gap-1">
             <button onClick={() => { setEditing(!editing); setEditForm({ name: group.name, description: group.description || '', city: group.city || '' }); }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 text-gray-400 hover:bg-white/10">
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-dark-surface text-gray-400 hover:bg-dark-border">
               <FaEdit size={12} />
             </button>
             <button onClick={handleDeleteGroup}
@@ -210,7 +210,7 @@ export default function GroupChatPage() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-white/10"
+            className="overflow-hidden border-b border-dark-border"
           >
             <div className="p-4 space-y-2">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{t('groupDetails.members')} ({group.members?.length})</p>
@@ -219,7 +219,7 @@ export default function GroupChatPage() {
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold">
                     {m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                   </div>
-                  <span className="text-sm text-white">{m.user.displayName}</span>
+                  <span className="text-sm text-dark-text">{m.user.displayName}</span>
                   {m.isAdmin && <span className="text-[10px] text-primary-400 bg-primary-600/20 px-1.5 py-0.5 rounded">{t('groupDetails.admin')}</span>}
                 </div>
               ))}
@@ -240,7 +240,7 @@ export default function GroupChatPage() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-white/10"
+            className="overflow-hidden border-b border-dark-border"
           >
             <div className="p-4 space-y-2">
               <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
@@ -251,7 +251,7 @@ export default function GroupChatPage() {
                 className="input-field text-sm" placeholder={t('groupDetails.cityLabel')} />
               <div className="flex gap-2">
                 <button onClick={() => setEditing(false)}
-                  className="flex-1 py-2 rounded-xl text-sm bg-white/5 text-gray-400 hover:bg-white/10">
+                  className="flex-1 py-2 rounded-xl text-sm bg-dark-surface text-gray-400 hover:bg-dark-border">
                   {t('groupDetails.cancel')}
                 </button>
                 <button onClick={handleEditGroup} disabled={editLoading}
@@ -271,7 +271,7 @@ export default function GroupChatPage() {
             <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
               msg.senderId === user.id
                 ? 'bg-primary-600 text-white rounded-br-md'
-                : 'bg-white/10 text-gray-200 rounded-bl-md'
+                : 'bg-dark-surface text-dark-text rounded-bl-md'
             }`}>
               {msg.senderId !== user.id && (
                 <p className="text-[10px] text-primary-300 font-medium mb-1">{msg.sender?.displayName || msg.senderId}</p>
@@ -287,7 +287,7 @@ export default function GroupChatPage() {
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-white/10">
+      <div className="px-4 py-3 border-t border-dark-border">
         <div className="flex items-center gap-2">
           <input value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}

@@ -17,6 +17,14 @@ import { USER_ROLES } from '../common/constants/roles';
 export class AdminController {
   constructor(private adminService: AdminService) {}
 
+@ApiTags('Admin')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(USER_ROLES.ADMIN)
+@Controller('admin')
+export class AdminController {
+  constructor(private adminService: AdminService) {}
+
   @Get('dashboard')
   @ApiOperation({ summary: 'Dashboard stats' })
   async getDashboard() {
@@ -143,5 +151,14 @@ export class AdminController {
     const tier = body.tier || 'PREMIUM_MAX';
     const days = body.days || 365;
     return this.adminService.grantPremium(id, tier, days);
+  }
+
+  @Post('create-admin')
+  @Roles(USER_ROLES.SUPERADMIN)
+  @ApiOperation({ summary: 'Create a new admin account (SUPERADMIN only)' })
+  async createAdmin(
+    @Body() body: { email: string; password: string; displayName?: string },
+  ) {
+    return this.adminService.createAdmin(body.email, body.password, body.displayName);
   }
 }

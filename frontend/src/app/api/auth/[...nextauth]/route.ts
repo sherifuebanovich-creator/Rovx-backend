@@ -51,12 +51,8 @@ const authOptions: NextAuthOptions = {
             const payload = raw?.data ?? raw;
             const inner = payload?.data ?? payload;
             const accessToken = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
-            const refreshToken = payload?.refreshToken || inner?.refreshToken;
-            const rovxUser = payload?.user || inner?.user;
             if (accessToken) {
               token.accessToken = accessToken;
-              token.refreshToken = refreshToken;
-              token.rovxUser = rovxUser;
             }
           }
         } catch (err) {
@@ -67,8 +63,6 @@ const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken;
-      session.refreshToken = token.refreshToken;
-      session.rovxUser = token.rovxUser;
       return session;
     },
   },

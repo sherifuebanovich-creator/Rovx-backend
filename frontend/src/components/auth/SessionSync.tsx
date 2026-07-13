@@ -2,14 +2,12 @@
 import { useSession } from 'next-auth/react';
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth.store';
-import { api, usersApi } from '@/lib/api';
 import Cookies from 'js-cookie';
 
 export function SessionSync() {
   const { data: session, status } = useSession();
-  const { setUser, setTokens, user: storeUser } = useAuthStore();
+  const { setTokens } = useAuthStore();
   const syncedRef = useRef(false);
-  const langAppliedRef = useRef(false);
   const sessionRef = useRef(session);
 
   useEffect(() => {
@@ -17,63 +15,24 @@ export function SessionSync() {
     sessionRef.current = session;
 
     if (status === 'authenticated' && session) {
-      const { accessToken: sessionToken, refreshToken, rovxUser } = session as any;
+      const { accessToken: sessionToken } = session as any;
       const cookieToken = Cookies.get('access_token');
-      const googleUser = (session as any).user;
 
       // Sync token only when no access_token cookie exists (initial Google login or page reload).
       // Never overwrite: interceptor refresh writes fresh tokens via setTokens.
       if (sessionToken && !cookieToken) {
-        setTokens(sessionToken, refreshToken || '');
+        setTokens(sessionToken, '');
       }
 
-      if (rovxUser && !syncedRef.current) {
+      if (!syncedRef.current) {
         syncedRef.current = true;
-        setUser({
-          id: rovxUser.id || storeUser?.id || '',
-          email: rovxUser.email || storeUser?.email || (session as any).user?.email || '',
-          username: rovxUser.username || storeUser?.username || '',
-          displayName: rovxUser.displayName || rovxUser.username || storeUser?.displayName || (session as any).user?.name || 'User',
-          avatar: rovxUser.avatar || storeUser?.avatar || (session as any).user?.image || '',
-          role: rovxUser.role || storeUser?.role || 'USER',
-          subscription: rovxUser.subscription || storeUser?.subscription || 'FREE',
-          preferredLang: rovxUser.preferredLang || storeUser?.preferredLang || 'ru',
-          preferredVehicle: rovxUser.preferredVehicle || storeUser?.preferredVehicle || 'CAR',
-          driverScore: rovxUser.driverScore ?? storeUser?.driverScore ?? 5.0,
-          reputation: rovxUser.reputation ?? storeUser?.reputation ?? 0,
-          totalTrips: rovxUser.totalTrips ?? storeUser?.totalTrips ?? 0,
-          totalDistance: rovxUser.totalDistance ?? storeUser?.totalDistance ?? 0,
-          homeAddress: rovxUser.homeAddress || storeUser?.homeAddress,
-          homeLat: rovxUser.homeLat || storeUser?.homeLat,
-          homeLng: rovxUser.homeLng || storeUser?.homeLng,
-          workAddress: rovxUser.workAddress || storeUser?.workAddress,
-          workLat: rovxUser.workLat || storeUser?.workLat,
-          workLng: rovxUser.workLng || storeUser?.workLng,
-          city: rovxUser.city || storeUser?.city,
-        });
-
-        if (!langAppliedRef.current) {
-          langAppliedRef.current = true;
-          const pendingLang = typeof window !== 'undefined' ? localStorage.getItem('pending_lang') : null;
-          if (pendingLang && pendingLang !== (rovxUser.preferredLang || 'ru')) {
-            usersApi.updateProfile({ preferredLang: pendingLang }).then(() => {
-              useAuthStore.setState((state) => ({
-                user: state.user ? { ...state.user, preferredLang: pendingLang } : null,
-              }));
-            }).catch(() => {}).finally(() => {
-              localStorage.removeItem('pending_lang');
-            });
-          } else if (pendingLang) {
-            localStorage.removeItem('pending_lang');
-          }
-        }
+        // User data is fetched by initAuth → /auth/me
       }
     }
     if (status === 'unauthenticated') {
       syncedRef.current = false;
-      langAppliedRef.current = false;
     }
-  }, [status, session, setTokens, setUser, storeUser]);
+  }, [status, session, setTokens]);
 
   return null;
 }

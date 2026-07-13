@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { premiumApi } from '@/lib/api';
 import { PremiumTier, PremiumSubscription } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaCrown, FaCheck, FaArrowLeft, FaTimes, FaCopy, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
+import { FaCrown, FaCheck, FaArrowLeft, FaTimes, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -43,59 +43,30 @@ export default function PremiumPageWrapper() {
 
 function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose: () => void; onSuccess: () => void }) {
   const { t } = useTranslation();
-  const [proof, setProof] = useState('');
   const [loading, setLoading] = useState(false);
-  const [cardDetails, setCardDetails] = useState<any>(null);
-  const [step, setStep] = useState<'choose' | 'details' | 'confirm' | 'done'>('choose');
+  const [step, setStep] = useState<'processing' | 'done'>('processing');
 
   useEffect(() => {
-    premiumApi.getPaymentDetails().then(res => {
-      setCardDetails(res.data?.data || res.data);
-    }).catch(() => {});
-  }, []);
-
-  const handleStripe = async () => {
-    setLoading(true);
-    try {
-      const res = await premiumApi.stripeCheckout(tier.name);
-      const data = res.data?.data || res.data;
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
+    const go = async () => {
+      setLoading(true);
+      try {
+        const res = await premiumApi.stripeCheckout(tier.name);
+        const data = res.data?.data || res.data;
+        if (data?.url) {
+          window.location.href = data.url;
+          return;
+        }
         toast.error('Stripe не настроен');
+        onClose();
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || 'Ошибка Stripe');
+        onClose();
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Ошибка Stripe');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const copyCard = () => {
-    if (cardDetails?.cardNumber) {
-      navigator.clipboard.writeText(cardDetails.cardNumber.replace(/\s/g, ''));
-      toast.success('Номер скопирован');
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (!proof.trim()) { toast.error('Введите подтверждение'); return; }
-    setLoading(true);
-    try {
-      const res = await premiumApi.confirmPayment(tier.name, proof.trim());
-      const data = res.data?.data || res.data;
-      if (data?.success) {
-        setStep('done');
-        setTimeout(() => { onSuccess(); onClose(); }, 2000);
-      } else {
-        toast.error(data?.message || 'Ошибка');
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Ошибка подтверждения');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    go();
+  }, [tier.name, onClose]);
 
   return (
     <motion.div
@@ -120,119 +91,12 @@ function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose
             <h3 className="text-xl font-bold text-white mb-2">{t('premium.paymentSuccess')}</h3>
             <p className="text-gray-400 text-sm">{tier.label} активирован!</p>
           </div>
-        ) : step === 'choose' ? (
-          <>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <FaCreditCard className="text-primary-400" /> Оплата {tier.label}
-              </h3>
-              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
-            </div>
-
-            <div className="bg-primary-900/20 border border-primary-500/30 rounded-xl p-4 mb-5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-300">Сумма:</span>
-                <span className="text-2xl font-black text-white">${tier.price}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleStripe}
-              disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 mb-3"
-            >
-              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaCreditCard size={14} />}
-              Оплатить картой (Stripe)
-            </button>
-
-            <button
-              onClick={() => setStep('details')}
-              className="w-full py-3.5 rounded-xl bg-white/10 text-white font-bold text-sm hover:bg-white/20 transition-all flex items-center justify-center gap-2"
-            >
-              Перевод на карту
-            </button>
-          </>
-        ) : step === 'details' ? (
-          <>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <FaCreditCard className="text-primary-400" /> Оплата {tier.label}
-              </h3>
-              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
-              <p className="text-xs text-gray-400 mb-2">Переведите на карту:</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xl font-mono font-bold text-white tracking-wider">{cardDetails?.cardNumber || '•••• •••• •••• ••••'}</span>
-                <button onClick={copyCard} className="text-primary-400 hover:text-primary-300 p-2"><FaCopy size={16} /></button>
-              </div>
-              {cardDetails?.cardHolder && (
-                <p className="text-xs text-gray-400">Получатель: <span className="text-white">{cardDetails.cardHolder}</span></p>
-              )}
-              {cardDetails?.cardBank && (
-                <p className="text-xs text-gray-500 mt-1">{cardDetails.cardBank}</p>
-              )}
-            </div>
-
-            <div className="bg-primary-900/20 border border-primary-500/30 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-300">Сумма:</span>
-                <span className="text-2xl font-black text-white">${tier.price}</span>
-              </div>
-            </div>
-
-            <ol className="text-xs text-gray-400 space-y-2 mb-5 pl-4 list-decimal">
-              <li>Скопируйте номер карты выше</li>
-              <li>Откройте своё банковское приложение</li>
-              <li>Переведите <span className="text-white font-bold">${tier.price}</span> на эту карту</li>
-              <li>Нажмите «Я оплатил» и введите последние 4 цифры вашей карты</li>
-            </ol>
-
-            <button
-              onClick={() => setStep('confirm')}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-primary-600 to-primary-500 text-white font-bold text-sm hover:opacity-90 transition-all"
-            >
-              Я оплатил
-            </button>
-          </>
         ) : (
-          <>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white">Подтверждение оплаты</h3>
-              <button onClick={onClose} className="text-gray-500 hover:text-white"><FaTimes size={18} /></button>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
-              <p className="text-sm text-gray-300 mb-1">Переведено: <span className="text-white font-bold">${tier.price}</span></p>
-              <p className="text-sm text-gray-300">Карта: <span className="text-white font-mono">{cardDetails?.cardNumber || '••••'}</span></p>
-            </div>
-
-            <label className="block text-xs text-gray-400 mb-2">Последние 4 цифры вашей карты (с которой переводили):</label>
-            <input
-              type="text"
-              maxLength={4}
-              pattern="[0-9]{4}"
-              value={proof}
-              onChange={e => setProof(e.target.value.replace(/\D/g, ''))}
-              placeholder="1234"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl font-mono tracking-[0.3em] mb-4 focus:outline-none focus:border-primary-500 transition-all"
-              autoFocus
-            />
-
-            <button
-              onClick={handleConfirm}
-              disabled={loading || proof.length < 4}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-green-600 to-green-500 text-white font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaCheck size={14} />}
-              Подтвердить оплату
-            </button>
-
-            <button onClick={() => setStep('details')} className="w-full mt-3 text-gray-500 text-xs hover:text-white transition-all">
-              ← Назад к реквизитам
-            </button>
-          </>
+          <div className="text-center py-8">
+            <div className="w-12 h-12 border-3 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-white mb-2">Перенаправление на оплату...</h3>
+            <p className="text-gray-400 text-sm">Stripe Checkout загружается</p>
+          </div>
         )}
       </motion.div>
     </motion.div>

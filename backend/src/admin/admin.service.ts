@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import * as bcrypt from 'bcrypt';
 import * as os from 'os';
 
 @Injectable()
@@ -362,5 +363,37 @@ export class AdminService {
 
     this.logger.log(`Granted ${t.name} to user ${userId} for ${days} days`);
     return { success: true, subscription: t.name, endDate };
+  }
+
+  async createAdmin(email: string, password: string, displayName?: string) {
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      if (existing.role === 'ADMIN' || existing.role === 'SUPERADMIN') {
+        throw new ConflictException('User is already an admin');
+      }
+      const hash = await bcrypt.hash(password, 12);
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { role: 'ADMIN', passwordHash: hash, isVerified: true },
+      });
+      this.logger.log(`Promoted existing user ${email} to ADMIN`);
+      return { success: true, email, role: 'ADMIN', message: 'Existing user promoted to ADMIN' };
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    const username = email.split('@')[0] + '_admin';
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        username,
+        displayName: displayName || email.split('@')[0],
+        passwordHash: hash,
+        role: 'ADMIN',
+        isVerified: true,
+        preferences: { create: {} },
+      },
+    });
+    this.logger.log(`Created new admin account: ${email}`);
+    return { success: true, email, role: 'ADMIN', userId: user.id };
   }
 }

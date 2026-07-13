@@ -42,17 +42,6 @@ export class PremiumController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @Post('lava-checkout')
-  @ApiOperation({ summary: 'Create lava.top checkout session' })
-  createLavaCheckout(
-    @CurrentUser('id') userId: string,
-    @Body() body: { tierName: string },
-  ) {
-    return this.premiumService.createLavaTopCheckout(userId, body.tierName);
-  }
-
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Post('stripe-checkout')
   @ApiOperation({ summary: 'Create Stripe checkout session' })
   createStripeCheckout(
@@ -116,25 +105,6 @@ export class PremiumController {
     return this.premiumService.handleLemonSqueezyWebhook(body);
   }
 
-  @Public()
-  @Get('payment-details')
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Get payment card details' })
-  getPaymentDetails() {
-    return this.premiumService.getPaymentDetails();
-  }
-
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @Post('confirm-payment')
-  @ApiOperation({ summary: 'Confirm direct payment and activate premium' })
-  confirmPayment(
-    @CurrentUser('id') userId: string,
-    @Body() body: { tierName: string; proof: string },
-  ) {
-    return this.premiumService.confirmDirectPayment(userId, body.tierName, body.proof);
-  }
-
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('cancel')
@@ -158,21 +128,5 @@ export class PremiumController {
     const authHeader = req.headers['authorization'] as string || '';
     const rawBody = (req as any).rawBody || '';
     return this.premiumService.handleWebhook(rawBody, authHeader);
-  }
-
-  @Public()
-  @Post('webhook-lava')
-  @ApiExcludeEndpoint()
-  async webhookLava(@Req() req: Request) {
-    const rawBody = (req as any).rawBody || '';
-    const body = (req as any).body || req.body;
-    const signature = req.headers['x-webhook-signature'] as string || req.headers['x-lava-signature'] as string || '';
-
-    if (!this.premiumService.verifyLavaTopWebhook(rawBody, signature)) {
-      this.logger.warn('Lava.top webhook signature verification failed — rejecting');
-      return { received: false };
-    }
-
-    return this.premiumService.handleLavaTopWebhook(body);
   }
 }

@@ -38,6 +38,33 @@
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
+  /* In light mode, override hardcoded dark-theme colors */
+  :root:not(.dark) .text-white {
+    color: rgb(var(--dark-text)) !important;
+  }
+  :root:not(.dark) .bg-white\/5,
+  :root:not(.dark) .bg-white\/10,
+  :root:not(.dark) .bg-white\/20 {
+    background-color: rgb(var(--dark-card)) !important;
+  }
+  :root:not(.dark) .border-white\/10 {
+    border-color: rgb(var(--dark-border)) !important;
+  }
+  :root:not(.dark) .hover\:bg-white\/10:hover,
+  :root:not(.dark) .hover\:bg-white\/20:hover,
+  :root:not(.dark) .hover\:bg-white\/5:hover {
+    background-color: rgb(var(--dark-surface)) !important;
+  }
+  :root:not(.dark) .hover\:text-white:hover {
+    color: rgb(var(--dark-text)) !important;
+  }
+  :root:not(.dark) .scrollbar-track {
+    background: rgb(var(--dark-bg)) !important;
+  }
+  :root:not(.dark) .scrollbar-thumb {
+    background: rgb(var(--dark-border)) !important;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
@@ -57,7 +84,9 @@
 
 @layer components {
   .glass {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
+    @apply backdrop-blur-md border;
+    background-color: rgb(var(--dark-card) / 0.05);
+    border-color: rgb(var(--dark-border) / 0.1);
   }
 
   .glass-dark {
@@ -73,8 +102,14 @@
   }
 
   .btn-secondary {
-    @apply bg-white/10 hover:bg-white/20 text-white font-medium px-4 py-2 rounded-xl
-           transition-all duration-200 active:scale-95 border border-white/10;
+    @apply font-medium px-4 py-2 rounded-xl
+           transition-all duration-200 active:scale-95 border;
+    background-color: rgb(var(--dark-surface));
+    border-color: rgb(var(--dark-border));
+    color: rgb(var(--dark-text));
+  }
+  .btn-secondary:hover {
+    background-color: rgb(var(--dark-border));
   }
 
   .btn-accent {
@@ -83,9 +118,10 @@
   }
 
   .input-field {
-    @apply bg-dark-surface border border-dark-border text-white placeholder-gray-500
+    @apply bg-dark-surface border border-dark-border placeholder-gray-500
            rounded-xl px-4 py-3 w-full focus:outline-none focus:border-primary-500
            focus:ring-1 focus:ring-primary-500/50 transition-all duration-200;
+    color: rgb(var(--dark-text));
   }
 
   .card {

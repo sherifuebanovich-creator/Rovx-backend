@@ -75,6 +75,21 @@ export const useAuthStore = create<AuthState>()(
           const userData = inner?.user || payload?.user || inner;
           if (userData?.id) {
             set({ user: userData, isAuthenticated: true, isLoading: false, isInitDone: true });
+            // Apply pending language preference from registration/Google login
+            const pendingLang = typeof window !== 'undefined' ? localStorage.getItem('pending_lang') : null;
+            if (pendingLang && pendingLang !== (userData.preferredLang || 'ru')) {
+              try {
+                const usersApiMod = (await import('@/lib/api')).usersApi;
+                await usersApiMod.updateProfile({ preferredLang: pendingLang });
+                set((state) => ({
+                  user: state.user ? { ...state.user, preferredLang: pendingLang } : null,
+                }));
+              } catch {} finally {
+                localStorage.removeItem('pending_lang');
+              }
+            } else if (pendingLang) {
+              localStorage.removeItem('pending_lang');
+            }
           } else {
             set({ isInitDone: true, isLoading: false });
           }
