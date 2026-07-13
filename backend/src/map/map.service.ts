@@ -271,50 +271,44 @@ export class MapService {
   }
 
   async getSpeedCameras(lat: number, lng: number, radiusKm = 10) {
-    const cacheKey = `cameras:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `cameras:db:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
     const latDeg = radiusKm / 111.32;
     const lngDeg = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-    const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
-    const query = `[out:json];(node["highway"="speed_camera"](${bbox});node["camera:type"](${bbox}););out body;`;
 
-    let osmCameras: any[] = [];
-    try {
-      const res = await axios.post('https://overpass-api.de/api/interpreter',
-        `data=${encodeURIComponent(query)}`,
-        { timeout: 15000 },
-      );
-      osmCameras = (res.data.elements || []).map((el: any) => {
-        const tags = el.tags || {};
-        const cameraType = this.detectCameraType(tags);
-        return {
-          id: `osm-cam-${el.id}`,
-          lat: el.lat,
-          lng: el.lon,
-          name: tags.name || tags.operator || '',
-          cameraType,
-          maxSpeed: tags.maxspeed ? parseInt(tags.maxspeed, 10) : undefined,
-          direction: tags.direction || undefined,
-        };
-      });
-    } catch (err) {
-      this.logger.warn(`Overpass camera API error: ${(err as Error).message}`);
-    }
+    const dbCameras = await this.prisma.speedCamera.findMany({
+      where: {
+        isActive: true,
+        lat: { gte: lat - latDeg, lte: lat + latDeg },
+        lng: { gte: lng - lngDeg, lte: lng + lngDeg },
+      },
+      select: {
+        id: true,
+        type: true,
+        lat: true,
+        lng: true,
+        direction: true,
+        speedLimit: true,
+        roadName: true,
+        source: true,
+      },
+    });
 
-    const govCameras = await this.governmentData.fetchGovernmentSpeedCameras(lat, lng, radiusKm);
+    const result = dbCameras.map((c) => ({
+      id: c.id,
+      lat: c.lat,
+      lng: c.lng,
+      name: c.roadName || '',
+      cameraType: c.type,
+      maxSpeed: c.speedLimit || undefined,
+      direction: c.direction ? String(c.direction) : undefined,
+      source: c.source,
+    }));
 
-    const merged = [...osmCameras];
-    for (const gov of govCameras) {
-      const dup = merged.some(
-        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
-      );
-      if (!dup) merged.push(gov);
-    }
-
-    await this.redis.set(cacheKey, JSON.stringify(merged), 600);
-    return merged;
+    await this.redis.set(cacheKey, JSON.stringify(result), 3600);
+    return result;
   }
 
   private detectCameraType(tags: Record<string, string>): string {
@@ -331,44 +325,40 @@ export class MapService {
   }
 
   async getTrafficSignals(lat: number, lng: number, radiusKm = 2) {
-    const cacheKey = `traffic:merged:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
+    const cacheKey = `traffic:db:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
     const latDeg = radiusKm / 111.32;
     const lngDeg = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-    const bbox = `${(lat - latDeg).toFixed(5)},${(lng - lngDeg).toFixed(5)},${(lat + latDeg).toFixed(5)},${(lng + lngDeg).toFixed(5)}`;
-    const query = `[out:json];node["highway"="traffic_signals"](${bbox});out body;`;
 
-    let osmSignals: any[] = [];
-    try {
-      const res = await axios.post('https://overpass-api.de/api/interpreter',
-        `data=${encodeURIComponent(query)}`,
-        { timeout: 10000 },
-      );
-      osmSignals = (res.data.elements || []).map((el: any) => ({
-        id: `osm-${el.id}`,
-        lat: el.lat,
-        lng: el.lon,
-        name: el.tags?.name || '',
-        crossing: el.tags?.crossing || '',
-      }));
-    } catch (err) {
-      this.logger.warn(`Overpass API error: ${(err as Error).message}`);
-    }
+    const dbSignals = await this.prisma.mapFeature.findMany({
+      where: {
+        type: 'traffic_signals',
+        lat: { gte: lat - latDeg, lte: lat + latDeg },
+        lng: { gte: lng - lngDeg, lte: lng + lngDeg },
+      },
+      select: {
+        id: true,
+        lat: true,
+        lng: true,
+        tags: true,
+      },
+    });
 
-    const govSignals = await this.governmentData.fetchGovernmentTrafficSignals(lat, lng, radiusKm);
+    const result = dbSignals.map((s) => {
+      const tags = s.tags ? JSON.parse(s.tags) : {};
+      return {
+        id: s.id,
+        lat: s.lat,
+        lng: s.lng,
+        name: tags.name || '',
+        crossing: tags.crossing || '',
+      };
+    });
 
-    const merged = [...osmSignals];
-    for (const gov of govSignals) {
-      const dup = merged.some(
-        (m) => Math.abs(m.lat - gov.lat) < 0.0005 && Math.abs(m.lng - gov.lng) < 0.0005,
-      );
-      if (!dup) merged.push(gov);
-    }
-
-    await this.redis.set(cacheKey, JSON.stringify(merged), 300);
-    return merged;
+    await this.redis.set(cacheKey, JSON.stringify(result), 3600);
+    return result;
   }
 
   async getNearby(lat: number, lng: number, radiusKm: number, category?: MapObjectCategory) {

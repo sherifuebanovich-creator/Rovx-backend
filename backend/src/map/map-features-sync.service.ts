@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import axios from 'axios';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
@@ -59,7 +60,7 @@ export class MapFeaturesSyncService {
 
           await new Promise(r => setTimeout(r, 5000));
         } catch (err) {
-          this.logger.error(`Failed to sync ${country.name}: ${err.message}`);
+          this.logger.error(`Failed to sync ${country.name}: ${(err as Error).message}`);
           results[country.name] = 0;
         }
       }
@@ -82,17 +83,16 @@ area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea;
 out body;
     `.trim();
 
-    const response = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(query)}`,
-    });
+    const response = await axios.post(
+      OVERPASS_URL,
+      `data=${encodeURIComponent(query)}`,
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 180000,
+      },
+    );
 
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${await response.text()}`);
-    }
-
-    const data = await response.json();
+    const data = response.data;
     const elements: OverpassElement[] = data.elements || [];
 
     let count = 0;
@@ -101,34 +101,86 @@ out body;
       if (!el.lat || !el.lon) continue;
 
       const osmType = el.tags?.highway;
-      const type = osmType === 'speed_camera' ? 'speed_camera' : 'traffic_signals';
       const osmId = `osm_${el.id}`;
 
       try {
-        await this.prisma.mapFeature.upsert({
-          where: { osmId },
-          create: {
-            type,
-            lat: el.lat,
-            lng: el.lon,
-            countryCode,
-            osmId,
-            tags: el.tags ? JSON.stringify(el.tags) : null,
-            source: 'osm',
-          },
-          update: {
-            lat: el.lat,
-            lng: el.lon,
-            tags: el.tags ? JSON.stringify(el.tags) : null,
-          },
-        });
-        count++;
+        if (osmType === 'speed_camera') {
+          await this.upsertSpeedCamera(el, countryCode, osmId);
+          count++;
+        } else {
+          await this.upsertMapFeature(el, countryCode, osmId);
+          count++;
+        }
       } catch (err) {
-        this.logger.warn(`Failed to upsert ${osmId}: ${err.message}`);
+        this.logger.warn(`Failed to upsert ${osmId}: ${(err as Error).message}`);
       }
     }
 
     return count;
+  }
+
+  private async upsertSpeedCamera(el: OverpassElement, countryCode: string, osmId: string) {
+    const tags = el.tags || {};
+    const type = this.detectCameraType(tags);
+    const speedLimit = tags.maxspeed ? parseInt(tags.maxspeed, 10) : undefined;
+    const direction = tags.direction ? parseFloat(tags.direction) : undefined;
+
+    await this.prisma.speedCamera.upsert({
+      where: { osmId },
+      create: {
+        type,
+        lat: el.lat,
+        lng: el.lon,
+        direction: isFinite(direction!) ? direction : null,
+        speedLimit: isFinite(speedLimit!) ? speedLimit : null,
+        roadName: tags.name || tags.operator || null,
+        isActive: true,
+        source: 'OVERPASS',
+        osmId,
+      },
+      update: {
+        type,
+        lat: el.lat,
+        lng: el.lon,
+        direction: isFinite(direction!) ? direction : null,
+        speedLimit: isFinite(speedLimit!) ? speedLimit : null,
+        roadName: tags.name || tags.operator || null,
+        isActive: true,
+      },
+    });
+  }
+
+  private async upsertMapFeature(el: OverpassElement, countryCode: string, osmId: string) {
+    await this.prisma.mapFeature.upsert({
+      where: { osmId },
+      create: {
+        type: 'traffic_signals',
+        lat: el.lat,
+        lng: el.lon,
+        countryCode,
+        osmId,
+        tags: el.tags ? JSON.stringify(el.tags) : null,
+        source: 'osm',
+      },
+      update: {
+        lat: el.lat,
+        lng: el.lon,
+        tags: el.tags ? JSON.stringify(el.tags) : null,
+      },
+    });
+  }
+
+  private detectCameraType(tags: Record<string, string>): string {
+    if (tags.man_mobile === 'yes' || tags.mobile === 'yes') return 'MOBILE';
+    if (tags['camera:type'] === 'tripos' || tags.tripod === 'yes') return 'TRIPOD';
+    if (tags['camera:type'] === 'red_light' || tags['red_light_camera'] === 'yes') return 'RED_LIGHT';
+    if (tags['camera:type'] === 'average_speed' || tags.average_speed === 'yes') return 'AVERAGE_SPEED';
+    if (tags.enforcement === 'bus_lane') return 'BUS_LANE';
+    if (tags.enforcement === 'dedicated_lane') return 'DEDICATED_LANE';
+    if (tags['camera:type'] === 'photographic' || tags['camera:type'] === 'radar') return 'PHOTORADAR';
+    if (tags.hidden === 'yes' || tags['camera:type'] === 'ambush') return 'AMBUSH';
+    if (tags.enforcement === 'seatbelt' || tags['camera:type'] === 'seatbelt') return 'SEATBELT';
+    return 'STATIONARY';
   }
 
   async getFeaturesByBbox(
@@ -138,7 +190,7 @@ out body;
     maxLng: number,
     types?: string[],
   ) {
-    const typeFilter = types?.length ? types : ['speed_camera', 'traffic_signals'];
+    const typeFilter = types?.length ? types : ['traffic_signals'];
 
     return this.prisma.mapFeature.findMany({
       where: {
