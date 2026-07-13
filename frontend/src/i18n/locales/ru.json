@@ -181,7 +181,8 @@
     "kmh": "км/ч",
     "recalculating": "Пересчёт маршрута...",
     "rerouted": "Маршрут пересчитан",
-    "endTrip": "Завершить поездку"
+    "endTrip": "Завершить поездку",
+    "sec": "сек"
   },
   "objectDetailPanel": {
     "categories": {

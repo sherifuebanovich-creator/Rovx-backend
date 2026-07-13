@@ -190,7 +190,8 @@
     "kmh": "km/h",
     "recalculating": "Recalculating route...",
     "rerouted": "Route recalculated",
-    "endTrip": "End trip"
+    "endTrip": "End trip",
+    "sec": "sec"
   },
   "objectDetailPanel": {
     "categories": {

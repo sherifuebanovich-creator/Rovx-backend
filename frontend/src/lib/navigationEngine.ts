@@ -12,8 +12,8 @@ export interface NavigationUpdate {
 }
 
 const ARRIVAL_THRESHOLD_METERS = 50;
-const OFF_ROUTE_THRESHOLD_METERS = 80;
-const LEG_ADVANCE_DISTANCE_METERS = 25;
+const OFF_ROUTE_THRESHOLD_METERS = 30;
+const LEG_ADVANCE_DISTANCE_METERS = 15;
 
 let lastRerouteTime = 0;
 const REROUTE_COOLDOWN_MS = 15000;

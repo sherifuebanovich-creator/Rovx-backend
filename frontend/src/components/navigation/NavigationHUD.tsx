@@ -140,10 +140,10 @@ export function NavigationHUD() {
     if (update.routeProgress !== navigation.routeProgress) {
       setNavigation({ routeProgress: update.routeProgress });
     }
-    if (Math.abs(update.distanceToManeuver - navigation.distanceToManeuver) > 5) {
+    if (Math.abs(update.distanceToManeuver - navigation.distanceToManeuver) > 2) {
       setNavigation({ distanceToManeuver: update.distanceToManeuver });
     }
-    if (Math.abs(update.bearingToManeuver - navigation.bearingToManeuver) > 2) {
+    if (Math.abs(update.bearingToManeuver - navigation.bearingToManeuver) > 1) {
       setNavigation({ bearingToManeuver: update.bearingToManeuver });
     }
 
@@ -287,11 +287,13 @@ export function NavigationHUD() {
         selectedRoute.duration, selectedRoute.distance * 1000,
       )
     : null;
-  const remainingMin = remainingSec != null ? Math.round(remainingSec / 60) : null;
+  const remainingMin = remainingSec != null ? remainingSec / 60 : null;
   const remainingTime = remainingMin != null
     ? remainingMin >= 60
-      ? `${Math.floor(remainingMin / 60)} ${t('navigationHud.h')} ${remainingMin % 60} ${t('navigationHud.min')}`
-      : `${remainingMin} ${t('navigationHud.min')}`
+      ? `${Math.floor(remainingMin / 60)} ${t('navigationHud.h')} ${Math.round(remainingMin % 60)} ${t('navigationHud.min')}`
+      : remainingMin >= 1
+        ? `${Math.round(remainingMin)} ${t('navigationHud.min')}`
+        : `${Math.max(1, Math.round(remainingSec))} ${t('navigationHud.sec') || 'сек'}`
     : null;
 
   return (

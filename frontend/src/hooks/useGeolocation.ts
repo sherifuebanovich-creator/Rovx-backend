@@ -5,7 +5,7 @@ import { useMapStore } from '@/store/map.store';
 const SPEED_SMOOTHING_ALPHA = 0.35;
 const SMOOTHED_SPEED_KEY = 'rovx_smoothedSpeed';
 const AUTO_FOLLOW_SPEED_THRESHOLD = 10;
-const POSITION_THROTTLE_MS = 500;
+const POSITION_THROTTLE_MS = 200;
 
 interface LocationState {
   lat: number;
@@ -115,7 +115,7 @@ export function useGeolocation() {
 
     const options: PositionOptions = {
       enableHighAccuracy: true,
-      maximumAge: 1000,
+      maximumAge: 500,
       timeout: 10000,
     };
 

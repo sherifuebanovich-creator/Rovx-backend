@@ -10,7 +10,7 @@ import {
 } from '@/lib/maplibreIcons';
 import { speedToAutoZoom } from '@/lib/navigationEngine';
 
-const INTERPOLATION_DURATION_MS = 600;
+const INTERPOLATION_DURATION_MS = 300;
 const FOLLOW_THRESHOLD_PX = 60;
 
 interface Props {
@@ -232,7 +232,7 @@ export default function UserLocationLayer({ map }: Props) {
     if (distPx > FOLLOW_THRESHOLD_PX || (isNav && zoomDiff > 0.3)) {
       const opts: maplibregl.CameraOptions & maplibregl.AnimationOptions = {
         center: [userLocation.lng, userLocation.lat],
-        duration: isNav ? 500 : 800,
+        duration: isNav ? 300 : 800,
         easing: (t: number) => t * (2 - t),
       };
       if (isNav && targetZoom != null && zoomDiff > 0.3) {
