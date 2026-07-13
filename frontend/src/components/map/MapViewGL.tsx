@@ -47,6 +47,8 @@ export default function MapViewGL() {
   isNavigatingRef.current = navigation.isNavigating;
 
   const routeProgress = navigation.routeProgress;
+  const forwardIndex = navigation.forwardIndex;
+  const isWrongWay = navigation.isWrongWay;
 
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
@@ -176,26 +178,17 @@ export default function MapViewGL() {
 
     const coords = selectedRoute.polyline.map((p) => [p.lng, p.lat]);
     const isNav = navigation.isNavigating;
-    const progress = navigation.routeProgress;
-    const splitIdx = Math.max(1, Math.min(coords.length - 1, Math.round(progress * (coords.length - 1))));
+
+    let splitIdx: number;
+    if (isNav && forwardIndex > 0) {
+      splitIdx = Math.max(1, Math.min(coords.length - 1, forwardIndex));
+    } else {
+      const progress = navigation.routeProgress;
+      splitIdx = Math.max(1, Math.min(coords.length - 1, Math.round(progress * (coords.length - 1))));
+    }
 
     if (isNav && splitIdx > 0 && splitIdx < coords.length) {
-      const traveledCoords = coords.slice(0, splitIdx + 1);
       const remainingCoords = coords.slice(splitIdx);
-
-      if (traveledCoords.length >= 2) {
-        map.addSource(routeTraveledId, {
-          type: 'geojson',
-          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: traveledCoords } },
-        });
-        map.addLayer({
-          id: routeTraveledId,
-          type: 'line',
-          source: routeTraveledId,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#64748b', 'line-width': 4, 'line-opacity': 0.5 },
-        });
-      }
 
       if (remainingCoords.length >= 2) {
         map.addSource(routeRemainingId, {
@@ -207,7 +200,11 @@ export default function MapViewGL() {
           type: 'line',
           source: routeRemainingId,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#0ea5e9', 'line-width': 5, 'line-opacity': 0.9 },
+          paint: {
+            'line-color': isWrongWay ? '#ef4444' : '#0ea5e9',
+            'line-width': 5,
+            'line-opacity': isWrongWay ? 0.5 : 0.9,
+          },
         });
       }
     } else {
@@ -235,7 +232,7 @@ export default function MapViewGL() {
         map.fitBounds(bounds, { padding: 60, duration: 500 });
       } catch {}
     }
-  }, [selectedRoute, navigation.isNavigating, routeProgress]);
+  }, [selectedRoute, navigation.isNavigating, routeProgress, forwardIndex, isWrongWay]);
 
   // Render POI markers
   const renderObjectMarkers = useCallback(

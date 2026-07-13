@@ -129,16 +129,21 @@ export function NavigationHUD() {
 
     if (update.currentLeg !== navigation.currentLeg ||
         update.isArrived !== navigation.isArrived ||
-        update.isOffRoute !== navigation.isOffRoute) {
+        update.isOffRoute !== navigation.isOffRoute ||
+        update.isWrongWay !== navigation.isWrongWay) {
       setNavigation({
         currentLeg: update.currentLeg,
         isArrived: update.isArrived,
         isOffRoute: update.isOffRoute,
+        isWrongWay: update.isWrongWay,
       });
     }
 
     if (update.routeProgress !== navigation.routeProgress) {
       setNavigation({ routeProgress: update.routeProgress });
+    }
+    if (update.forwardIndex !== navigation.forwardIndex) {
+      setNavigation({ forwardIndex: update.forwardIndex });
     }
     if (Math.abs(update.distanceToManeuver - navigation.distanceToManeuver) > 2) {
       setNavigation({ distanceToManeuver: update.distanceToManeuver });
@@ -342,6 +347,28 @@ export function NavigationHUD() {
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm font-semibold text-white">{t('navigationHud.recalculating')}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Wrong way warning */}
+      <AnimatePresence>
+        {navigation.isWrongWay && !navigation.isRerouting && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute top-20 left-4 right-4 pointer-events-auto z-10"
+          >
+            <div className="bg-red-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-red-400/30 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <p className="text-sm font-bold text-white">{t('navigationHud.wrongWay') || 'Едете не в том направлении!'}</p>
+                  <p className="text-xs text-red-200">{t('navigationHud.turnAround') || 'Развернитесь'}</p>
+                </div>
               </div>
             </div>
           </motion.div>

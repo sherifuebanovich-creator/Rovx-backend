@@ -10,6 +10,8 @@ interface NavigationState {
   isArrived: boolean;
   isOffRoute: boolean;
   isRerouting: boolean;
+  isWrongWay: boolean;
+  forwardIndex: number;
 }
 
 interface MapState {
@@ -141,6 +143,8 @@ export const useMapStore = create<MapState>((set) => ({
     isArrived: false,
     isOffRoute: false,
     isRerouting: false,
+    isWrongWay: false,
+    forwardIndex: 0,
   },
   isAiCoDriverEnabled: false,
 
@@ -280,6 +284,8 @@ export const useMapStore = create<MapState>((set) => ({
         isArrived: false,
         isOffRoute: false,
         isRerouting: false,
+        isWrongWay: false,
+        forwardIndex: 0,
       },
       searchQuery: '',
       searchSuggestions: [],
