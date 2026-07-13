@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Param, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -87,6 +87,27 @@ export class MapFeaturesController {
     try {
       const count = await this.syncService.syncCountry(code);
       return { success: true, data: { country: code, count } };
+    } catch (err) {
+      return { success: false, message: (err as Error).message };
+    }
+  }
+
+  @Post('import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
+  @ApiOperation({ summary: 'Bulk import Overpass elements (admin only)' })
+  async importElements(
+    @Body() body: { countryCode: string; elements: Array<{ type: string; id: number; lat: number; lon: number; tags?: Record<string, string> }> },
+  ) {
+    if (!body.countryCode || body.countryCode.length !== 2) {
+      throw new BadRequestException('countryCode must be a 2-letter ISO code');
+    }
+    if (!Array.isArray(body.elements) || body.elements.length === 0) {
+      throw new BadRequestException('elements must be a non-empty array');
+    }
+    try {
+      const count = await this.syncService.importElements(body.elements, body.countryCode.toUpperCase());
+      return { success: true, data: { country: body.countryCode.toUpperCase(), imported: count } };
     } catch (err) {
       return { success: false, message: (err as Error).message };
     }

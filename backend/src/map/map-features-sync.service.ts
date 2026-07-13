@@ -205,6 +205,27 @@ out body;
     return 'STATIONARY';
   }
 
+  async importElements(elements: OverpassElement[], countryCode: string): Promise<number> {
+    let count = 0;
+    for (const el of elements) {
+      if (!el.lat || !el.lon) continue;
+      const osmType = el.tags?.highway;
+      const osmId = `osm_${el.id}`;
+      try {
+        if (osmType === 'speed_camera') {
+          await this.upsertSpeedCamera(el, countryCode, osmId);
+          count++;
+        } else {
+          await this.upsertMapFeature(el, countryCode, osmId);
+          count++;
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to upsert ${osmId}: ${(err as Error).message}`);
+      }
+    }
+    return count;
+  }
+
   async getFeaturesByBbox(
     minLat: number,
     minLng: number,
