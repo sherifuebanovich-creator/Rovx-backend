@@ -5,7 +5,6 @@ import { useMapStore } from '@/store/map.store';
 import {
   createBlueDotElements,
   updateBlueDotAccuracy,
-  updateBlueDotHeading,
   accuracyCircleGeoJSON,
   type BlueDotElements,
 } from '@/lib/maplibreIcons';
@@ -190,7 +189,6 @@ export default function UserLocationLayer({ map }: Props) {
       const heading = interpolateHeading(from.heading, to.heading, ease);
 
       markerRef.current.setLngLat([lng, lat]);
-      updateBlueDotHeading(blueDotRef.current, heading);
 
       if (t < 1) {
         rafIdRef.current = requestAnimationFrame(interpolate);
@@ -244,22 +242,6 @@ export default function UserLocationLayer({ map }: Props) {
     }
   }, [map, userLocation, followActive, userSpeed]);
 
-  const handleRecenter = useCallback(() => {
-    if (!map || !userLocation) return;
-    followActiveRef.current = true;
-    setFollowActive(true);
-    setFollowUser(true);
-    userDragRef.current = false;
-    clearTimeout(followTimeoutRef.current);
-
-    map.easeTo({
-      center: [userLocation.lng, userLocation.lat],
-      zoom: Math.max(map.getZoom(), 15),
-      duration: 600,
-      easing: (t) => t * (2 - t),
-    });
-  }, [map, userLocation, setFollowUser]);
-
   // Inject pulse animation once
   useEffect(() => {
     const id = 'rovx-pulse-style';
@@ -278,31 +260,6 @@ export default function UserLocationLayer({ map }: Props) {
 
   return (
     <>
-      {!followActive && userLocation && !navigation.isNavigating && (
-        <button
-          onClick={handleRecenter}
-          className="absolute z-40 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"
-          style={{
-            bottom: '200px',
-            right: '16px',
-            width: '48px',
-            height: '48px',
-            background: 'rgba(14,165,233,0.9)',
-            backdropFilter: 'blur(8px)',
-            border: '2px solid rgba(255,255,255,0.3)',
-          }}
-          aria-label="Center on my location"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <line x1="12" y1="2" x2="12" y2="6" />
-            <line x1="12" y1="18" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="6" y2="12" />
-            <line x1="18" y1="12" x2="22" y2="12" />
-          </svg>
-        </button>
-      )}
-
       {locationError && (
         <div
           className="absolute z-40 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs font-medium"

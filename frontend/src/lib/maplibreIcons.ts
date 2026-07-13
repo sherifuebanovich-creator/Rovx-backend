@@ -207,7 +207,6 @@ export interface BlueDotElements {
   pulseRing: HTMLDivElement;
   dotOuter: HTMLDivElement;
   dotInner: HTMLDivElement;
-  headingCone: HTMLDivElement;
   accuracyCircle: HTMLDivElement;
 }
 
@@ -243,23 +242,6 @@ export function createBlueDotElements(): BlueDotElements {
   `;
   container.appendChild(pulseRing);
 
-  const headingCone = document.createElement('div');
-  headingCone.className = 'rovx-heading-cone';
-  headingCone.style.cssText = `
-    position:absolute;
-    width:0;
-    height:0;
-    border-left:14px solid transparent;
-    border-right:14px solid transparent;
-    border-bottom:28px solid rgba(14,165,233,0.25);
-    transform:translate(-50%,-100%) translate(0,-10px) rotate(0deg);
-    transform-origin:center bottom;
-    transition:transform 0.4s cubic-bezier(0.33,1,0.68,1);
-    filter:blur(1px);
-    pointer-events:none;
-  `;
-  container.appendChild(headingCone);
-
   const dotOuter = document.createElement('div');
   dotOuter.className = 'rovx-dot-outer';
   dotOuter.style.cssText = `
@@ -292,7 +274,7 @@ export function createBlueDotElements(): BlueDotElements {
   `;
   dotOuter.appendChild(dotInner);
 
-  return { container, pulseRing, dotOuter, dotInner, headingCone, accuracyCircle };
+  return { container, pulseRing, dotOuter, dotInner, accuracyCircle };
 }
 
 export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: number, mapZoom: number, lat: number) {
@@ -305,8 +287,8 @@ export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: numbe
   el.accuracyCircle.style.height = `${clamped}px`;
 }
 
-export function updateBlueDotHeading(el: BlueDotElements, heading: number) {
-  el.headingCone.style.transform = `translate(-50%,-100%) translate(0,-10px) rotate(${heading}deg)`;
+export function updateBlueDotHeading(_el: BlueDotElements, _heading: number) {
+  // Heading cone removed — user marker is now a plain dot
 }
 
 export function metersToPixelsAtLat(meters: number, lat: number, zoom: number): number {
