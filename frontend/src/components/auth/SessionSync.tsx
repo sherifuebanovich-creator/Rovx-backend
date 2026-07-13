@@ -21,8 +21,11 @@ export function SessionSync() {
       const cookieToken = Cookies.get('access_token');
       const googleUser = (session as any).user;
 
-      // Не перезаписываем token — Zustand/interceptor управляют токенами.
-      // NextAuth JWT содержит accessToken при sign-in, но не обновляется при refresh.
+      // Sync token only when no access_token cookie exists (initial Google login or page reload).
+      // Never overwrite: interceptor refresh writes fresh tokens via setTokens.
+      if (sessionToken && !cookieToken) {
+        setTokens(sessionToken, refreshToken || '');
+      }
 
       if (rovxUser && !syncedRef.current) {
         syncedRef.current = true;
