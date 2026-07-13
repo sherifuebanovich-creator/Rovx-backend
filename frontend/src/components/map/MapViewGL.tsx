@@ -13,6 +13,7 @@ import {
 } from '@/lib/maplibreIcons';
 import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
 import UserLocationLayer from './UserLocationLayer';
+import MapFeaturesLayer from './MapFeaturesLayer';
 
 function escapeHtml(text: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -552,6 +553,7 @@ export default function MapViewGL() {
     <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>
       <div ref={containerRef} className="w-full h-full" />
       <UserLocationLayer map={mapRef.current} />
+      <MapFeaturesLayer map={mapRef.current} />
     </div>
   );
 }

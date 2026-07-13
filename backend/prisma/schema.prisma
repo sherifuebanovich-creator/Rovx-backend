@@ -569,6 +569,24 @@ model SpeedCamera {
   @@map("speed_cameras")
 }
 
+model MapFeature {
+  id          String   @id @default(uuid())
+  type        String   // "speed_camera" | "traffic_signals"
+  lat         Float
+  lng         Float
+  countryCode String
+  osmId       String   @unique
+  tags        String?  // JSON string with raw OSM tags
+  source      String   @default("osm")
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([lat, lng])
+  @@index([countryCode])
+  @@index([type])
+  @@map("map_features")
+}
+
 model TruckRestStop {
   id              String   @id @default(uuid())
   name            String

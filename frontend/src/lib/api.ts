@@ -193,6 +193,8 @@ export const mapApi = {
     api.get('/map/traffic-signals', { params: { lat, lng, radius } }),
   getGovernmentTrafficSignals: (lat: number, lng: number, radius = 2) =>
     api.get('/map/government-traffic-signals', { params: { lat, lng, radius } }),
+  getFeatures: (bbox: string, types?: string) =>
+    api.get('/map-features', { params: { bbox, types } }),
   search: (q: string, lat?: number, lng?: number) =>
     api.get('/map/search', { params: { q, lat, lng } }),
   suggest: (q: string, lat?: number, lng?: number) =>

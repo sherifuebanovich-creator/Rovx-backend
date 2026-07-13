@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RoutesModule } from './routes/routes.module';
 import { MapModule } from './map/map.module';
+import { MapFeaturesModule } from './map/map-features.module';
 import { ReportsModule } from './reports/reports.module';
 import { AiModule } from './ai/ai.module';
 import { SocialModule } from './social/social.module';
@@ -63,6 +64,7 @@ import { TasksModule } from './tasks/tasks.module';
     UsersModule,
     RoutesModule,
     MapModule,
+    MapFeaturesModule,
     ReportsModule,
     AiModule,
     SocialModule,
