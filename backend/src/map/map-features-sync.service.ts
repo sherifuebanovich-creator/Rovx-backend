@@ -206,23 +206,67 @@ out body;
   }
 
   async importElements(elements: OverpassElement[], countryCode: string): Promise<number> {
-    let count = 0;
+    const cameras: any[] = [];
+    const signals: any[] = [];
+
     for (const el of elements) {
       if (!el.lat || !el.lon) continue;
       const osmType = el.tags?.highway;
       const osmId = `osm_${el.id}`;
-      try {
-        if (osmType === 'speed_camera') {
-          await this.upsertSpeedCamera(el, countryCode, osmId);
-          count++;
-        } else {
-          await this.upsertMapFeature(el, countryCode, osmId);
-          count++;
-        }
-      } catch (err) {
-        this.logger.warn(`Failed to upsert ${osmId}: ${(err as Error).message}`);
+      const tags = el.tags || {};
+
+      if (osmType === 'speed_camera') {
+        const type = this.detectCameraType(tags);
+        const speedLimit = tags.maxspeed ? parseInt(tags.maxspeed, 10) : null;
+        const direction = tags.direction ? parseFloat(tags.direction) : null;
+        cameras.push({
+          type,
+          lat: el.lat,
+          lng: el.lon,
+          direction: isFinite(direction!) ? direction : null,
+          speedLimit: isFinite(speedLimit!) ? speedLimit : null,
+          roadName: tags.name || tags.operator || null,
+          isActive: true,
+          source: 'OVERPASS',
+          osmId,
+        });
+      } else {
+        signals.push({
+          type: 'traffic_signals',
+          lat: el.lat,
+          lng: el.lon,
+          countryCode,
+          osmId,
+          tags: tags && Object.keys(tags).length ? JSON.stringify(tags) : null,
+          source: 'osm',
+        });
       }
     }
+
+    let count = 0;
+
+    // Bulk insert cameras in batches of 500
+    for (let i = 0; i < cameras.length; i += 500) {
+      const chunk = cameras.slice(i, i + 500);
+      try {
+        const res = await this.prisma.speedCamera.createMany({ data: chunk, skipDuplicates: true });
+        count += res.count;
+      } catch (err) {
+        this.logger.warn(`Bulk camera insert failed: ${(err as Error).message}`);
+      }
+    }
+
+    // Bulk insert signals in batches of 500
+    for (let i = 0; i < signals.length; i += 500) {
+      const chunk = signals.slice(i, i + 500);
+      try {
+        const res = await this.prisma.mapFeature.createMany({ data: chunk, skipDuplicates: true });
+        count += res.count;
+      } catch (err) {
+        this.logger.warn(`Bulk signal insert failed: ${(err as Error).message}`);
+      }
+    }
+
     return count;
   }
 

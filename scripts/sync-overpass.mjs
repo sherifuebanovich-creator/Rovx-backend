@@ -10,7 +10,10 @@
  */
 
 const API_BASE = 'https://rovx-backend-up1u.onrender.com/api/v1';
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_URLS = [
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+];
 
 const CIS_COUNTRIES = {
   UZ: 'Uzbekistan', KZ: 'Kazakhstan', KG: 'Kyrgyzstan',
@@ -41,14 +44,23 @@ area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea;
 out body;
   `.trim();
 
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-
-  if (!res.ok) throw new Error(`Overpass returned ${res.status}: ${await res.text()}`);
-  return (await res.json()).elements || [];
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(120000),
+      });
+      if (res.ok) {
+        return (await res.json()).elements || [];
+      }
+      console.log(`  ${url} returned ${res.status}, trying next...`);
+    } catch (err) {
+      console.log(`  ${url} failed: ${err.message}, trying next...`);
+    }
+  }
+  throw new Error(`All Overpass endpoints failed for ${countryCode}`);
 }
 
 async function importToServer(token, countryCode, elements) {
