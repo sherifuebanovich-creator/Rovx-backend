@@ -21,11 +21,11 @@ export function SessionSync() {
       const cookieToken = Cookies.get('access_token');
       const googleUser = (session as any).user;
 
-      if (sessionToken && cookieToken !== sessionToken) {
-        setTokens(sessionToken, refreshToken || '');
-      }
+      // Не перезаписываем token — Zustand/interceptor управляют токенами.
+      // NextAuth JWT содержит accessToken при sign-in, но не обновляется при refresh.
 
       if (rovxUser && !syncedRef.current) {
+        syncedRef.current = true;
         setUser({
           id: rovxUser.id || storeUser?.id || '',
           email: rovxUser.email || storeUser?.email || (session as any).user?.email || '',

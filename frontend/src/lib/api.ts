@@ -91,6 +91,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         Cookies.remove('access_token', { path: '/' });
+        try { localStorage.removeItem('rovx-auth'); } catch {}
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
         }

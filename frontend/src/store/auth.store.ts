@@ -47,6 +47,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         Cookies.remove('access_token', { path: '/' });
+        try { localStorage.removeItem('rovx-auth'); } catch {}
         set({ user: null, isAuthenticated: false, preferences: null, accessToken: null, refreshToken: null });
       },
 

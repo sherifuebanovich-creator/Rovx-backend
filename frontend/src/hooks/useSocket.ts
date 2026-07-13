@@ -36,6 +36,10 @@ export function useSocket() {
     socketInstance.on('connect', () => {
       const latestToken = Cookies.get('access_token');
       if (latestToken && latestToken !== token) {
+        const now = Date.now();
+        const lastReconnect = (connect as any).__lastReconnect || 0;
+        if (now - lastReconnect < 3000) return;
+        (connect as any).__lastReconnect = now;
         socketInstance?.removeAllListeners();
         socketInstance?.disconnect();
         socketInstance = null;
