@@ -67,8 +67,12 @@ export class MapFeaturesController {
   @Roles(USER_ROLES.ADMIN)
   @ApiOperation({ summary: 'Trigger full sync of all CIS countries (admin only)' })
   async triggerSync() {
-    const result = await this.syncService.syncAll();
-    return { success: true, data: result };
+    try {
+      const result = await this.syncService.syncAll();
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, message: (err as Error).message };
+    }
   }
 
   @Post('sync/:country')
@@ -80,7 +84,11 @@ export class MapFeaturesController {
     if (code.length !== 2) {
       throw new BadRequestException('Country must be a 2-letter ISO code (e.g. UZ, KZ)');
     }
-    const count = await this.syncService.syncCountry(code);
-    return { success: true, data: { country: code, count } };
+    try {
+      const count = await this.syncService.syncCountry(code);
+      return { success: true, data: { country: code, count } };
+    } catch (err) {
+      return { success: false, message: (err as Error).message };
+    }
   }
 }

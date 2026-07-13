@@ -3,7 +3,10 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_URLS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
 
 const CIS_COUNTRIES: { code: string; name: string }[] = [
   { code: 'UZ', name: 'Uzbekistan' },
@@ -83,14 +86,7 @@ area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea;
 out body;
     `.trim();
 
-    const response = await axios.post(
-      OVERPASS_URL,
-      `data=${encodeURIComponent(query)}`,
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 180000,
-      },
-    );
+    const response = await this.postWithRetry(query);
 
     const data = response.data;
     const elements: OverpassElement[] = data.elements || [];
@@ -168,6 +164,32 @@ out body;
         tags: el.tags ? JSON.stringify(el.tags) : null,
       },
     });
+  }
+
+  private async postWithRetry(query: string, retries = 2): Promise<any> {
+    for (let i = 0; i <= retries; i++) {
+      for (const url of OVERPASS_URLS) {
+        try {
+          const res = await axios.post(
+            url,
+            `data=${encodeURIComponent(query)}`,
+            {
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              timeout: 180000,
+            },
+          );
+          return res;
+        } catch (err) {
+          this.logger.warn(`Overpass ${url} failed (attempt ${i + 1}): ${(err as Error).message}`);
+        }
+      }
+      if (i < retries) {
+        const delay = (i + 1) * 5000;
+        this.logger.log(`Retrying Overpass in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    throw new Error('All Overpass endpoints failed after retries');
   }
 
   private detectCameraType(tags: Record<string, string>): string {
