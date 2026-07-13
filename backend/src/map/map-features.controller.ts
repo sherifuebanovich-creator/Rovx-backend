@@ -1,6 +1,10 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/current-user.decorator';
+import { USER_ROLES } from '../common/constants/roles';
 import { MapFeaturesSyncService } from './map-features-sync.service';
 
 @ApiTags('map-features')
@@ -59,10 +63,24 @@ export class MapFeaturesController {
   }
 
   @Post('sync')
-  @Public()
-  @ApiOperation({ summary: 'Trigger manual sync (admin use)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
+  @ApiOperation({ summary: 'Trigger full sync of all CIS countries (admin only)' })
   async triggerSync() {
     const result = await this.syncService.syncAll();
     return { success: true, data: result };
+  }
+
+  @Post('sync/:country')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
+  @ApiOperation({ summary: 'Sync a single country by ISO code (admin only)' })
+  async triggerSyncCountry(@Param('country') country: string) {
+    const code = country.toUpperCase().trim();
+    if (code.length !== 2) {
+      throw new BadRequestException('Country must be a 2-letter ISO code (e.g. UZ, KZ)');
+    }
+    const count = await this.syncService.syncCountry(code);
+    return { success: true, data: { country: code, count } };
   }
 }

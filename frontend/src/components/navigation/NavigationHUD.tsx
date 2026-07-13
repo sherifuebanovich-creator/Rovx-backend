@@ -187,6 +187,7 @@ export function NavigationHUD() {
 
   // Speed camera monitoring — throttled to avoid API flood
   const lastCameraFetchRef = useRef(0);
+  const userReportedCamerasRef = useRef<SpeedCamera[]>([]);
   useEffect(() => {
     if (!userLocation) return;
 
@@ -208,16 +209,14 @@ export function NavigationHUD() {
           maxSpeed: o.data?.maxSpeed || undefined,
           direction: o.data?.direction || undefined,
         }));
-        mon.setCameras(cameras);
+        userReportedCamerasRef.current = cameras;
 
         return mapApi.getSpeedCameras(userLocation.lat, userLocation.lng, 50);
       })
       .then(res => {
         if (!res) return;
-        const osmCameras: any[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
-        const existing = mon.getCameras();
-        const dbCameras = existing.filter(c => !c.id.startsWith('osm-cam-'));
-        mon.setCameras([...dbCameras, ...osmCameras]);
+        const dbCameras: any[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+        mon.setCameras([...userReportedCamerasRef.current, ...dbCameras]);
       })
       .catch(() => {});
   }, [userLocation?.lat, userLocation?.lng]);
@@ -244,10 +243,8 @@ export function NavigationHUD() {
       if (osmLoadCount % 30 === 0) {
         mapApi.getSpeedCameras(loc.lat, loc.lng, 50)
           .then(res => {
-            const osmCameras: any[] = res.data.data || res.data || [];
-            const existing = mon.getCameras();
-            const dbCameras = existing.filter(c => !c.id.startsWith('osm-cam-'));
-            mon.setCameras([...dbCameras, ...osmCameras]);
+            const dbCameras: any[] = res.data.data || res.data || [];
+            mon.setCameras([...userReportedCamerasRef.current, ...dbCameras]);
           })
           .catch(() => {});
       }
