@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -10,10 +10,8 @@ interface Props {
   map: maplibregl.Map | null;
 }
 
-const SOURCE_ID = 'friend-locations';
-const MARKER_LAYER = 'friend-markers';
-const LABEL_LAYER = 'friend-labels';
 const STALE_MS = 5 * 60 * 1000;
+const PREMIUM_TIERS = ['PREMIUM_STANDARD', 'PREMIUM_MAX'];
 
 function createMarkerEl(displayName: string): HTMLElement {
   const el = document.createElement('div');
@@ -36,29 +34,37 @@ function createMarkerEl(displayName: string): HTMLElement {
 export default function FriendMarkers({ map }: Props) {
   const friendLocations = useMapStore((s) => s.friendLocations);
   const setFriendLocations = useMapStore((s) => s.setFriendLocations);
-  const updateFriendLocation = useMapStore((s) => s.updateFriendLocation);
   const user = useAuthStore((s) => s.user);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const [hasPremium, setHasPremium] = useState(false);
 
   useEffect(() => {
-    if (!map || !user) return;
+    if (!user) {
+      setHasPremium(false);
+      return;
+    }
+    setHasPremium(PREMIUM_TIERS.includes(user.subscription));
+  }, [user]);
+
+  useEffect(() => {
+    if (!map || !user || !hasPremium) return;
 
     const fetchLocations = async () => {
       try {
         const res = await friendsApi.getLocations();
         const data = res.data?.data || res.data || [];
         setFriendLocations(data);
-      } catch { /* ignore */ }
+      } catch { /* 403 if no premium, ignore */ }
     };
 
     fetchLocations();
     refreshTimerRef.current = setInterval(fetchLocations, 15000);
     return () => clearInterval(refreshTimerRef.current);
-  }, [map, user, setFriendLocations]);
+  }, [map, user, hasPremium, setFriendLocations]);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !hasPremium) return;
 
     for (const [userId, marker] of markersRef.current) {
       const loc = friendLocations.find((f) => f.userId === userId);
@@ -86,7 +92,7 @@ export default function FriendMarkers({ map }: Props) {
         markersRef.current.set(loc.userId, marker);
       }
     }
-  }, [map, friendLocations]);
+  }, [map, friendLocations, hasPremium]);
 
   useEffect(() => {
     if (!map) return;
@@ -98,5 +104,6 @@ export default function FriendMarkers({ map }: Props) {
     };
   }, [map]);
 
+  if (!hasPremium) return null;
   return null;
 }

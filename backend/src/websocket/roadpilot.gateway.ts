@@ -198,6 +198,12 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
 
     try {
+      const sender = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { subscription: true },
+      });
+      if (!sender || !['PREMIUM_STANDARD', 'PREMIUM_MAX'].includes(sender.subscription)) return;
+
       const friendships = await this.prisma.friend.findMany({
         where: {
           OR: [{ userId }, { friendId: userId }],

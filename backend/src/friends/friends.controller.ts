@@ -1,15 +1,21 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FriendsService } from './friends.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { PrismaService } from '../prisma/prisma.service';
+
+const PREMIUM_TIERS_FOR_LOCATIONS = ['PREMIUM_STANDARD', 'PREMIUM_MAX'];
 
 @ApiTags('Friends')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('friends')
 export class FriendsController {
-  constructor(private friendsService: FriendsService) {}
+  constructor(
+    private friendsService: FriendsService,
+    private prisma: PrismaService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get my friends' })
@@ -54,8 +60,15 @@ export class FriendsController {
   }
 
   @Get('locations')
-  @ApiOperation({ summary: 'Get current locations of online friends' })
-  getLocations(@CurrentUser('id') userId: string) {
+  @ApiOperation({ summary: 'Get current locations of online friends (PREMIUM_STANDARD+)' })
+  async getLocations(@CurrentUser('id') userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscription: true },
+    });
+    if (!user || !PREMIUM_TIERS_FOR_LOCATIONS.includes(user.subscription)) {
+      throw new ForbiddenException('Friend locations require Premium Standard or higher');
+    }
     return this.friendsService.getFriendsLocations(userId);
   }
 
