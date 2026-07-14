@@ -53,5 +53,4 @@ uploads/*
 
 .vercel
 .env*
-!.env.production
 !.env.example
