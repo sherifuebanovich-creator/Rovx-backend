@@ -14,6 +14,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
+  const durationRef = useRef(0);
   const [isSending, setIsSending] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -69,6 +70,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
 
       timerRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        durationRef.current = elapsed;
         setDuration(elapsed);
         if (elapsed >= 60) {
           stopRecording(true);
@@ -94,7 +96,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
 
     setIsRecording(false);
 
-    if (!send || chunksRef.current.length === 0 || duration < 1) {
+    if (!send || chunksRef.current.length === 0 || durationRef.current < 1) {
       cleanup();
       return;
     }
