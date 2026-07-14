@@ -112,14 +112,21 @@ export class ReportsController {
   @Get()
   @ApiOperation({ summary: 'Get reports in area' })
   async getInArea(
-    @Query('minLat') minLat: number,
-    @Query('maxLat') maxLat: number,
-    @Query('minLng') minLng: number,
-    @Query('maxLng') maxLng: number,
+    @Query('minLat') minLat: string,
+    @Query('maxLat') maxLat: string,
+    @Query('minLng') minLng: string,
+    @Query('maxLng') maxLng: string,
     @Query('types') types?: string,
   ) {
+    const nLat = parseFloat(minLat);
+    const xLat = parseFloat(maxLat);
+    const nLng = parseFloat(minLng);
+    const xLng = parseFloat(maxLng);
+    if ([nLat, xLat, nLng, xLng].some(isNaN)) {
+      return { reports: [], total: 0 };
+    }
     const reportTypes = types ? (types.split(',')) : undefined;
-    return this.reportsService.getReportsInArea(+minLat, +maxLat, +minLng, +maxLng, reportTypes);
+    return this.reportsService.getReportsInArea(nLat, xLat, nLng, xLng, reportTypes);
   }
 
   @Get('city/:cityName')

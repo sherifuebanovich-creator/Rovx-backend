@@ -180,6 +180,37 @@ export class FriendsService {
     }));
   }
 
+  async getFriendsLocations(userId: string) {
+    const friends = await this.getFriends(userId);
+    const onlineFriends = friends.filter(f => f.isOnline);
+
+    if (onlineFriends.length === 0) return [];
+
+    const keys = onlineFriends.map(f => `location:${f.id}`);
+    const results = await this.redis.mget(...keys);
+
+    return onlineFriends
+      .map((f, i) => {
+        if (!results[i]) return null;
+        try {
+          const loc = JSON.parse(results[i]);
+          return {
+            userId: f.id,
+            displayName: f.displayName,
+            avatar: f.avatar,
+            lat: loc.lat,
+            lng: loc.lng,
+            speed: loc.speed,
+            heading: loc.heading,
+            updatedAt: loc.updatedAt,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
   private async getValidOnlineUserIds(): Promise<string[]> {
     const onlineIds = await this.redis.smembers('online:users');
     if (onlineIds.length === 0) return [];

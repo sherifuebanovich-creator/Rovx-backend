@@ -53,6 +53,12 @@ export class FriendsController {
     return this.friendsService.getOnlineFriends(userId);
   }
 
+  @Get('locations')
+  @ApiOperation({ summary: 'Get current locations of online friends' })
+  getLocations(@CurrentUser('id') userId: string) {
+    return this.friendsService.getFriendsLocations(userId);
+  }
+
   @Get('search')
   @ApiOperation({ summary: 'Search users' })
   searchUsers(@Query('q') query: string, @CurrentUser('id') userId: string) {

@@ -308,6 +308,7 @@ export const friendsApi = {
   rejectRequest: (userId: string) => api.delete(`/friends/reject/${userId}`),
   removeFriend: (userId: string) => api.delete(`/friends/${userId}`),
   getOnline: () => api.get('/friends/online'),
+  getLocations: () => api.get('/friends/locations'),
   searchUsers: (q: string) => api.get('/friends/search', { params: { q } }),
 };
 

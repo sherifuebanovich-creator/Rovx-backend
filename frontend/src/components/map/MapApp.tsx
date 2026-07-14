@@ -1,5 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
+import { useEffect } from 'react';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -11,6 +12,7 @@ import { RoutePanel } from '@/components/navigation/RoutePanel';
 import { NavigationHUD } from '@/components/navigation/NavigationHUD';
 import { ObjectDetailPanel } from '@/components/map/ObjectDetailPanel';
 import { ReportPanel } from '@/components/map/ReportPanel';
+import { FriendLocation } from '@/types';
 
 const MapView = dynamic(() => import('@/components/map/MapViewGL'), { ssr: false });
 
@@ -21,9 +23,19 @@ export default function MapApp() {
   const selectedObject = useMapStore(s => s.selectedObject);
   const isReportPanelOpen = useMapStore(s => s.isReportPanelOpen);
   const navigation = useMapStore(s => s.navigation);
+  const updateFriendLocation = useMapStore(s => s.updateFriendLocation);
 
   const { user } = useAuthStore();
   useGeolocation();
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent<FriendLocation>).detail;
+      if (data) updateFriendLocation(data);
+    };
+    window.addEventListener('rovx:friend-location', handler);
+    return () => window.removeEventListener('rovx:friend-location', handler);
+  }, [updateFriendLocation]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-dark-bg" style={{ isolation: 'isolate' }}>

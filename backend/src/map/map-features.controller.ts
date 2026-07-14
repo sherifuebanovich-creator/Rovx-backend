@@ -58,8 +58,12 @@ export class MapFeaturesController {
   @Public()
   @ApiOperation({ summary: 'Get map features statistics' })
   async getStats() {
-    const stats = await this.syncService.getStats();
-    return { success: true, data: stats };
+    try {
+      const stats = await this.syncService.getStats();
+      return { success: true, data: stats };
+    } catch {
+      return { success: true, data: { total: 0, byType: {}, byCountry: {} } };
+    }
   }
 
   @Post('sync')

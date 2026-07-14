@@ -91,6 +91,12 @@ export function useSocket() {
       }
     });
 
+    socketInstance.on('friend:location', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:friend-location', { detail: data }));
+      }
+    });
+
     socketRef.current = socketInstance;
     return socketInstance;
   }, []);

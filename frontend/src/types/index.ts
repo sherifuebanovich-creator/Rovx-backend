@@ -212,6 +212,17 @@ export interface FriendRequest {
   createdAt: string;
 }
 
+export interface FriendLocation {
+  userId: string;
+  displayName: string;
+  avatar?: string;
+  lat: number;
+  lng: number;
+  speed?: number;
+  heading?: number;
+  updatedAt: number;
+}
+
 export interface FuelCalculation {
   id: string;
   originName: string;

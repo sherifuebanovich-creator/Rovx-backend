@@ -196,6 +196,29 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     } catch (err) {
       this.logger.warn(`Convoy broadcast failed for ${userId}: ${(err as Error).message}`);
     }
+
+    try {
+      const friendships = await this.prisma.friend.findMany({
+        where: {
+          OR: [{ userId }, { friendId: userId }],
+          status: 'ACCEPTED',
+        },
+        select: { userId: true, friendId: true },
+      });
+      const friendIds = friendships.map(f => f.userId === userId ? f.friendId : f.userId);
+      for (const friendId of friendIds) {
+        this.server.to(`user:${friendId}`).emit('friend:location', {
+          userId,
+          lat: sanitized.lat,
+          lng: sanitized.lng,
+          speed: sanitized.speed,
+          heading: sanitized.heading,
+          updatedAt: Date.now(),
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Friend location broadcast failed for ${userId}: ${(err as Error).message}`);
+    }
   }
 
   @SubscribeMessage('convoy:toggle')

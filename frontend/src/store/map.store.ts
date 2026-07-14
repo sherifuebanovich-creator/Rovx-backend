@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestion } from '@/types';
+import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestion, FriendLocation } from '@/types';
 
 interface NavigationState {
   isNavigating: boolean;
@@ -51,6 +51,9 @@ interface MapState {
   reports: Report[];
   selectedReport: Report | null;
 
+  // Friends locations
+  friendLocations: FriendLocation[];
+
   // Search
   isSearchOpen: boolean;
   searchQuery: string;
@@ -92,6 +95,8 @@ interface MapState {
   setReports: (reports: Report[]) => void;
   addReport: (report: Report) => void;
   setSelectedReport: (report: Report | null) => void;
+  setFriendLocations: (locations: FriendLocation[]) => void;
+  updateFriendLocation: (location: FriendLocation) => void;
   toggleSearch: () => void;
   setSearchQuery: (q: string) => void;
   setSearchSuggestions: (suggestions: SearchSuggestion[]) => void;
@@ -170,6 +175,9 @@ export const useMapStore = create<MapState>((set) => ({
   reports: [],
   selectedReport: null,
 
+  // Friends locations
+  friendLocations: [],
+
   // Search
   isSearchOpen: false,
   searchQuery: '',
@@ -239,6 +247,18 @@ export const useMapStore = create<MapState>((set) => ({
     set((s) => ({ reports: [report, ...s.reports] })),
 
   setSelectedReport: (selectedReport) => set({ selectedReport }),
+
+  setFriendLocations: (friendLocations) => set({ friendLocations }),
+  updateFriendLocation: (loc) =>
+    set((s) => {
+      const idx = s.friendLocations.findIndex((f) => f.userId === loc.userId);
+      if (idx >= 0) {
+        const updated = [...s.friendLocations];
+        updated[idx] = loc;
+        return { friendLocations: updated };
+      }
+      return { friendLocations: [...s.friendLocations, loc] };
+    }),
 
   toggleSearch: () => set((s) => ({ isSearchOpen: !s.isSearchOpen, searchQuery: '', searchSuggestions: [], selectedSearchResult: null })),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
