@@ -145,6 +145,76 @@ export class SocialController {
     return { urls };
   }
 
+  @Post('groups/:groupId/messages/upload-audio')
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'audio');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueName = `voice-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+          cb(null, uniqueName);
+        },
+      }),
+      limits: { fileSize: 2 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.match(/^audio\/(webm|ogg|opus|mp3|m4a|x-m4a)$/)) {
+          return cb(new BadRequestException('Only WebM, OGG, MP3, M4A audio allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload voice message for group chat' })
+  async uploadGroupAudio(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No audio file uploaded');
+    const url = `/uploads/audio/${file.filename}`;
+    return { url };
+  }
+
+  @Post('groups/:groupId/messages/upload-video-msg')
+  @UseInterceptors(
+    FileInterceptor('video', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'video-messages');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueName = `videomsg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+          cb(null, uniqueName);
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.match(/^video\/(webm|mp4|quicktime)$/)) {
+          return cb(new BadRequestException('Only WebM, MP4 video allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload video message for group chat' })
+  async uploadGroupVideoMsg(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No video file uploaded');
+    const url = `/uploads/video-messages/${file.filename}`;
+    return { url };
+  }
+
   @Delete('groups/:groupId')
   @ApiOperation({ summary: 'Delete group (owner only)' })
   async deleteGroup(

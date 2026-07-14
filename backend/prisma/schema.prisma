@@ -489,6 +489,8 @@ model GroupMessage {
   content   String   @default("")
   images    String[] @default([])
   sticker   String?
+  audioUrl  String?
+  videoUrl  String?
   createdAt DateTime @default(now())
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender User  @relation(fields: [senderId], references: [id])

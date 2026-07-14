@@ -16,6 +16,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import Cookies from 'js-cookie';
+import AudioRecorderButton from '@/components/chat/AudioRecorderButton';
+import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
+import VideoMessageRecorder from '@/components/chat/VideoMessageRecorder';
+import VideoMessagePlayer from '@/components/chat/VideoMessagePlayer';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace('/api/v1', '');
 
@@ -424,6 +428,22 @@ export default function GroupChatPage() {
                       ))}
                     </div>
                   )}
+                  {msg.audioUrl && (
+                    <div className={`py-1 ${msg.sticker ? '' : ''}`}>
+                      <AudioMessagePlayer
+                        src={BASE_URL + msg.audioUrl}
+                        isOwn={msg.senderId === user.id}
+                      />
+                    </div>
+                  )}
+                  {msg.videoUrl && (
+                    <div className="py-1">
+                      <VideoMessagePlayer
+                        src={BASE_URL + msg.videoUrl}
+                        isOwn={msg.senderId === user.id}
+                      />
+                    </div>
+                  )}
                   {msg.content && !msg.sticker && (
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                   )}
@@ -510,6 +530,10 @@ export default function GroupChatPage() {
                 }`}>
                 <FaSmile size={16} />
               </button>
+
+              <AudioRecorderButton groupId={groupId} />
+
+              <VideoMessageRecorder groupId={groupId} />
 
               <input value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}

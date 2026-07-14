@@ -284,6 +284,22 @@ export const socialApi = {
       timeout: 60000,
     });
   },
+  uploadGroupAudio: (groupId: string, audio: File) => {
+    const formData = new FormData();
+    formData.append('audio', audio);
+    return api.post(`/social/groups/${groupId}/messages/upload-audio`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+  },
+  uploadGroupVideoMsg: (groupId: string, video: File) => {
+    const formData = new FormData();
+    formData.append('video', video);
+    return api.post(`/social/groups/${groupId}/messages/upload-video-msg`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+  },
   getNotifications: (page = 1) => api.get(`/social/notifications?page=${page}`),
   markNotificationsRead: () => api.post('/social/notifications/read'),
   deleteAllNotifications: () => api.delete('/social/notifications'),

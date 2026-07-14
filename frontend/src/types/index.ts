@@ -282,6 +282,8 @@ export interface GroupMessage {
   content: string;
   images?: string[];
   sticker?: string;
+  audioUrl?: string;
+  videoUrl?: string;
   createdAt: string;
   sender: { id: string; displayName: string; avatar?: string };
 }
