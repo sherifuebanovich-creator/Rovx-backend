@@ -6,7 +6,7 @@ import { socialApi, premiumApi } from '@/lib/api';
 import { Group } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { FaArrowLeft, FaUsers, FaSearch, FaPlus, FaCrown, FaSignInAlt, FaCheck } from 'react-icons/fa';
+import { FaArrowLeft, FaUsers, FaSearch, FaPlus, FaCrown, FaSignInAlt, FaCheck, FaStar } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -16,28 +16,28 @@ export default function GroupsPage() {
   const { user } = useAuthStore();
   const [groups, setGroups] = useState<Group[]>([]);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
+  const [favGroups, setFavGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Group[]>([]);
   const searchFetchId = useRef(0);
   const [joinByName, setJoinByName] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [canCreate, setCanCreate] = useState<{ allowed: boolean; currentGroups: number; maxGroups: number } | null>(null);
-  const [createForm, setCreateForm] = useState({ name: '', description: '', city: '', isPublic: true });
-  const [createLoading, setCreateLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
-  const [tab, setTab] = useState<'all' | 'my'>('all');
+  const [tab, setTab] = useState<'all' | 'my' | 'fav'>('all');
 
   useEffect(() => {
     if (!user) return;
     Promise.all([
       socialApi.getGroups(1, undefined, undefined, ''),
       socialApi.getMyGroups(),
-    ]).then(([gRes, mRes]) => {
+      socialApi.getMyFavorites(),
+    ]).then(([gRes, mRes, fRes]) => {
       const gData = gRes.data?.data || gRes.data;
       const mData = mRes.data?.data || mRes.data;
+      const fData = fRes.data?.data || fRes.data;
       setGroups(gData?.groups || gData || []);
       setMyGroups(mData || []);
+      setFavGroups(fData || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [user]);
 
@@ -52,23 +52,6 @@ export default function GroupsPage() {
     } catch {
       if (thisFetch === searchFetchId.current) setSearchResults([]);
       toast.error(t('groups.searchError'));
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!createForm.name.trim()) { toast.error(t('groups.enterName')); return; }
-    setCreateLoading(true);
-    try {
-      const res = await socialApi.createGroup(createForm);
-      const group = res.data?.data || res.data;
-      toast.success(t('groups.created'));
-      setShowCreateForm(false);
-      setCreateForm({ name: '', description: '', city: '', isPublic: true });
-      setMyGroups(prev => [...prev, group]);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || t('groups.createFailed'));
-    } finally {
-      setCreateLoading(false);
     }
   };
 
@@ -99,7 +82,6 @@ export default function GroupsPage() {
     try {
       const res = await premiumApi.canCreateGroup();
       const data = res.data?.data || res.data;
-      setCanCreate(data);
       if (!data.allowed) {
         toast.error(t('groups.limitExceeded', { current: data.currentGroups, max: data.maxGroups }));
       } else {
@@ -117,6 +99,12 @@ export default function GroupsPage() {
       </div>
     );
   }
+
+  const displayGroups = tab === 'all'
+    ? (searchQuery ? searchResults : groups)
+    : tab === 'my'
+      ? myGroups
+      : favGroups;
 
   return (
     <div className="min-h-dvh bg-dark-bg pb-safe-bottom">
@@ -160,6 +148,10 @@ export default function GroupsPage() {
             className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === 'my' ? 'bg-primary-600/30 text-primary-400 border border-primary-500/50' : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/10'}`}>
             {t('groups.my')} ({myGroups.length})
           </button>
+          <button onClick={() => setTab('fav')}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1 ${tab === 'fav' ? 'bg-yellow-600/30 text-yellow-400 border border-yellow-500/50' : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/10'}`}>
+            <FaStar size={10} fill={tab === 'fav' ? 'currentColor' : 'none'} /> {t('groups.favorites', 'Избранное')} ({favGroups.length})
+          </button>
         </div>
 
         {/* Search */}
@@ -169,46 +161,6 @@ export default function GroupsPage() {
             className="input-field pl-10 text-sm" placeholder={t('groups.search')} />
         </div>
 
-        {/* Create Form */}
-        <AnimatePresence>
-          {showCreateForm && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="card p-4 mb-6 border border-primary-500/30"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <FaCrown className="text-primary-400" size={16} />
-                <h3 className="text-white font-bold text-sm">{t('groups.createGroup')}</h3>
-              </div>
-              <div className="space-y-3">
-                <input value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))}
-                  className="input-field text-sm" placeholder={t('groups.namePlaceholder')} />
-                <input value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))}
-                  className="input-field text-sm" placeholder={t('groups.descriptionPlaceholder')} />
-                <input value={createForm.city} onChange={e => setCreateForm(p => ({ ...p, city: e.target.value }))}
-                  className="input-field text-sm" placeholder={t('groups.cityPlaceholder')} />
-                <label className="flex items-center gap-2 text-sm text-gray-400">
-                  <input type="checkbox" checked={createForm.isPublic} onChange={e => setCreateForm(p => ({ ...p, isPublic: e.target.checked }))}
-                    className="rounded border-white/20 bg-white/5" />
-                  {t('groups.public')}
-                </label>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setShowCreateForm(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 transition-all">
-                  {t('groups.cancel')}
-                </button>
-                <button onClick={handleCreate} disabled={createLoading || !createForm.name.trim()}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {createLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : t('groups.create')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Group List */}
         {loading ? (
           <div className="flex justify-center py-12">
@@ -216,37 +168,39 @@ export default function GroupsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {(tab === 'all'
-              ? (searchQuery ? searchResults : groups)
-              : myGroups
-            ).map((group, idx) => (
+            {displayGroups.map((group, idx) => (
               <Link key={group.id} href={`/groups/${group.id}`}>
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.03 }}
-                className="card p-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-all"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white font-bold">
-                  {group.avatar ? <img src={group.avatar} className="w-full h-full object-cover rounded-2xl" /> : <FaUsers size={18} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold truncate">{group.name}</p>
-                  <p className="text-xs text-gray-500 truncate">
-                    {t('groups.members', { count: group.memberCount })}{group.city ? ` · ${group.city}` : ''}
-                    {group.owner && ` · ${t('groups.owner')}: ${group.owner.displayName}`}
-                  </p>
-                </div>
-                {myGroups.some(mg => mg.id === group.id) && (
-                  <span className="text-[10px] font-medium text-primary-400 bg-primary-600/20 px-2 py-1 rounded-lg">{t('groups.joined')}</span>
-                )}
-              </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03 }}
+                  className="card p-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-all"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white font-bold overflow-hidden">
+                    {group.avatar ? <img src={group.avatar} className="w-full h-full object-cover rounded-2xl" /> : <FaUsers size={18} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-semibold truncate">{group.name}</p>
+                      {group.isFavorited && <FaStar size={10} className="text-yellow-400 flex-shrink-0" fill="currentColor" />}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {t('groups.members', { count: group.memberCount })}{group.city ? ` · ${group.city}` : ''}
+                      {group.owner && ` · ${t('groups.owner')}: ${group.owner.displayName}`}
+                    </p>
+                  </div>
+                  {myGroups.some(mg => mg.id === group.id) && (
+                    <span className="text-[10px] font-medium text-primary-400 bg-primary-600/20 px-2 py-1 rounded-lg">{t('groups.joined')}</span>
+                  )}
+                </motion.div>
               </Link>
             ))}
-            {(tab === 'all' && !loading && groups.length === 0) && (
+            {displayGroups.length === 0 && !loading && (
               <div className="card p-6 text-center">
                 <FaUsers size={24} className="text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">{t('groups.notFound')}</p>
+                <p className="text-sm text-gray-400">
+                  {tab === 'fav' ? 'Нет избранных групп' : t('groups.notFound')}
+                </p>
               </div>
             )}
           </div>

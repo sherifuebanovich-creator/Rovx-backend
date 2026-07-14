@@ -323,6 +323,40 @@ export class SocialService {
     return { left: true };
   }
 
+  // ── Favorites ─────────────────────────────────────────────
+
+  async toggleFavorite(userId: string, groupId: string) {
+    const existing = await this.prisma.groupFavorite.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (existing) {
+      await this.prisma.groupFavorite.delete({ where: { id: existing.id } });
+      return { favorited: false };
+    }
+    await this.prisma.groupFavorite.create({ data: { groupId, userId } });
+    return { favorited: true };
+  }
+
+  async getMyFavorites(userId: string) {
+    const favorites = await this.prisma.groupFavorite.findMany({
+      where: { userId },
+      include: {
+        group: {
+          include: {
+            owner: { select: { id: true, displayName: true, avatar: true } },
+            _count: { select: { members: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return favorites.map(f => ({
+      ...f.group,
+      memberCount: f.group._count.members,
+      isFavorited: true,
+    }));
+  }
+
   async getGroups(page = 1, limit = 20, region?: string, city?: string, search?: string) {
     const skip = (page - 1) * limit;
     const where: any = { isPublic: true };
@@ -351,7 +385,7 @@ export class SocialService {
     };
   }
 
-  async getGroupById(groupId: string) {
+  async getGroupById(groupId: string, userId?: string) {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       include: {
@@ -365,14 +399,26 @@ export class SocialService {
       },
     });
     if (!group) throw new NotFoundException('Group not found');
-    return { ...group, memberCount: group._count.members };
+
+    let isMember = false;
+    let isFavorited = false;
+    if (userId) {
+      const [membership, favorite] = await Promise.all([
+        this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } }),
+        this.prisma.groupFavorite.findUnique({ where: { groupId_userId: { groupId, userId } } }),
+      ]);
+      isMember = !!membership;
+      isFavorited = !!favorite;
+    }
+
+    return { ...group, memberCount: group._count.members, isMember, isFavorited };
   }
 
   async getGroupMessages(groupId: string, userId: string, page = 1, limit = 50) {
     const member = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
-    if (!member) throw new ForbiddenException('Not a member');
+    if (!member) return { messages: [], total: 0, isMember: false };
 
     const skip = (page - 1) * limit;
     const [messages, total] = await Promise.all([
@@ -388,7 +434,7 @@ export class SocialService {
       this.prisma.groupMessage.count({ where: { groupId } }),
     ]);
 
-    return { messages: messages.reverse(), total };
+    return { messages: messages.reverse(), total, isMember: true };
   }
 
   async searchGroups(query: string, city?: string) {

@@ -68,6 +68,7 @@ model User {
   fuelCalculations  FuelCalculation[]
   premiumSubscriptions PremiumSubscription[]
   ownedGroups       Group[]          @relation("GroupOwner")
+  groupFavorites    GroupFavorite[]
   cityChatMessages  CityChatMessage[]
   friendsInitiated  Friend[]         @relation("UserFriends")
   friendsAdded      Friend[]         @relation("FriendOf")
@@ -450,6 +451,7 @@ model Group {
   owner    User         @relation("GroupOwner", fields: [ownerId], references: [id])
   members  GroupMember[]
   messages GroupMessage[]
+  favorites GroupFavorite[]
   @@map("groups")
 }
 
@@ -491,6 +493,17 @@ model GroupMessage {
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender User  @relation(fields: [senderId], references: [id])
   @@map("group_messages")
+}
+
+model GroupFavorite {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  createdAt DateTime @default(now())
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([groupId, userId])
+  @@map("group_favorites")
 }
 
 model Achievement {

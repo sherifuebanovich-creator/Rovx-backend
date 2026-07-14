@@ -248,6 +248,8 @@ export interface Group {
   isPublic: boolean;
   memberCount: number;
   isAdmin?: boolean;
+  isMember?: boolean;
+  isFavorited?: boolean;
   createdAt: string;
   updatedAt: string;
   owner?: { id: string; displayName: string; avatar?: string };

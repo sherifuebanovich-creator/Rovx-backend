@@ -179,8 +179,8 @@ export class SocialController {
 
   @Get('groups/:groupId')
   @ApiOperation({ summary: 'Get group details' })
-  async getGroup(@Param('groupId') groupId: string) {
-    return this.socialService.getGroupById(groupId);
+  async getGroup(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
+    return this.socialService.getGroupById(groupId, userId);
   }
 
   @Get('groups/:groupId/messages')
@@ -207,6 +207,18 @@ export class SocialController {
   @Post('groups/:groupId/leave')
   async leaveGroup(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
     return this.socialService.leaveGroup(userId, groupId);
+  }
+
+  @Post('groups/:groupId/favorite')
+  @ApiOperation({ summary: 'Toggle group favorite' })
+  async toggleFavorite(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
+    return this.socialService.toggleFavorite(userId, groupId);
+  }
+
+  @Get('groups/favorites')
+  @ApiOperation({ summary: 'Get my favorite groups' })
+  async getMyFavorites(@CurrentUser('id') userId: string) {
+    return this.socialService.getMyFavorites(userId);
   }
 
   // ── City Chat ──
