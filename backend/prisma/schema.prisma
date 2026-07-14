@@ -9,6 +9,8 @@ datasource db {
   directUrl = env("DATABASE_URL_DIRECT")
 }
 
+// Note: directUrl is optional — used for migrations on Render
+
 model User {
   id                String           @id @default(uuid())
   email             String           @unique
@@ -482,7 +484,9 @@ model GroupMessage {
   id        String   @id @default(uuid())
   groupId   String
   senderId  String
-  content   String
+  content   String   @default("")
+  images    String[] @default([])
+  sticker   String?
   createdAt DateTime @default(now())
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender User  @relation(fields: [senderId], references: [id])

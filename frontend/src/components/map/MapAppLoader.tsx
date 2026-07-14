@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Cookies from 'js-cookie';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 
@@ -38,30 +37,24 @@ export default function MapAppLoader() {
   useEffect(() => {
     const done = () => setChecking(false);
 
-    const check = () => {
-      const hasToken = !!Cookies.get('rovx-session-token');
-      if (useAuthStore.getState().isAuthenticated || useAuthStore.getState().user || hasToken) {
-        done();
-        return true;
-      }
-      return false;
-    };
-
-    if (check()) return;
-
+    // Wait for auth initialization to complete before making any decision
     const unsub = useAuthStore.subscribe((state) => {
-      if (state.isAuthenticated || state.user) {
-        done();
-        unsub();
-      }
+      if (!state.isInitDone) return;
+      // Init done — show map regardless of auth (map is accessible without login)
+      done();
+      unsub();
     });
 
-    const hasStoredAuth = !!localStorage.getItem('rovx-auth');
-    if (!hasStoredAuth) {
+    // If already initialized, show immediately
+    const st = useAuthStore.getState();
+    if (st.isInitDone) {
       done();
+      unsub();
+      return;
     }
 
-    const timer = setTimeout(done, 3000);
+    // Safety net — if initAuth never resolves (e.g. no token + network issue), show after 6s
+    const timer = setTimeout(done, 6000);
 
     return () => { unsub(); clearTimeout(timer); };
   }, []);

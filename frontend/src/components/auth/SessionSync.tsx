@@ -6,7 +6,7 @@ import Cookies from 'js-cookie';
 
 export function SessionSync() {
   const { data: session, status } = useSession();
-  const { setTokens } = useAuthStore();
+  const { setTokens, initAuth } = useAuthStore();
   const syncedRef = useRef(false);
   const sessionRef = useRef(session);
 
@@ -18,21 +18,20 @@ export function SessionSync() {
       const { accessToken: sessionToken } = session as any;
       const cookieToken = Cookies.get('access_token');
 
-      // Sync token only when no access_token cookie exists (initial Google login or page reload).
-      // Never overwrite: interceptor refresh writes fresh tokens via setTokens.
       if (sessionToken && !cookieToken) {
         setTokens(sessionToken, '');
+        // AuthInit may have already bailed — re-trigger initAuth to fetch /auth/me
+        setTimeout(() => { initAuth(); }, 100);
       }
 
       if (!syncedRef.current) {
         syncedRef.current = true;
-        // User data is fetched by initAuth → /auth/me
       }
     }
     if (status === 'unauthenticated') {
       syncedRef.current = false;
     }
-  }, [status, session, setTokens]);
+  }, [status, session, setTokens, initAuth]);
 
   return null;
 }

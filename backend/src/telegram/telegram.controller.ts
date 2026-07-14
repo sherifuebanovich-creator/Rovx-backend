@@ -6,6 +6,7 @@ import { ReportsService } from '../reports/reports.service';
 import { PremiumService } from '../premium/premium.service';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
@@ -45,6 +46,7 @@ export class TelegramController implements OnModuleInit {
     private premium: PremiumService,
     private config: ConfigService,
     private redis: RedisService,
+    private prisma: PrismaService,
   ) {}
 
   async onModuleInit() {
@@ -80,12 +82,20 @@ export class TelegramController implements OnModuleInit {
       '🟢 /online — кто сейчас онлайн\n' +
       '💎 /premium — продажи премиума\n' +
       '🖥 /server — нагрузка сервера\n\n' +
-      '━━ <b>АДМИН</b> ━━\n' +
-      '💰 /payments — ожидающие оплаты\n' +
-      '📊 /stats — статистика\n' +
-      '👥 /users — пользователи\n' +
+      '━━ <b>УПРАВЛЕНИЕ</b> ━━\n' +
+      '📊 /dashboard — полная статистика\n' +
+      '👥 /users — список пользователей\n' +
       '🔍 /find <запрос> — поиск пользователя\n' +
-      '🚪 /logout — выйти');
+      '👤 /userinfo <userId> — инфо о пользователе\n' +
+      '💰 /payments — ожидающие оплаты\n' +
+      '🚪 /logout — выйти\n\n' +
+      '━━ <b>АДМИН-КОМАНДЫ</b> ━━\n' +
+      '💎 /grant <id> <уровень> [дней] — выдать премиум\n' +
+      '🚫 /ban <id> [причина] — забанить\n' +
+      '✅ /unban <id> — разбанить\n' +
+      '🔑 /role <id> <роль> — сменить роль\n' +
+      '🏠 /groups — список групп\n' +
+      '📋 /group <id> — инфо о группе');
   }
 
   @Public()
@@ -104,7 +114,7 @@ export class TelegramController implements OnModuleInit {
       if (body.message?.text) {
         const text = body.message.text.trim();
         const chatId = body.message.chat.id;
-        const [cmd] = text.split(' ');
+        const [cmd, ...args] = text.split(' ');
 
         if (cmd === '/start') {
           if (this.isAuthorized(chatId)) {
@@ -249,6 +259,11 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
+        if (cmd === '/dashboard') {
+          await this.sendDashboard(chatId);
+          return { ok: true };
+        }
+
         if (cmd === '/users') {
           await this.sendUsersList(chatId);
           return { ok: true };
@@ -262,6 +277,90 @@ export class TelegramController implements OnModuleInit {
             return { ok: true };
           }
           await this.sendFindUser(chatId, query);
+          return { ok: true };
+        }
+
+        if (cmd === '/userinfo') {
+          const userId = text.replace('/userinfo', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId,
+              '👤 <b>Введите user ID</b>\nПример: <code>/userinfo abc123</code>');
+            return { ok: true };
+          }
+          await this.sendUserInfo(chatId, userId);
+          return { ok: true };
+        }
+
+        if (cmd === '/grant') {
+          const parts = args;
+          if (parts.length < 2) {
+            await this.telegram.sendMessageToChat(chatId,
+              '💎 <b>Выдать премиум</b>\n\n' +
+              'Пример: <code>/grant userId PREMIUM_MAX 30</code>\n\n' +
+              'Доступные уровни:\n' +
+              '• PREMIUM_BASIC\n' +
+              '• PREMIUM_STANDARD\n' +
+              '• PREMIUM_MAX\n\n' +
+              'По умолчанию: 30 дней');
+            return { ok: true };
+          }
+          await this.sendGrant(chatId, parts[0], parts[1], parseInt(parts[2]) || 30);
+          return { ok: true };
+        }
+
+        if (cmd === '/ban') {
+          const parts = args;
+          if (parts.length < 1) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🚫 <b>Забанить пользователя</b>\n\n' +
+              'Пример: <code>/ban userId спам</code>');
+            return { ok: true };
+          }
+          const reason = parts.slice(1).join(' ') || 'Без причины';
+          await this.sendBan(chatId, parts[0], reason);
+          return { ok: true };
+        }
+
+        if (cmd === '/unban') {
+          const userId = text.replace('/unban', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId,
+              '✅ <b>Разбанить пользователя</b>\n\nПример: <code>/unban userId</code>');
+            return { ok: true };
+          }
+          await this.sendUnban(chatId, userId);
+          return { ok: true };
+        }
+
+        if (cmd === '/role') {
+          const parts = args;
+          if (parts.length < 2) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔑 <b>Сменить роль</b>\n\n' +
+              'Пример: <code>/role userId ADMIN</code>\n\n' +
+              'Доступные роли:\n' +
+              '• USER\n' +
+              '• ADMIN\n' +
+              '• SUPERADMIN');
+            return { ok: true };
+          }
+          await this.sendRole(chatId, parts[0], parts[1]);
+          return { ok: true };
+        }
+
+        if (cmd === '/groups') {
+          await this.sendGroupsList(chatId);
+          return { ok: true };
+        }
+
+        if (cmd === '/group') {
+          const groupId = text.replace('/group', '').trim();
+          if (!groupId) {
+            await this.telegram.sendMessageToChat(chatId,
+              '📋 <b>Инфо о группе</b>\n\nПример: <code>/group groupId</code>');
+            return { ok: true };
+          }
+          await this.sendGroupInfo(chatId, groupId);
           return { ok: true };
         }
 
@@ -383,6 +482,213 @@ export class TelegramController implements OnModuleInit {
     }
     return { ok: true };
   }
+
+  // ─── USER MANAGEMENT ─────────────────────────────────────────────────────
+
+  private async sendUserInfo(chatId: number, userId: string) {
+    try {
+      const user = await this.admin.getUserDetail(userId);
+      const subEnd = user.subscriptionEnd
+        ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU')
+        : '—';
+      const banStatus = user.isBanned ? `🚫 <b>ЗАБАНЕН</b>\n   📝 Причина: ${user.bannedReason || '—'}` : '✅ Активен';
+
+      const msg = `👤 <b>ПОЛЬЗОВАТЕЛЬ</b>\n━━━━━━━━━━━━━━━\n` +
+        `🆔 <code>${user.id}</code>\n` +
+        `📛 <b>${user.displayName || '—'}</b>\n` +
+        `📧 ${user.email || '—'}\n` +
+        `🏷 @${user.username || '—'}\n` +
+        `🔑 Роль: <b>${user.role}</b>\n` +
+        `💎 Подписка: <b>${user.subscription}</b>\n` +
+        `📅 Действует до: ${subEnd}\n` +
+        `🔄 Репутация: ${user.reputation || 0}\n` +
+        `🚗 Поездок: ${user.totalTrips || 0}\n` +
+        `📋 Репортов: ${user._count?.reports || 0}\n` +
+        `👥 Подписчиков: ${user._count?.followers || 0}\n` +
+        `➡ Подписок: ${user._count?.following || 0}\n` +
+        `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
+        `━━━━━━━━━━━━━━━\n` +
+        `${banStatus}\n\n` +
+        `📋 <b>Команды:</b>\n` +
+        `💎 /grant ${user.id} PREMIUM_MAX 30\n` +
+        `🚫 /ban ${user.id} <причина>\n` +
+        `✅ /unban ${user.id}\n` +
+        `🔑 /role ${user.id} <роль>`;
+
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Пользователь не найден`);
+    }
+  }
+
+  private async sendGrant(chatId: number, userId: string, tier: string, days: number) {
+    try {
+      const result = await this.admin.grantPremium(userId, tier, days);
+      if (result.success) {
+        const endDate = new Date(result.endDate).toLocaleDateString('ru-RU');
+        await this.telegram.sendMessageToChat(chatId,
+          `✅ <b>Премиум выдан!</b>\n\n` +
+          `👤 Пользователь: <code>${userId}</code>\n` +
+          `💎 Тариф: <b>${result.subscription}</b>\n` +
+          `📅 Действует до: ${endDate}\n` +
+          `📆 Дней: ${days}`);
+      } else {
+        await this.telegram.sendMessageToChat(chatId, `❌ Не удалось выдать премиум`);
+      }
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async sendBan(chatId: number, userId: string, reason: string) {
+    try {
+      await this.admin.banUser(userId, reason);
+      await this.telegram.sendMessageToChat(chatId,
+        `🚫 <b>Пользователь забанен</b>\n\n` +
+        `🆔 <code>${userId}</code>\n` +
+        `📝 Причина: ${reason}`);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async sendUnban(chatId: number, userId: string) {
+    try {
+      await this.admin.unbanUser(userId);
+      await this.telegram.sendMessageToChat(chatId,
+        `✅ <b>Пользователь разбанен</b>\n\n` +
+        `🆔 <code>${userId}</code>`);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async sendRole(chatId: number, userId: string, role: string) {
+    try {
+      const validRoles = ['USER', 'ADMIN', 'SUPERADMIN'];
+      if (!validRoles.includes(role.toUpperCase())) {
+        await this.telegram.sendMessageToChat(chatId,
+          `❌ Неверная роль. Доступные: ${validRoles.join(', ')}`);
+        return;
+      }
+      await this.admin.updateUserRole(userId, role.toUpperCase());
+      await this.telegram.sendMessageToChat(chatId,
+        `🔑 <b>Роль изменена</b>\n\n` +
+        `🆔 <code>${userId}</code>\n` +
+        `🏷 Новая роль: <b>${role.toUpperCase()}</b>`);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // ─── GROUPS ──────────────────────────────────────────────────────────────
+
+  private async sendGroupsList(chatId: number) {
+    try {
+      const groups = await this.prisma.group.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: { _count: { select: { members: true, messages: true } } },
+      });
+
+      if (groups.length === 0) {
+        await this.telegram.sendMessageToChat(chatId, '🏠 Нет групп');
+        return;
+      }
+
+      let msg = `🏠 <b>ГРУППЫ (${groups.length})</b>\n━━━━━━━━━━━━━━━\n\n`;
+      for (const g of groups) {
+        const type = g.isPublic ? '🌐' : '🔒';
+        const photo = g.avatar ? '📷' : '';
+        msg += `${type} <b>${g.name}</b> ${photo}\n`;
+        msg += `   👥 ${g._count.members} | 💬 ${g._count.messages}\n`;
+        msg += `   📅 ${new Date(g.createdAt).toLocaleDateString('ru-RU')}\n`;
+        msg += `   🆔 <code>${g.id}</code>\n\n`;
+      }
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async sendGroupInfo(chatId: number, groupId: string) {
+    try {
+      const group = await this.prisma.group.findUnique({
+        where: { id: groupId },
+        include: {
+          owner: { select: { id: true, displayName: true, username: true } },
+          _count: { select: { members: true, messages: true } },
+        },
+      });
+
+      if (!group) {
+        await this.telegram.sendMessageToChat(chatId, '❌ Группа не найдена');
+        return;
+      }
+
+      const members = await this.prisma.groupMember.findMany({
+        where: { groupId },
+        include: { user: { select: { id: true, displayName: true, username: true, role: true } } },
+        take: 20,
+      });
+
+      const type = group.isPublic ? '🌐 Публичная' : '🔒 Приватная';
+      const photoStatus = group.avatar ? `📷 <a href="${group.avatar}">Фото</a>` : '📷 Нет фото';
+
+      let msg = `📋 <b>ГРУППА</b>\n━━━━━━━━━━━━━━━\n` +
+        `📛 <b>${group.name}</b>\n` +
+        `📝 ${group.description || 'Без описания'}\n` +
+        `📊 Тип: ${type}\n` +
+        `🖼 Фото: ${photoStatus}\n` +
+        `👥 Участников: ${group._count.members}\n` +
+        `💬 Сообщений: ${group._count.messages}\n` +
+        `👑 Владелец: ${group.owner?.displayName || '—'}\n` +
+        `📅 Создана: ${new Date(group.createdAt).toLocaleDateString('ru-RU')}\n` +
+        `🆔 <code>${group.id}</code>\n` +
+        `━━━━━━━━━━━━━━━\n\n`;
+
+      if (members.length > 0) {
+        msg += `👥 <b>Участники:</b>\n`;
+        for (const m of members) {
+          const role = m.isAdmin ? '⭐' : '•';
+          msg += `${role} ${m.user.displayName || m.user.username || '—'}\n`;
+        }
+      }
+
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // ─── DASHBOARD ───────────────────────────────────────────────────────────
+
+  private async sendDashboard(chatId: number) {
+    try {
+      const stats = await this.admin.getDashboardStats();
+
+      const msg = `📊 <b>DASHBOARD ROVX</b>\n━━━━━━━━━━━━━━━\n\n` +
+        `👥 <b>Пользователи</b>\n` +
+        `   Всего: ${stats.users.total}\n` +
+        `   Сегодня: +${stats.users.newToday}\n` +
+        `   За неделю: +${stats.users.newThisWeek}\n` +
+        `   Онлайн: ${stats.users.online}\n\n` +
+        `🚗 <b>Поездки</b>\n` +
+        `   Всего: ${stats.trips.total}\n` +
+        `   Сегодня: ${stats.trips.today}\n\n` +
+        `📋 <b>Репорты</b>\n` +
+        `   Активных: ${stats.reports.active}\n` +
+        `   Всего: ${stats.reports.total}\n\n` +
+        `🗺 <b>Объектов на карте:</b> ${stats.mapObjects.total}\n` +
+        `💎 <b>Премиум пользователей:</b> ${stats.revenue.premiumUsers}\n`;
+
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // ─── REPORTS / PREMIUM / SERVER ──────────────────────────────────────────
 
   private async sendCityReports(chatId: number, city: string) {
     try {
@@ -564,7 +870,7 @@ export class TelegramController implements OnModuleInit {
         `📝 Репортов: ${user._count?.reports || 0}\n` +
         `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
         `🆔 <code>${user.id}</code>\n\n` +
-        `Для деактивации: <code>/deactivate ${user.id}</code>`;
+        `Для подробностей: <code>/userinfo ${user.id}</code>`;
       await this.telegram.sendMessageToChat(chatId, msg);
     } catch (error) {
       this.logger.error('Failed to find user', error instanceof Error ? error.message : String(error));

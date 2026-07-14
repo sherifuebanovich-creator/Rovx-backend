@@ -5,9 +5,10 @@ import { AdminModule } from '../admin/admin.module';
 import { ReportsModule } from '../reports/reports.module';
 import { PremiumModule } from '../premium/premium.module';
 import { RedisModule } from '../redis/redis.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule],
+  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule, PrismaModule],
   controllers: [TelegramController],
   providers: [TelegramService],
   exports: [TelegramService],

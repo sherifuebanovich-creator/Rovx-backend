@@ -1,8 +1,8 @@
 import {
   Controller, Post, Put, Delete, Get, Body, Param, Query, UseGuards, UseInterceptors,
-  UploadedFile, BadRequestException,
+  UploadedFile, UploadedFiles, BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -108,6 +108,41 @@ export class SocialController {
     @Body() data: any,
   ) {
     return this.socialService.updateGroup(userId, groupId, data);
+  }
+
+  @Post('groups/:groupId/messages/upload')
+  @UseInterceptors(
+    FilesInterceptor('files', 5, {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'messages');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+          cb(null, uniqueName);
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime)$/)) {
+          return cb(new BadRequestException('Only images (JPEG, PNG, WebP, GIF) and videos (MP4, WebM) allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload media for group message' })
+  async uploadGroupMessageMedia(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files?.length) throw new BadRequestException('No files uploaded');
+    const urls = files.map(f => `/uploads/messages/${f.filename}`);
+    return { urls };
   }
 
   @Delete('groups/:groupId')

@@ -274,6 +274,14 @@ export const socialApi = {
   joinGroup: (groupId: string) => api.post(`/social/groups/${groupId}/join`),
   joinGroupByName: (name: string) => api.post('/social/groups/join-by-name', { name }),
   leaveGroup: (groupId: string) => api.post(`/social/groups/${groupId}/leave`),
+  uploadGroupMedia: (groupId: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach(f => formData.append('files', f));
+    return api.post(`/social/groups/${groupId}/messages/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+  },
   getNotifications: (page = 1) => api.get(`/social/notifications?page=${page}`),
   markNotificationsRead: () => api.post('/social/notifications/read'),
   deleteAllNotifications: () => api.delete('/social/notifications'),

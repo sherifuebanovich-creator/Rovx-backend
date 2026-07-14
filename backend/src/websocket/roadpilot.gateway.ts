@@ -393,10 +393,11 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage('group:message')
   async handleGroupMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { groupId: string; content: string; replyTo?: string },
+    @MessageBody() data: { groupId: string; content: string; replyTo?: string; images?: string[]; sticker?: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId || !data.content?.trim()) return;
+    if (!userId) return;
+    if (!data.content?.trim() && !data.images?.length && !data.sticker) return;
 
     try {
       const member = await this.prisma.groupMember.findFirst({
@@ -408,7 +409,9 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         data: {
           groupId: data.groupId,
           senderId: userId,
-          content: data.content.trim(),
+          content: data.content?.trim() || '',
+          images: data.images || [],
+          sticker: data.sticker || null,
         },
         include: {
           sender: { select: { id: true, displayName: true, avatar: true } },

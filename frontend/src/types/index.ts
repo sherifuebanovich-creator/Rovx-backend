@@ -267,6 +267,8 @@ export interface GroupMessage {
   groupId: string;
   senderId: string;
   content: string;
+  images?: string[];
+  sticker?: string;
   createdAt: string;
   sender: { id: string; displayName: string; avatar?: string };
 }
