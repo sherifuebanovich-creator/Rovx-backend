@@ -278,23 +278,41 @@ out body;
     types?: string[],
   ) {
     const typeFilter = types?.length ? types : ['traffic_signals'];
+    const wantSpeedCameras = typeFilter.includes('speed_camera');
+    const wantSignals = typeFilter.includes('traffic_signals');
 
-    return this.prisma.mapFeature.findMany({
-      where: {
-        lat: { gte: minLat, lte: maxLat },
-        lng: { gte: minLng, lte: maxLng },
-        type: { in: typeFilter },
-      },
-      select: {
-        id: true,
-        type: true,
-        lat: true,
-        lng: true,
-        countryCode: true,
-        tags: true,
-        updatedAt: true,
-      },
-    });
+    const bboxWhere = {
+      lat: { gte: minLat, lte: maxLat },
+      lng: { gte: minLng, lte: maxLng },
+    };
+
+    const results: any[] = [];
+
+    if (wantSignals) {
+      const signals = await this.prisma.mapFeature.findMany({
+        where: { ...bboxWhere, type: 'traffic_signals' },
+        select: { id: true, type: true, lat: true, lng: true, countryCode: true, tags: true, updatedAt: true },
+      });
+      results.push(...signals);
+    }
+
+    if (wantSpeedCameras) {
+      const cameras = await this.prisma.speedCamera.findMany({
+        where: { ...bboxWhere, isActive: true },
+        select: { id: true, lat: true, lng: true, type: true, speedLimit: true, roadName: true, direction: true, source: true },
+      });
+      results.push(...cameras.map(c => ({
+        id: c.id,
+        type: 'speed_camera',
+        lat: c.lat,
+        lng: c.lng,
+        countryCode: '',
+        tags: JSON.stringify({ cameraType: c.type, maxSpeed: c.speedLimit, road: c.roadName, direction: c.direction, source: c.source }),
+        updatedAt: new Date(),
+      })));
+    }
+
+    return results;
   }
 
   async getStats() {
