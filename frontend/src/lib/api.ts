@@ -324,6 +324,8 @@ export const premiumApi = {
   getMy: () => api.get('/premium/my'),
   createCheckout: (tierName: string, months = 1) => api.post('/premium/create-checkout', { tierName, months }),
   stripeCheckout: (tierName: string) => api.post('/premium/stripe-checkout', { tierName }),
+  getPaymentDetails: () => api.get('/premium/payment-details'),
+  directPay: (tierName: string, proof: string) => api.post('/premium/direct-pay', { tierName, proof }),
   cancel: () => api.post('/premium/cancel'),
   canCreateGroup: () => api.get('/premium/can-create-group'),
 };

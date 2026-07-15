@@ -758,12 +758,13 @@ export class PremiumService {
       const adminChat = this.config.get('TELEGRAM_CHAT_ID');
       const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
       if (adminChat && botToken) {
-        const msg = `💰 <b>ОПЛАТА</b>\n\n` +
+        const msg = `💰 <b>НОВАЯ ОПЛАТА</b>\n\n` +
           `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
-          `💎 Тариф: <b>${tier.label_en}</b>\n` +
-          `💵 Сумма: <b>$${tier.price}</b>\n` +
-          `🔢 Последние 4 цифры: <b>${proof}</b>\n` +
-          `⏳ Статус: <b>Ожидает подтверждения</b>`;
+          `💎 Тариф: <b>${tier.label_ru}</b>\n` +
+          `💵 Сумма: <b>${(tier as any).priceRub || '$' + tier.price}</b>\n` +
+          `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +
+          `⏳ Статус: <b>Ожидает подтверждения</b>\n\n` +
+          `🆔 <code>${userId}</code>`;
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -771,6 +772,14 @@ export class PremiumService {
             chat_id: adminChat,
             text: msg,
             parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '✅ Одобрить', callback_data: `pay_approve_${userId}` },
+                  { text: '❌ Отклонить', callback_data: `pay_reject_${userId}` },
+                ],
+              ],
+            },
           }),
           signal: AbortSignal.timeout(10000),
         });

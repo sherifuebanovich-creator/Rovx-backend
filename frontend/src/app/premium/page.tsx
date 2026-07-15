@@ -5,9 +5,10 @@ import { useAuthStore } from '@/store/auth.store';
 import { premiumApi } from '@/lib/api';
 import { PremiumTier, PremiumSubscription } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaCrown, FaCheck, FaArrowLeft, FaTimes, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
+import { FaCrown, FaCheck, FaArrowLeft, FaTimes } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import DirectPaymentModal from '@/components/premium/DirectPaymentModal';
 
 const TIER_COLORS = ['text-gray-400', 'text-blue-400', 'text-purple-400', 'text-yellow-400'];
 const TIER_BG = [
@@ -38,68 +39,6 @@ export default function PremiumPageWrapper() {
     <Suspense fallback={<div className="flex justify-center items-center min-h-dvh bg-dark-bg"><div className="w-8 h-8 border-3 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>}>
       <PremiumPage />
     </Suspense>
-  );
-}
-
-function PaymentModal({ tier, onClose, onSuccess }: { tier: PremiumTier; onClose: () => void; onSuccess: () => void }) {
-  const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'processing' | 'done'>('processing');
-
-  useEffect(() => {
-    const go = async () => {
-      setLoading(true);
-      try {
-        const res = await premiumApi.stripeCheckout(tier.name);
-        const data = res.data?.data || res.data;
-        if (data?.url) {
-          window.location.href = data.url;
-          return;
-        }
-        toast.error('Stripe не настроен');
-        onClose();
-      } catch (err: any) {
-        toast.error(err?.response?.data?.message || 'Ошибка Stripe');
-        onClose();
-      } finally {
-        setLoading(false);
-      }
-    };
-    go();
-  }, [tier.name, onClose]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        onClick={e => e.stopPropagation()}
-        className="w-full max-w-md bg-[#0d1117] border border-white/10 rounded-2xl p-6 shadow-2xl"
-      >
-        {step === 'done' ? (
-          <div className="text-center py-8">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}>
-              <FaCheckCircle size={64} className="text-green-400 mx-auto mb-4" />
-            </motion.div>
-            <h3 className="text-xl font-bold text-white mb-2">{t('premium.paymentSuccess')}</h3>
-            <p className="text-gray-400 text-sm">{tier.label} активирован!</p>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <div className="w-12 h-12 border-3 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-white mb-2">Перенаправление на оплату...</h3>
-            <p className="text-gray-400 text-sm">Stripe Checkout загружается</p>
-          </div>
-        )}
-      </motion.div>
-    </motion.div>
   );
 }
 
@@ -158,6 +97,13 @@ function PremiumPage() {
     } catch {
       toast.error(t('premium.cancelError'));
     }
+  };
+
+  const getTierPrice = (tier: PremiumTier) => {
+    const lang = i18n.language;
+    if (lang === 'ru' && (tier as any).priceRub) return `${(tier as any).priceRub} ₽`;
+    if (lang === 'uz' && (tier as any).priceUzs) return `${(tier as any).priceUzs} сўм`;
+    return `$${tier.price}`;
   };
 
   return (
@@ -239,7 +185,7 @@ function PremiumPage() {
                         <h3 className={`text-xl font-black font-display tracking-wide ${TIER_COLORS[tier.tier]}`}>{tier.label}</h3>
                       </div>
                       <p className="text-3xl font-black text-white mt-2">
-                        ${tier.price}<span className="text-xs text-gray-400 font-normal tracking-normal"> / {t('premium.perMonth')}</span>
+                        {getTierPrice(tier)}<span className="text-xs text-gray-400 font-normal tracking-normal"> / {t('premium.perMonth')}</span>
                       </p>
                       {tier.tier === 2 && (
                         <p className="text-[10px] text-purple-300 mt-0.5">🔥 {t('premium.mostPopular')}</p>
@@ -312,10 +258,11 @@ function PremiumPage() {
 
       <AnimatePresence>
         {paymentTier && (
-          <PaymentModal
-            tier={paymentTier}
+          <DirectPaymentModal
+            tierName={paymentTier.name}
+            tierLabel={paymentTier.label}
+            price={getTierPrice(paymentTier)}
             onClose={() => setPaymentTier(null)}
-            onSuccess={fetchData}
           />
         )}
       </AnimatePresence>

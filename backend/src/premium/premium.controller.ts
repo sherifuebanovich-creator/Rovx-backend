@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Query, Req, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Query, Req, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -143,12 +143,55 @@ export class PremiumController {
   }
 
   @Public()
+  @Get('payment-details')
+  @ApiOperation({ summary: 'Get payment card details for manual transfer' })
+  async getPaymentDetails() {
+    return this.premiumService.getPaymentDetails();
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('direct-pay')
+  @ApiOperation({ summary: 'Submit manual payment proof (last 4 digits)' })
+  async directPay(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string; proof: string },
+  ) {
+    return this.premiumService.confirmDirectPayment(userId, body.tierName, body.proof);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('pending-payments')
+  @ApiOperation({ summary: 'Get pending payments (admin)' })
+  async getPendingPayments() {
+    return this.premiumService.getPendingPayments();
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('approve-payment/:userId')
+  @ApiOperation({ summary: 'Approve pending payment (admin)' })
+  async approvePayment(@Param('userId') userId: string) {
+    return this.premiumService.approvePayment(userId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('reject-payment/:userId')
+  @ApiOperation({ summary: 'Reject pending payment (admin)' })
+  async rejectPayment(@Param('userId') userId: string) {
+    return this.premiumService.rejectPayment(userId);
+  }
+
+  @Public()
   @Get('payment-providers')
   @ApiOperation({ summary: 'Get available payment providers' })
   getPaymentProviders() {
     return {
       stripe: this.premiumService.isStripeConfigured(),
       yookassa: this.premiumService.isYooKassaConfigured(),
+      direct: true,
     };
   }
 
