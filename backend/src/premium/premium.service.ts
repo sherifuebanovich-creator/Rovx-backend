@@ -71,108 +71,15 @@ export class PremiumService {
   }
 
   isYooKassaConfigured(): boolean {
-    return this.yooKassa.configured;
+    return false;
   }
 
   async createYooKassaCheckout(userId: string, tierName: string, currency = 'RUB') {
-    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
-    if (!tier || tier.tier === 0) throw new BadRequestException('Invalid tier');
-
-    const existing = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    if (existing?.status === 'active' && existing.endDate > new Date()) {
-      throw new BadRequestException('Уже есть активная подписка');
-    }
-
-    const frontendUrl = this.config.get('FRONTEND_URL', 'https://rovx-app-livid.vercel.app');
-    const amount = currency === 'RUB' ? (tier as any).priceRub || tier.price * 90 : tier.price;
-
-    const { paymentId, confirmationUrl } = await this.yooKassa.createPayment({
-      amount,
-      currency,
-      description: `ROVX ${tier.label_ru} — 30 дней`,
-      userId,
-      tierName: tier.name,
-      returnUrl: `${frontendUrl}/premium?success=true`,
-    });
-
-    await this.prisma.premiumSubscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        tier: tier.tier,
-        levelName: tier.name,
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        price: amount,
-        currency,
-        paymentId,
-        status: 'pending',
-      },
-      update: {
-        tier: tier.tier,
-        levelName: tier.name,
-        price: amount,
-        currency,
-        paymentId,
-        status: 'pending',
-      },
-    });
-
-    return { paymentId, confirmationUrl, amount, currency };
+    throw new BadRequestException('YooKassa is not configured');
   }
 
   async handleYooKassaWebhook(body: any) {
-    const event = this.yooKassa.parseWebhookEvent(body);
-    if (!event) return;
-
-    this.logger.log(`YooKassa webhook: ${event.event} — ${event.paymentId} (${event.status})`);
-
-    if (event.event === 'payment.succeeded' && event.status === 'succeeded') {
-      const existing = await this.prisma.premiumSubscription.findFirst({
-        where: { paymentId: event.paymentId },
-      });
-      if (existing?.status === 'active') return;
-
-      const userId = event.userId || existing?.userId;
-      if (!userId) return;
-
-      const tier = PREMIUM_TIERS.find(t => t.name === event.tierName) || PREMIUM_TIERS[1];
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-      await this.prisma.$transaction([
-        this.prisma.premiumSubscription.upsert({
-          where: { userId },
-          create: {
-            userId,
-            tier: tier.tier,
-            levelName: tier.name,
-            startDate: new Date(),
-            endDate,
-            price: event.amount || 0,
-            currency: event.currency || 'RUB',
-            paymentId: event.paymentId,
-            status: 'active',
-          },
-          update: {
-            tier: tier.tier,
-            levelName: tier.name,
-            endDate,
-            price: event.amount || 0,
-            currency: event.currency || 'RUB',
-            paymentId: event.paymentId,
-            status: 'active',
-          },
-        }),
-        this.prisma.user.update({
-          where: { id: userId },
-          data: {
-            subscription: tier.name,
-            subscriptionEnd: endDate,
-          },
-        }),
-      ]);
-
-      this.logger.log(`YooKassa payment confirmed: user ${userId} → ${tier.name}`);
-    }
+    return { received: true };
   }
 
   getTiers(lang = 'en') {
