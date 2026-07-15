@@ -282,13 +282,29 @@ export class SocialService {
       }
     }
 
-    await this.prisma.$transaction([
-      this.prisma.groupMember.create({ data: { groupId: group.id, userId } }),
-      this.prisma.group.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } }),
-    ]);
+    // Check if already has a pending request
+    const existingRequest = await this.prisma.groupRequest.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId } },
+    });
+    if (existingRequest) {
+      if (existingRequest.status === 'PENDING') return { requested: true, group };
+      if (existingRequest.status === 'REJECTED') {
+        // Allow re-request
+        await this.prisma.groupRequest.update({
+          where: { id: existingRequest.id },
+          data: { status: 'PENDING', updatedAt: new Date() },
+        });
+        await this.gateway.sendToUser(group.ownerId, 'group:request_new', { groupId: group.id, userId, groupName: group.name });
+        return { requested: true, group };
+      }
+    }
 
-    await this.gateway.broadcastToGroup(group.id, 'group:member_joined', { userId });
-    return { joined: true, group };
+    await this.prisma.groupRequest.create({
+      data: { groupId: group.id, userId },
+    });
+
+    await this.gateway.sendToUser(group.ownerId, 'group:request_new', { groupId: group.id, userId, groupName: group.name });
+    return { requested: true, group };
   }
 
   async joinGroup(userId: string, groupId: string) {
@@ -315,13 +331,28 @@ export class SocialService {
       }
     }
 
-    await this.prisma.$transaction([
-      this.prisma.groupMember.create({ data: { groupId, userId } }),
-      this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { increment: 1 } } }),
-    ]);
+    // Check if already has a pending request
+    const existingRequest = await this.prisma.groupRequest.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (existingRequest) {
+      if (existingRequest.status === 'PENDING') return { requested: true };
+      if (existingRequest.status === 'REJECTED') {
+        await this.prisma.groupRequest.update({
+          where: { id: existingRequest.id },
+          data: { status: 'PENDING', updatedAt: new Date() },
+        });
+        await this.gateway.sendToUser(group.ownerId, 'group:request_new', { groupId, userId, groupName: group.name });
+        return { requested: true };
+      }
+    }
 
-    await this.gateway.broadcastToGroup(groupId, 'group:member_joined', { userId });
-    return { joined: true };
+    await this.prisma.groupRequest.create({
+      data: { groupId, userId },
+    });
+
+    await this.gateway.sendToUser(group.ownerId, 'group:request_new', { groupId, userId, groupName: group.name });
+    return { requested: true };
   }
 
   async leaveGroup(userId: string, groupId: string) {
@@ -356,10 +387,16 @@ export class SocialService {
       }
     }
 
+    // Invite link bypasses approval — join directly
     await this.prisma.$transaction([
       this.prisma.groupMember.create({ data: { groupId: group.id, userId } }),
       this.prisma.group.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } }),
     ]);
+
+    // Clean up any pending request
+    await this.prisma.groupRequest.deleteMany({
+      where: { groupId: group.id, userId },
+    });
 
     await this.gateway.broadcastToGroup(group.id, 'group:member_joined', { userId });
     return { joined: true, group };
@@ -373,6 +410,80 @@ export class SocialService {
     const newToken = generateInviteToken();
     await this.prisma.group.update({ where: { id: groupId }, data: { inviteToken: newToken } });
     return { inviteToken: newToken };
+  }
+
+  // ── Join Requests ─────────────────────────────────────
+
+  async getPendingRequests(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+
+    const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
+      where: { groupId, userId, isAdmin: true },
+    });
+    if (!isAdmin) throw new ForbiddenException('Нет прав');
+
+    const requests = await this.prisma.groupRequest.findMany({
+      where: { groupId, status: 'PENDING' },
+      include: { user: { select: { id: true, displayName: true, avatar: true, city: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return requests;
+  }
+
+  async approveRequest(userId: string, groupId: string, requestId: string) {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+
+    const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
+      where: { groupId, userId, isAdmin: true },
+    });
+    if (!isAdmin) throw new ForbiddenException('Нет прав');
+
+    const request = await this.prisma.groupRequest.findUnique({ where: { id: requestId } });
+    if (!request || request.groupId !== groupId) throw new NotFoundException('Запрос не найден');
+    if (request.status !== 'PENDING') throw new ForbiddenException('Запрос уже обработан');
+
+    // Create member and delete request in transaction
+    await this.prisma.$transaction([
+      this.prisma.groupMember.create({ data: { groupId, userId: request.userId } }),
+      this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { increment: 1 } } }),
+      this.prisma.groupRequest.update({ where: { id: requestId }, data: { status: 'APPROVED' } }),
+    ]);
+
+    await this.gateway.sendToUser(request.userId, 'group:request_approved', { groupId, groupName: group.name });
+    await this.gateway.broadcastToGroup(groupId, 'group:member_joined', { userId: request.userId });
+    return { approved: true };
+  }
+
+  async rejectRequest(userId: string, groupId: string, requestId: string) {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+
+    const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
+      where: { groupId, userId, isAdmin: true },
+    });
+    if (!isAdmin) throw new ForbiddenException('Нет прав');
+
+    const request = await this.prisma.groupRequest.findUnique({ where: { id: requestId } });
+    if (!request || request.groupId !== groupId) throw new NotFoundException('Запрос не найден');
+    if (request.status !== 'PENDING') throw new ForbiddenException('Запрос уже обработан');
+
+    await this.prisma.groupRequest.update({
+      where: { id: requestId },
+      data: { status: 'REJECTED' },
+    });
+
+    await this.gateway.sendToUser(request.userId, 'group:request_rejected', { groupId, groupName: group.name });
+    return { rejected: true };
+  }
+
+  async getUserRequestStatus(userId: string, groupId: string) {
+    const request = await this.prisma.groupRequest.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    return request ? request.status : null;
   }
 
   async getInviteToken(userId: string, groupId: string) {

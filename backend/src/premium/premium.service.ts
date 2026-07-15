@@ -5,6 +5,7 @@ import { XsollaService } from './xsolla.service';
 import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
 import { StripeService } from './stripe.service';
+import { PaymeService } from './payme.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -15,21 +16,21 @@ export const PREMIUM_TIERS = [
     desc_ru: 'Базовая навигация без дополнительных функций',
   },
   {
-    tier: 1, name: 'PREMIUM_BASIC', price: 5, maxGroups: 1,
+    tier: 1, name: 'PREMIUM_BASIC', price: 5, maxGroups: 1, priceRub: 449, priceKzt: 2290, priceUzs: 49900,
     canCreateGroups: false, canReceiveReports: true,
     label_en: 'Premium Basic', label_ru: 'Премиум Базовый',
     desc_en: 'Ad-free navigation with instant road reports and voice guidance',
     desc_ru: 'Навигация без рекламы с мгновенными репортами и голосовыми подсказками',
   },
   {
-    tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3,
+    tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3, priceRub: 899, priceKzt: 4490, priceUzs: 99900,
     canCreateGroups: false, canReceiveReports: true,
     label_en: 'Premium Standard', label_ru: 'Премиум Стандарт',
     desc_en: 'AI co-driver, live cameras & traffic, plus city group chats',
     desc_ru: 'AI-ассистент, камеры и пробки онлайн, городские чаты и группы',
   },
   {
-    tier: 3, name: 'PREMIUM_MAX', price: 20, maxGroups: 10,
+    tier: 3, name: 'PREMIUM_MAX', price: 20, maxGroups: 10, priceRub: 1699, priceKzt: 8990, priceUzs: 199900,
     canCreateGroups: true, canReceiveReports: true,
     label_en: 'Premium Max', label_ru: 'Премиум Макс',
     desc_en: 'Unlimited AI, 3D maps, convoys, priority support — everything included',
@@ -50,6 +51,7 @@ export class PremiumService {
     private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
     private stripeService: StripeService,
+    private paymeService: PaymeService,
   ) {}
 
   isStripeConfigured(): boolean {
@@ -66,6 +68,111 @@ export class PremiumService {
 
   verifyLavaTopWebhook(rawBody: string, signature: string): boolean {
     return this.lavaTop.verifyWebhookSignature(rawBody, signature);
+  }
+
+  isYooKassaConfigured(): boolean {
+    return this.yooKassa.configured;
+  }
+
+  async createYooKassaCheckout(userId: string, tierName: string, currency = 'RUB') {
+    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
+    if (!tier || tier.tier === 0) throw new BadRequestException('Invalid tier');
+
+    const existing = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+    if (existing?.status === 'active' && existing.endDate > new Date()) {
+      throw new BadRequestException('Уже есть активная подписка');
+    }
+
+    const frontendUrl = this.config.get('FRONTEND_URL', 'https://rovx-app-livid.vercel.app');
+    const amount = currency === 'RUB' ? (tier as any).priceRub || tier.price * 90 : tier.price;
+
+    const { paymentId, confirmationUrl } = await this.yooKassa.createPayment({
+      amount,
+      currency,
+      description: `ROVX ${tier.label_ru} — 30 дней`,
+      userId,
+      tierName: tier.name,
+      returnUrl: `${frontendUrl}/premium?success=true`,
+    });
+
+    await this.prisma.premiumSubscription.upsert({
+      where: { userId },
+      create: {
+        userId,
+        tier: tier.tier,
+        levelName: tier.name,
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        price: amount,
+        currency,
+        paymentId,
+        status: 'pending',
+      },
+      update: {
+        tier: tier.tier,
+        levelName: tier.name,
+        price: amount,
+        currency,
+        paymentId,
+        status: 'pending',
+      },
+    });
+
+    return { paymentId, confirmationUrl, amount, currency };
+  }
+
+  async handleYooKassaWebhook(body: any) {
+    const event = this.yooKassa.parseWebhookEvent(body);
+    if (!event) return;
+
+    this.logger.log(`YooKassa webhook: ${event.event} — ${event.paymentId} (${event.status})`);
+
+    if (event.event === 'payment.succeeded' && event.status === 'succeeded') {
+      const existing = await this.prisma.premiumSubscription.findFirst({
+        where: { paymentId: event.paymentId },
+      });
+      if (existing?.status === 'active') return;
+
+      const userId = event.userId || existing?.userId;
+      if (!userId) return;
+
+      const tier = PREMIUM_TIERS.find(t => t.name === event.tierName) || PREMIUM_TIERS[1];
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await this.prisma.$transaction([
+        this.prisma.premiumSubscription.upsert({
+          where: { userId },
+          create: {
+            userId,
+            tier: tier.tier,
+            levelName: tier.name,
+            startDate: new Date(),
+            endDate,
+            price: event.amount || 0,
+            currency: event.currency || 'RUB',
+            paymentId: event.paymentId,
+            status: 'active',
+          },
+          update: {
+            tier: tier.tier,
+            levelName: tier.name,
+            endDate,
+            price: event.amount || 0,
+            currency: event.currency || 'RUB',
+            paymentId: event.paymentId,
+            status: 'active',
+          },
+        }),
+        this.prisma.user.update({
+          where: { id: userId },
+          data: {
+            subscription: tier.name,
+            subscriptionEnd: endDate,
+          },
+        }),
+      ]);
+
+      this.logger.log(`YooKassa payment confirmed: user ${userId} → ${tier.name}`);
+    }
   }
 
   getTiers(lang = 'en') {

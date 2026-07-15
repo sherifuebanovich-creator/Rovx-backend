@@ -277,6 +277,16 @@ export interface GroupMember {
   user: { id: string; username: string; displayName: string; avatar?: string };
 }
 
+export interface GroupRequest {
+  id: string;
+  groupId: string;
+  userId: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  message?: string;
+  createdAt: string;
+  user: { id: string; displayName: string; avatar?: string; city?: string };
+}
+
 export interface GroupMessage {
   id: string;
   groupId: string;

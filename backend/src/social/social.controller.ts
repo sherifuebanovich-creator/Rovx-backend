@@ -371,6 +371,54 @@ export class SocialController {
     return this.socialService.getMyFavorites(userId);
   }
 
+  // ── Join Requests ──
+  @Get('groups/:groupId/requests')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get pending join requests for a group' })
+  async getPendingRequests(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.socialService.getPendingRequests(userId, groupId);
+  }
+
+  @Post('groups/:groupId/requests/:requestId/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve a join request' })
+  async approveRequest(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('requestId') requestId: string,
+  ) {
+    return this.socialService.approveRequest(userId, groupId, requestId);
+  }
+
+  @Post('groups/:groupId/requests/:requestId/reject')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject a join request' })
+  async rejectRequest(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('requestId') requestId: string,
+  ) {
+    return this.socialService.rejectRequest(userId, groupId, requestId);
+  }
+
+  @Get('groups/:groupId/request-status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user request status for a group' })
+  async getRequestStatus(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+  ) {
+    const status = await this.socialService.getUserRequestStatus(userId, groupId);
+    return { status };
+  }
+
   // ── City Chat ──
   @Get('chat/city/:cityName')
   @ApiOperation({ summary: 'Get city chat messages' })

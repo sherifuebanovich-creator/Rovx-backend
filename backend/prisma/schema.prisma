@@ -59,6 +59,7 @@ model User {
   following         Follow[]         @relation("Followers")
   groupMessages     GroupMessage[]
   groupMembers      GroupMember[]
+  groupRequests     GroupRequest[]
   notifications     Notification[]
   preferences       UserPreference?
   sessions          Session[]
@@ -454,6 +455,7 @@ model Group {
   members  GroupMember[]
   messages GroupMessage[]
   favorites GroupFavorite[]
+  requests GroupRequest[]
 
   @@map("groups")
 }
@@ -471,6 +473,22 @@ model GroupMember {
 
   @@unique([groupId, userId])
   @@map("group_members")
+}
+
+model GroupRequest {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  message   String?  // optional message from requester
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_requests")
 }
 
 model Message {

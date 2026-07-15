@@ -115,6 +115,45 @@ export class PremiumController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Post('yookassa-checkout')
+  @ApiOperation({ summary: 'Create YooKassa payment (for CIS/Russia)' })
+  async createYooKassaCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() body: { tierName: string; currency?: string },
+  ) {
+    return this.premiumService.createYooKassaCheckout(userId, body.tierName, body.currency || 'RUB');
+  }
+
+  @Public()
+  @Post('webhook-yookassa')
+  @ApiExcludeEndpoint()
+  async webhookYooKassa(@Req() req: Request) {
+    const body = (req as any).body;
+
+    if (!this.premiumService.isYooKassaConfigured()) {
+      return { ok: true };
+    }
+
+    try {
+      await this.premiumService.handleYooKassaWebhook(body);
+    } catch (e) {
+      this.logger?.error('YooKassa webhook processing error', e);
+    }
+    return { received: true };
+  }
+
+  @Public()
+  @Get('payment-providers')
+  @ApiOperation({ summary: 'Get available payment providers' })
+  getPaymentProviders() {
+    return {
+      stripe: this.premiumService.isStripeConfigured(),
+      yookassa: this.premiumService.isYooKassaConfigured(),
+    };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Get('can-create-group')
   @ApiOperation({ summary: 'Check if user can create a group' })
   canCreateGroup(@CurrentUser('id') userId: string) {

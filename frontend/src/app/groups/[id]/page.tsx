@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi } from '@/lib/api';
 import { useSocket, getSocket } from '@/hooks/useSocket';
-import { Group, GroupMessage } from '@/types';
+import { Group, GroupMessage, GroupRequest } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaArrowLeft, FaUsers, FaEdit, FaTrash, FaTimes, FaSave, FaPaperPlane,
@@ -79,6 +79,8 @@ export default function GroupChatPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; senderId: string; x: number; y: number } | null>(null);
   const [memberAction, setMemberAction] = useState<{ userId: string; username: string } | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [requestStatus, setRequestStatus] = useState<string | null>(null);
   const joinedRef = useRef(false);
 
   // Socket connection
@@ -135,6 +137,22 @@ export default function GroupChatPage() {
       setIsMember(gData?.isMember ?? false);
       const msgs = mRes.data?.data || mRes.data;
       setMessages(msgs?.messages || msgs || []);
+
+      // Check request status for non-members
+      if (!gData?.isMember) {
+        socialApi.getRequestStatus(groupId).then(res => {
+          setRequestStatus(res.data?.status || null);
+        }).catch(() => {});
+      }
+
+      // Fetch pending requests for admins
+      if (gData?.isMember && (gData?.ownerId === user?.id || gData?.members?.some((m: any) => m.userId === user?.id && m.isAdmin))) {
+        socialApi.getPendingRequests(groupId).then(res => {
+          const data = res.data?.data || res.data;
+          setPendingRequests(Array.isArray(data) ? data : []);
+        }).catch(() => {});
+      }
+
       // If member, fetch messages on socket connect too
       if (gData?.isMember) {
         const onConnect = () => {
@@ -179,12 +197,56 @@ export default function GroupChatPage() {
     const onMemberPromoted = () => { toast('Пользователь повышен до админа'); };
     const onMemberDemoted = () => { toast('Пользователь понижен'); };
 
+    const onRequestNew = (data: { groupId: string; userId: string; groupName: string }) => {
+      if (data.groupId !== groupId) return;
+      toast(`Новая заявка на вступление в группу`, { icon: '📩' });
+      // Refresh pending requests for admins
+      socialApi.getPendingRequests(groupId).then(res => {
+        const reqs = res.data?.data || res.data;
+        setPendingRequests(Array.isArray(reqs) ? reqs : []);
+      }).catch(() => {});
+    };
+
+    const onRequestApproved = (data: { groupId: string; groupName: string }) => {
+      if (data.groupId !== groupId) return;
+      toast.success(`Заявка одобрена! Вы теперь в группе "${data.groupName}"`);
+      setIsMember(true);
+      setRequestStatus('APPROVED');
+      // Reload messages
+      socialApi.getGroupMessages(groupId).then(res => {
+        const m = res.data?.data || res.data;
+        setMessages(m?.messages || m || []);
+      }).catch(() => {});
+      socialApi.getGroup(groupId).then(res => {
+        const g = res.data?.data || res.data;
+        setGroup(g);
+      }).catch(() => {});
+    };
+
+    const onRequestRejected = (data: { groupId: string; groupName: string }) => {
+      if (data.groupId !== groupId) return;
+      toast.error(`Заявка отклонена в группе "${data.groupName}"`);
+      setRequestStatus('REJECTED');
+    };
+
+    const onMemberJoined = (data: { userId: string }) => {
+      // Refresh group data when someone joins
+      socialApi.getGroup(groupId).then(res => {
+        const g = res.data?.data || res.data;
+        setGroup(g);
+      }).catch(() => {});
+    };
+
     ws?.on('group:updated', onUpdated);
     ws?.on('group:message_deleted', onMessageDeleted);
     ws?.on('group:member_banned', onMemberBanned);
     ws?.on('group:member_kicked', onMemberKicked);
     ws?.on('group:member_promoted', onMemberPromoted);
     ws?.on('group:member_demoted', onMemberDemoted);
+    ws?.on('group:request_new', onRequestNew);
+    ws?.on('group:request_approved', onRequestApproved);
+    ws?.on('group:request_rejected', onRequestRejected);
+    ws?.on('group:member_joined', onMemberJoined);
 
     return () => {
       ws?.off('group:message', onMessage);
@@ -194,6 +256,10 @@ export default function GroupChatPage() {
       ws?.off('group:member_kicked', onMemberKicked);
       ws?.off('group:member_promoted', onMemberPromoted);
       ws?.off('group:member_demoted', onMemberDemoted);
+      ws?.off('group:request_new', onRequestNew);
+      ws?.off('group:request_approved', onRequestApproved);
+      ws?.off('group:request_rejected', onRequestRejected);
+      ws?.off('group:member_joined', onMemberJoined);
       ws?.emit('leave:group', { groupId });
       joinedRef.current = false;
     };
@@ -404,6 +470,25 @@ export default function GroupChatPage() {
     } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
   };
 
+  const handleApproveRequest = async (requestId: string) => {
+    try {
+      await socialApi.approveRequest(groupId, requestId);
+      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+      toast.success('Заявка одобрена');
+      // Refresh group data
+      const res = await socialApi.getGroup(groupId);
+      setGroup(res.data?.data || res.data);
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      await socialApi.rejectRequest(groupId, requestId);
+      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+      toast.success('Заявка отклонена');
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -525,10 +610,25 @@ export default function GroupChatPage() {
             {group.description && <p className="text-sm text-gray-400 mb-2">{group.description}</p>}
             <p className="text-xs text-gray-500">{group.memberCount} {t('groupDetails.members')}</p>
           </div>
-          <button onClick={handleJoin} disabled={joining}
-            className="btn-primary px-8 py-3 flex items-center gap-2 text-sm font-semibold disabled:opacity-50">
-            {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Вступить в группу</>}
-          </button>
+          {requestStatus === 'PENDING' ? (
+            <div className="px-8 py-3 rounded-xl bg-yellow-600/20 text-yellow-400 text-sm font-semibold flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+              Запрос отправлен
+            </div>
+          ) : requestStatus === 'REJECTED' ? (
+            <div className="text-center space-y-2">
+              <p className="text-xs text-red-400">Заявка отклонена</p>
+              <button onClick={handleJoin} disabled={joining}
+                className="btn-primary px-8 py-3 flex items-center gap-2 text-sm font-semibold disabled:opacity-50">
+                {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Подать заново</>}
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleJoin} disabled={joining}
+              className="btn-primary px-8 py-3 flex items-center gap-2 text-sm font-semibold disabled:opacity-50">
+              {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Подать заявку</>}
+            </button>
+          )}
           <button onClick={() => setShowInfo(true)}
             className="text-xs text-gray-500 hover:text-primary-400 flex items-center gap-1">
             <FaInfoCircle size={12} /> Подробнее о группе
@@ -868,6 +968,38 @@ export default function GroupChatPage() {
                   </div>
                 )}
 
+                {/* Pending requests (admin only) */}
+                {isAdmin && isMember && pendingRequests.length > 0 && (
+                  <div className="bg-dark-surface rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      📩 Заявки на вступление ({pendingRequests.length})
+                    </p>
+                    <div className="space-y-2">
+                      {pendingRequests.map(req => (
+                        <div key={req.id} className="flex items-center gap-3 py-2">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
+                            {req.user?.avatar ? <img src={req.user.avatar} alt="" className="w-full h-full object-cover" /> : req.user?.displayName?.[0]?.toUpperCase() ?? '?'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-dark-text font-medium truncate">{req.user.displayName}</p>
+                            <p className="text-[10px] text-gray-500">{req.user.city || 'Без города'}</p>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => handleApproveRequest(req.id)}
+                              className="px-3 py-1.5 rounded-lg bg-green-600/20 text-green-400 text-xs hover:bg-green-600/30 transition-colors">
+                              ✓
+                            </button>
+                            <button onClick={() => handleRejectRequest(req.id)}
+                              className="px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 text-xs hover:bg-red-600/30 transition-colors">
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Members list */}
                 <div className="bg-dark-surface rounded-xl p-4">
                   <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">
@@ -875,7 +1007,14 @@ export default function GroupChatPage() {
                   </p>
                   <div className="space-y-2">
                     {group.members?.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 py-1">
+                      <div key={m.id}
+                        className={`flex items-center gap-3 py-1 ${isAdmin && m.userId !== user.id && m.userId !== group.ownerId ? 'cursor-pointer hover:bg-dark-bg rounded-xl px-1 -mx-1 transition-colors' : ''}`}
+                        onClick={() => {
+                          if (isAdmin && m.userId !== user.id && m.userId !== group.ownerId) {
+                            setMemberAction({ userId: m.userId, username: m.user.displayName });
+                          }
+                        }}
+                      >
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
                           {m.user?.avatar ? <img src={m.user.avatar} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                         </div>
@@ -885,12 +1024,8 @@ export default function GroupChatPage() {
                         </div>
                         {m.isAdmin && <FaShieldAlt size={12} className="text-primary-400 flex-shrink-0" />}
                         {m.userId === group.ownerId && <FaCrown size={12} className="text-yellow-400 flex-shrink-0" />}
-                        {/* Admin action button */}
                         {isAdmin && m.userId !== user.id && m.userId !== group.ownerId && (
-                          <button onClick={() => setMemberAction({ userId: m.userId, username: m.user.displayName })}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-dark-text hover:bg-dark-bg transition-colors flex-shrink-0">
-                            <FaChevronRight size={10} />
-                          </button>
+                          <FaChevronRight size={10} className="text-gray-500 flex-shrink-0" />
                         )}
                       </div>
                     ))}
@@ -898,10 +1033,25 @@ export default function GroupChatPage() {
                 </div>
 
                 {!isMember ? (
-                  <button onClick={handleJoin} disabled={joining}
-                    className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-500 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50">
-                    {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Вступить в группу</>}
-                  </button>
+                  requestStatus === 'PENDING' ? (
+                    <div className="w-full py-3 rounded-xl bg-yellow-600/20 text-yellow-400 text-sm font-medium flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                      Запрос отправлен
+                    </div>
+                  ) : requestStatus === 'REJECTED' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-400 text-center">Заявка отклонена</p>
+                      <button onClick={handleJoin} disabled={joining}
+                        className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-500 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                        {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Подать заново</>}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={handleJoin} disabled={joining}
+                      className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-500 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                      {joining ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSignInAlt size={14} /> Подать заявку</>}
+                    </button>
+                  )
                 ) : !isOwner ? (
                   <button onClick={leaveGroup}
                     className="w-full py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 text-sm font-medium flex items-center justify-center gap-2 transition-all">
