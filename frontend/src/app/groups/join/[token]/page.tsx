@@ -32,7 +32,7 @@ export default function JoinGroupPage() {
   }, [user, token, router]);
 
   if (!user) {
-    router.push('/login');
+    router.push('/auth/login');
     return null;
   }
 

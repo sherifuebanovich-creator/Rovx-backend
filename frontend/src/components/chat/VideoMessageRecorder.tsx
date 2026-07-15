@@ -41,6 +41,16 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isRecording) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') { e.preventDefault(); stopRecording(true); }
+      if (e.key === 'Escape') { e.preventDefault(); stopRecording(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isRecording, stopRecording]);
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -109,7 +119,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       const file = new File([blob], `videomsg-${Date.now()}.${ext}`, { type: mimeType });
 
       const res = await socialApi.uploadGroupVideoMsg(groupId, file);
-      const videoUrl = res.data?.url || res.data?.data?.url;
+      const videoUrl = res.data?.url || res.data?.data?.url || res.data?.data?.data?.url;
 
       if (videoUrl) {
         const socket = getSocket();
