@@ -7,12 +7,12 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Tab = 'report' | 'chats';
+type Tab = 'report' | 'chats' | null;
 
 export function BottomBar() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<Tab>('report');
+  const [activeTab, setActiveTab] = useState<Tab>(null);
   const toggleReportPanel = useMapStore(s => s.toggleReportPanel);
 
   const tabs: { id: Tab; icon: React.ReactNode; label: string; action?: () => void; href?: string }[] = [
