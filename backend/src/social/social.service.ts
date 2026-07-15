@@ -641,9 +641,17 @@ export class SocialService {
     }));
   }
 
-  async getGroups(page = 1, limit = 20, region?: string, city?: string, search?: string) {
+  async getGroups(page = 1, limit = 20, region?: string, city?: string, search?: string, userId?: string) {
     const skip = (page - 1) * limit;
-    const where: any = { isPublic: true };
+    const where: any = userId
+      ? {
+          OR: [
+            { isPublic: true },
+            { ownerId: userId },
+            { members: { some: { userId } } },
+          ],
+        }
+      : { isPublic: true };
 
     if (city) where.city = { contains: city, mode: 'insensitive' };
     if (region) where.region = { contains: region, mode: 'insensitive' };
@@ -728,10 +736,12 @@ export class SocialService {
     return { messages: messages.reverse(), total, isMember: true };
   }
 
-  async searchGroups(query: string, city?: string) {
+  async searchGroups(query: string, city?: string, userId?: string) {
     const where: any = {
-      isPublic: true,
       name: { contains: query, mode: 'insensitive' },
+      ...(userId
+        ? { OR: [{ isPublic: true }, { ownerId: userId }, { members: { some: { userId } } }] }
+        : { isPublic: true }),
     };
     if (city) where.city = { contains: city, mode: 'insensitive' };
 

@@ -225,14 +225,15 @@ export class SocialController {
   }
 
   @Get('groups')
-  @ApiOperation({ summary: 'List public groups' })
+  @ApiOperation({ summary: 'List groups' })
   async getGroups(
+    @CurrentUser('id') userId: string,
     @Query('page') page = 1,
     @Query('region') region?: string,
     @Query('city') city?: string,
     @Query('search') search?: string,
   ) {
-    return this.socialService.getGroups(+page, 20, region, city, search);
+    return this.socialService.getGroups(+page, 20, region, city, search, userId);
   }
 
   @Get('groups/my')
@@ -243,8 +244,8 @@ export class SocialController {
 
   @Get('groups/search')
   @ApiOperation({ summary: 'Search groups' })
-  async searchGroups(@Query('q') query: string, @Query('city') city?: string) {
-    return this.socialService.searchGroups(query, city);
+  async searchGroups(@CurrentUser('id') userId: string, @Query('q') query: string, @Query('city') city?: string) {
+    return this.socialService.searchGroups(query, city, userId);
   }
 
   @Get('groups/:groupId')
