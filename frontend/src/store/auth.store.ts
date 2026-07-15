@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>()(
         if (!accessToken) return;
         set({ accessToken, refreshToken: refreshToken || '', isAuthenticated: true });
         Cookies.set('access_token', accessToken, {
-          expires: 1 / 96,
+          expires: 30,
           path: '/',
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
