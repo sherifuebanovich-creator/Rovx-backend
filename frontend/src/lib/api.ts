@@ -161,7 +161,6 @@ export const usersApi = {
     const formData = new FormData();
     formData.append('avatar', file);
     return api.post('/users/me/avatar', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 30000,
     });
   },
@@ -220,7 +219,6 @@ export const reportsApi = {
         formData.append('photos', photo);
       }
       return api.post('/reports', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 60000,
       });
     }
@@ -259,7 +257,6 @@ export const socialApi = {
     const formData = new FormData();
     formData.append('avatar', file);
     return api.post(`/social/groups/${groupId}/avatar`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 30000,
     });
   },
@@ -293,7 +290,6 @@ export const socialApi = {
     const formData = new FormData();
     files.forEach(f => formData.append('files', f));
     return api.post(`/social/groups/${groupId}/messages/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
     });
   },
@@ -301,7 +297,6 @@ export const socialApi = {
     const formData = new FormData();
     formData.append('audio', audio);
     return api.post(`/social/groups/${groupId}/messages/upload-audio`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 30000,
     });
   },
@@ -309,8 +304,7 @@ export const socialApi = {
     const formData = new FormData();
     formData.append('video', video);
     return api.post(`/social/groups/${groupId}/messages/upload-video-msg`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 60000,
+      timeout: 120000,
     });
   },
   getNotifications: (page = 1) => api.get(`/social/notifications?page=${page}`),
