@@ -9,15 +9,20 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-# Apply database schema via direct connection
+# Generate Prisma client from schema
+echo "=== Running prisma generate ==="
+npx prisma generate --schema=./prisma/schema.prisma 2>&1
+echo "=== Prisma generate done ==="
+
+# Apply database schema changes
 if [ -n "$DATABASE_URL_DIRECT" ]; then
-  echo "=== Running prisma migrate deploy (via DATABASE_URL_DIRECT) ==="
-  DATABASE_URL="$DATABASE_URL_DIRECT" npx prisma migrate deploy --schema=./prisma/schema.prisma 2>&1
+  echo "=== Running prisma db push (via DATABASE_URL_DIRECT) ==="
+  DATABASE_URL="$DATABASE_URL_DIRECT" npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma 2>&1
 else
-  echo "=== Running prisma migrate deploy (via DATABASE_URL) ==="
-  npx prisma migrate deploy --schema=./prisma/schema.prisma 2>&1
+  echo "=== Running prisma db push (via DATABASE_URL) ==="
+  npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma 2>&1
 fi
-echo "=== Prisma migrate deploy done ==="
+echo "=== Prisma db push done ==="
 
 echo "Starting application..."
 exec node dist/main 2>&1

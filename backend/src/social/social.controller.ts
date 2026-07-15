@@ -196,7 +196,7 @@ export class SocialController {
       }),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^video\/(webm|mp4|quicktime)$/)) {
+        if (!file.mimetype.match(/^video\/(webm|mp4|quicktime|x-matroska)/)) {
           return cb(new BadRequestException('Only WebM, MP4 video allowed'), false);
         }
         cb(null, true);
