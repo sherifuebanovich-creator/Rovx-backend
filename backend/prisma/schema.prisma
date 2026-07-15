@@ -445,13 +445,16 @@ model Group {
   city        String?
   ownerId     String
   isPublic    Boolean  @default(true)
+  inviteToken String?  @unique
   memberCount Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  owner    User         @relation("GroupOwner", fields: [ownerId], references: [id])
+
+  owner    User          @relation("GroupOwner", fields: [ownerId], references: [id])
   members  GroupMember[]
   messages GroupMessage[]
   favorites GroupFavorite[]
+
   @@map("groups")
 }
 
@@ -460,9 +463,12 @@ model GroupMember {
   groupId   String
   userId    String
   isAdmin   Boolean  @default(false)
+  isBanned  Boolean  @default(false)
   joinedAt  DateTime @default(now())
+
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([groupId, userId])
   @@map("group_members")
 }
@@ -491,9 +497,10 @@ model GroupMessage {
   sticker   String?
   audioUrl  String?
   videoUrl  String?
+  isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  sender User  @relation(fields: [senderId], references: [id])
+  group  Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
   @@map("group_messages")
 }
 
@@ -570,7 +577,7 @@ model Advertisement {
 
 model SpeedCamera {
   id        String   @id @default(uuid())
-  type      String   // STATIONARY, MOBILE, TRAFFIC_LIGHT, SECTION, AVERAGE
+  type      String   // STATIONARY, MOBILE, TRIPOD, RED_LIGHT, AVERAGE_SPEED, BUS_LANE, DEDICATED_LANE, PHOTORADAR, AMBUSH, SEATBELT
   lat       Float
   lng       Float
   direction Float?   // direction of travel in degrees (0-360)

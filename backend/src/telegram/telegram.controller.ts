@@ -7,6 +7,7 @@ import { PremiumService } from '../premium/premium.service';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiService } from '../ai/ai.service';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
@@ -47,6 +48,7 @@ export class TelegramController implements OnModuleInit {
     private config: ConfigService,
     private redis: RedisService,
     private prisma: PrismaService,
+    private ai: AiService,
   ) {}
 
   async onModuleInit() {
@@ -57,6 +59,19 @@ export class TelegramController implements OnModuleInit {
       }
       this.logger.log(`Loaded ${ids.length} authorized Telegram chats from Redis`);
     } catch {}
+
+    await this.telegram.setMyCommands([
+      { command: 'start', description: 'Начать / Меню' },
+      { command: 'help', description: 'Помощь / Все команды' },
+      { command: 'reports', description: 'Репорты по городам' },
+      { command: 'search', description: 'Поиск репортов' },
+      { command: 'online', description: 'Кто онлайн' },
+      { command: 'premium', description: 'Статистика премиума' },
+      { command: 'server', description: 'Нагрузка сервера' },
+      { command: 'dashboard', description: 'Полная статистика' },
+      { command: 'grant', description: 'Выдать премиум' },
+      { command: 'logout', description: 'Выйти из бота' },
+    ]);
   }
 
   private isAuthorized(chatId: number): boolean {
@@ -75,27 +90,18 @@ export class TelegramController implements OnModuleInit {
 
   private async sendMenu(chatId: number) {
     await this.telegram.sendMessageToChat(chatId,
-      '🤖 <b>ROVX Bot</b>\n\n' +
+      '🤖 <b>ROVX AI Assistant</b>\n\n' +
+      '💬 Просто напиши сообщение — и я отвечу!\n' +
+      'Я помогу с навигацией, камерами, дорогами и любыми вопросами.\n\n' +
+      '━━ <b>КОМАНДЫ</b> ━━\n' +
       '📋 /reports — репорты по городам\n' +
       '🔍 /search <город> — поиск репортов\n' +
-      '🔎 /report <id> — детали репорта\n' +
       '🟢 /online — кто сейчас онлайн\n' +
       '💎 /premium — продажи премиума\n' +
-      '🖥 /server — нагрузка сервера\n\n' +
-      '━━ <b>УПРАВЛЕНИЕ</b> ━━\n' +
-      '📊 /dashboard — полная статистика\n' +
-      '👥 /users — список пользователей\n' +
-      '🔍 /find <запрос> — поиск пользователя\n' +
-      '👤 /userinfo <userId> — инфо о пользователе\n' +
-      '💰 /payments — ожидающие оплаты\n' +
-      '🚪 /logout — выйти\n\n' +
-      '━━ <b>АДМИН-КОМАНДЫ</b> ━━\n' +
-      '💎 /grant <id> <уровень> [дней] — выдать премиум\n' +
-      '🚫 /ban <id> [причина] — забанить\n' +
-      '✅ /unban <id> — разбанить\n' +
-      '🔑 /role <id> <роль> — сменить роль\n' +
-      '🏠 /groups — список групп\n' +
-      '📋 /group <id> — инфо о группе');
+      '🖥 /server — нагрузка сервера\n' +
+      '📊 /dashboard — статистика\n' +
+      'ℹ️ /help — все команды\n' +
+      '🚪 /logout — выйти');
   }
 
   @Public()
@@ -129,6 +135,43 @@ export class TelegramController implements OnModuleInit {
         if (cmd === '/logout') {
           await this.deauthorizeChat(chatId);
           await this.telegram.sendMessageToChat(chatId, '🚪 Вы вышли. Введите пароль для доступа:');
+          return { ok: true };
+        }
+
+        if (cmd === '/help' || cmd === '/commands') {
+          if (!this.isAuthorized(chatId)) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔐 Введите пароль для доступа:');
+            return { ok: true };
+          }
+          await this.telegram.sendMessageToChat(chatId,
+            '🤖 <b>ROVX AI Assistant — Команды</b>\n\n' +
+            '💬 <b>Просто напиши сообщение</b> — я отвечу!\n\n' +
+            '━━ <b>ОСНОВНЫЕ</b> ━━\n' +
+            '📋 /reports — репорты по городам\n' +
+            '🔍 /search <город> — поиск репортов\n' +
+            '🔎 /report <id> — детали репорта\n' +
+            '🟢 /online — кто сейчас онлайн\n' +
+            '💎 /premium — продажи премиума\n' +
+            '🖥 /server — нагрузка сервера\n\n' +
+            '━━ <b>УПРАВЛЕНИЕ</b> ━━\n' +
+            '📊 /dashboard — полная статистика\n' +
+            '👥 /users — список пользователей\n' +
+            '🔍 /find <запрос> — поиск пользователя\n' +
+            '👤 /userinfo <userId> — инфо о пользователе\n' +
+            '💰 /payments — ожидающие оплаты\n\n' +
+            '━━ <b>ПРЕМИУМ</b> ━━\n' +
+            '💎 /grant <id> <уровень> [дней] — выдать премиум\n' +
+            '   Уровни: PREMIUM_BASIC, PREMIUM_STANDARD, PREMIUM_MAX\n' +
+            '   Пример: <code>/grant userId PREMIUM_MAX 30</code>\n\n' +
+            '━━ <b>АДМИН</b> ━━\n' +
+            '🚫 /ban <id> [причина] — забанить\n' +
+            '✅ /unban <id> — разбанить\n' +
+            '🔑 /role <id> <роль> — сменить роль\n' +
+            '🏠 /groups — список групп\n' +
+            '📋 /group <id> — инфо о группе\n' +
+            '🚫 /deactivate <id> — деактивировать подписку\n' +
+            '🚪 /logout — выйти');
           return { ok: true };
         }
 
@@ -291,7 +334,7 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
-        if (cmd === '/grant') {
+        if (cmd === '/grant' || cmd === '/give') {
           const parts = args;
           if (parts.length < 2) {
             await this.telegram.sendMessageToChat(chatId,
@@ -394,6 +437,39 @@ export class TelegramController implements OnModuleInit {
           }
           await this.premium.deactivateUser(userId);
           await this.telegram.sendMessageToChat(chatId, `✅ Подписка деактивирована для ${userId}`);
+          return { ok: true };
+        }
+
+        if (cmd === '/reply') {
+          const parts = args;
+          if (parts.length < 2) {
+            await this.telegram.sendMessageToChat(chatId,
+              '↩️ <b>Ответить пользователю</b>\n\n' +
+              'Пример: <code>/reply chatId Привет! Чем могу помочь?</code>\n\n' +
+              'Чтобы узнать chatId пользователя, посмотрите сообщение выше (пересланное от пользователя).');
+            return { ok: true };
+          }
+          const targetChatId = parseInt(parts[0]);
+          const replyText = parts.slice(1).join(' ');
+          if (isNaN(targetChatId)) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Неверный chatId. Должно быть число.');
+            return { ok: true };
+          }
+          await this.telegram.sendMessageToChat(targetChatId,
+            `💬 <b>Ответ от поддержки ROVX:</b>\n\n${replyText}`);
+          await this.telegram.sendMessageToChat(chatId, `✅ Ответ отправлен пользователю ${targetChatId}`);
+          return { ok: true };
+        }
+
+        // Forward non-command messages to AI assistant
+        if (!cmd.startsWith('/')) {
+          try {
+            await this.telegram.sendMessageToChat(chatId, '🤖 Думаю...');
+            const reply = await this.ai.chat(chatId, text);
+            await this.telegram.sendMessageToChat(chatId, reply);
+          } catch (error) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Ошибка AI. Попробуйте позже.');
+          }
           return { ok: true };
         }
       }

@@ -11,7 +11,8 @@ import {
   FaArrowLeft, FaUsers, FaEdit, FaTrash, FaTimes, FaSave, FaPaperPlane,
   FaImage, FaSmile, FaInfoCircle, FaMapMarkerAlt, FaCrown, FaShieldAlt,
   FaSignOutAlt, FaCalendarAlt, FaGlobe, FaLock, FaChevronRight, FaHeart,
-  FaStar, FaSignInAlt,
+  FaStar, FaSignInAlt, FaLink, FaCopy, FaUserShield, FaUserMinus, FaUserSlash,
+  FaUserCheck, FaRegCommentDots, FaBullhorn,
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
@@ -20,23 +21,32 @@ import AudioRecorderButton from '@/components/chat/AudioRecorderButton';
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
 import VideoMessageRecorder from '@/components/chat/VideoMessageRecorder';
 import VideoMessagePlayer from '@/components/chat/VideoMessagePlayer';
+import VoiceChat from '@/components/chat/VoiceChat';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace('/api/v1', '');
 
 const STICKER_PACKS = [
-  { id: 'road', name: '🚗 Дорога', stickers: [
+  { id: 'road', name: '🚗', stickers: [
     '🚗','🚕','🚌','🏎','🚓','🚑','🚒','🚐','🛻','🚚',
     '🚜','🛵','🏍','🚲','🛴','🛹','🚧','🚦','🛑','⛽',
     '🅿','🛣','🛤','🛞','🚨','🏁','🏆','🗺','🧭','✈️',
   ]},
-  { id: 'emoji', name: '😀 Эмодзи', stickers: [
+  { id: 'emoji', name: '😀', stickers: [
     '😀','😂','🤣','😊','😍','🥰','😎','🤩','🥳','😏',
     '👍','👎','👏','🙏','💪','❤️','🔥','⭐','💯','🎉',
-    '😱','😤','🤔','😴','🤯','🥳','🤮','🥶','💀','👀',
+    '😱','😤','🤔','😴','🤯','🤮','🥶','💀','👀','🫡',
   ]},
-  { id: 'weather', name: '🌤 Погода', stickers: [
+  { id: 'weather', name: '🌤', stickers: [
     '☀️','🌤','⛅','🌥','☁️','🌧','⛈','🌩','🌨','❄️',
     '🌫','💨','🌪','🌈','🌊','💧','🔥','⚡','🌡','☃️',
+  ]},
+  { id: 'nature', name: '🌿', stickers: [
+    '🌲','🌳','🌴','🌵','🍁','🍂','🌸','🌺','🌻','🌹',
+    '🐾','🐦','🦅','🐋','🐬','🐠','🦋','🐛','🐜','🐝',
+  ]},
+  { id: 'food', name: '🍕', stickers: [
+    '🍕','🍔','🍟','🌭','🍿','🧀','🥩','🍗','🍖','🥚',
+    '☕','🍵','🥤','🍺','🍷','🥃','🍸','🍹','🧃','🥛',
   ]},
 ];
 
@@ -66,6 +76,9 @@ export default function GroupChatPage() {
   const [activeStickerPack, setActiveStickerPack] = useState(0);
   const [isMember, setIsMember] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ messageId: string; senderId: string; x: number; y: number } | null>(null);
+  const [memberAction, setMemberAction] = useState<{ userId: string; username: string } | null>(null);
   const joinedRef = useRef(false);
 
   // Socket connection
@@ -140,11 +153,47 @@ export default function GroupChatPage() {
     const onUpdated = (data: any) => {
       setGroup(prev => prev ? { ...prev, ...data } : prev);
     };
+    const onMessageDeleted = (data: { messageId: string }) => {
+      setMessages(prev => prev.filter(m => m.id !== data.messageId));
+    };
+    const onMemberBanned = (data: { userId: string }) => {
+      setGroup(prev => {
+        if (!prev?.members) return prev;
+        return { ...prev, members: prev.members.filter(m => m.userId !== data.userId) };
+      });
+      if (data.userId === user?.id) {
+        toast.error('Вы заблокированы в этой группе');
+        router.push('/groups');
+      }
+    };
+    const onMemberKicked = (data: { userId: string }) => {
+      setGroup(prev => {
+        if (!prev?.members) return prev;
+        return { ...prev, members: prev.members.filter(m => m.userId !== data.userId) };
+      });
+      if (data.userId === user?.id) {
+        toast.error('Вы исключены из группы');
+        router.push('/groups');
+      }
+    };
+    const onMemberPromoted = () => { toast('Пользователь повышен до админа'); };
+    const onMemberDemoted = () => { toast('Пользователь понижен'); };
+
     ws?.on('group:updated', onUpdated);
+    ws?.on('group:message_deleted', onMessageDeleted);
+    ws?.on('group:member_banned', onMemberBanned);
+    ws?.on('group:member_kicked', onMemberKicked);
+    ws?.on('group:member_promoted', onMemberPromoted);
+    ws?.on('group:member_demoted', onMemberDemoted);
 
     return () => {
       ws?.off('group:message', onMessage);
       ws?.off('group:updated', onUpdated);
+      ws?.off('group:message_deleted', onMessageDeleted);
+      ws?.off('group:member_banned', onMemberBanned);
+      ws?.off('group:member_kicked', onMemberKicked);
+      ws?.off('group:member_promoted', onMemberPromoted);
+      ws?.off('group:member_demoted', onMemberDemoted);
       ws?.emit('leave:group', { groupId });
       joinedRef.current = false;
     };
@@ -153,6 +202,16 @@ export default function GroupChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const isAdmin = group?.members?.find(m => m.userId === user?.id)?.isAdmin || user?.id === group?.ownerId || false;
+  const isOwner = user?.id === group?.ownerId || false;
+
+  // Auto-fetch invite link when admin opens info panel
+  useEffect(() => {
+    if (showInfo && isAdmin && isMember && !inviteLink) {
+      fetchInviteLink();
+    }
+  }, [showInfo, isAdmin, isMember]);
 
   // Join group
   const handleJoin = async () => {
@@ -268,6 +327,83 @@ export default function GroupChatPage() {
     } catch { toast.error(t('groupDetails.error')); }
   };
 
+  // Invite link
+  const fetchInviteLink = async () => {
+    try {
+      const res = await socialApi.getInviteLink(groupId);
+      const data = res.data?.data || res.data;
+      setInviteLink(data.inviteToken);
+    } catch {}
+  };
+
+  const copyInviteLink = () => {
+    if (!inviteLink) return;
+    const url = `${window.location.origin}/groups/join/${inviteLink}`;
+    navigator.clipboard.writeText(url).then(() => toast.success('Ссылка скопирована'));
+  };
+
+  const shareInviteLink = () => {
+    if (!inviteLink) return;
+    const url = `${window.location.origin}/groups/join/${inviteLink}`;
+    if (navigator.share) {
+      navigator.share({ title: group?.name, url }).catch(() => {});
+    } else {
+      copyInviteLink();
+    }
+  };
+
+  const regenerateInviteLink = async () => {
+    try {
+      const res = await socialApi.regenerateInviteLink(groupId);
+      const data = res.data?.data || res.data;
+      setInviteLink(data.inviteToken);
+      toast.success('Ссылка обновлена');
+    } catch { toast.error('Ошибка'); }
+  };
+
+  // Message moderation
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await socialApi.deleteMessage(groupId, messageId);
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      setContextMenu(null);
+      toast.success('Сообщение удалено');
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
+  // Member moderation
+  const handleBanMember = async (targetUserId: string) => {
+    try {
+      await socialApi.banMember(groupId, targetUserId);
+      setMemberAction(null);
+      toast.success('Пользователь заблокирован');
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
+  const handleKickMember = async (targetUserId: string) => {
+    try {
+      await socialApi.kickMember(groupId, targetUserId);
+      setMemberAction(null);
+      toast.success('Пользователь исключён');
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
+  const handlePromoteMember = async (targetUserId: string) => {
+    try {
+      await socialApi.promoteMember(groupId, targetUserId);
+      setMemberAction(null);
+      toast.success('Пользователь назначен админом');
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
+  const handleDemoteMember = async (targetUserId: string) => {
+    try {
+      await socialApi.demoteMember(groupId, targetUserId);
+      setMemberAction(null);
+      toast.success('Пользователь снят с админа');
+    } catch (err: any) { toast.error(err?.response?.data?.message || 'Ошибка'); }
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -280,8 +416,6 @@ export default function GroupChatPage() {
 
   if (!group) return null;
 
-  const isAdmin = group.members?.find(m => m.userId === user.id)?.isAdmin || user.id === group.ownerId;
-  const isOwner = user.id === group.ownerId;
 
   return (
     <div className="min-h-dvh bg-dark-bg flex flex-col pb-safe-bottom">
@@ -311,6 +445,9 @@ export default function GroupChatPage() {
             className="px-3 py-1.5 rounded-lg bg-dark-surface text-gray-400 text-xs hover:bg-dark-border">
             {showMembers ? t('groupDetails.chat') : t('groupDetails.members')}
           </button>
+        )}
+        {isMember && (
+          <VoiceChat groupId={groupId} />
         )}
         {isOwner && (
           <div className="flex gap-1">
@@ -400,9 +537,22 @@ export default function GroupChatPage() {
       ) : (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" onClick={() => setContextMenu(null)}>
+            {messages.filter(m => !m.isDeleted).map(msg => {
+              const showDelete = isAdmin || msg.senderId === user.id;
+              return (
+              <div key={msg.id}
+                className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}
+                onContextMenu={(e) => {
+                  if (!showDelete) return;
+                  e.preventDefault();
+                  setContextMenu({ messageId: msg.id, senderId: msg.senderId, x: e.clientX, y: e.clientY });
+                }}
+                onDoubleClick={() => {
+                  if (!showDelete) return;
+                  handleDeleteMessage(msg.id);
+                }}
+              >
                 <div className={`max-w-[80%] ${
                   msg.sticker ? 'text-6xl py-1' : `px-4 py-2.5 rounded-2xl ${
                     msg.senderId === user.id
@@ -454,7 +604,8 @@ export default function GroupChatPage() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
@@ -548,6 +699,58 @@ export default function GroupChatPage() {
         </>
       )}
 
+      {/* Context menu (message long-press / right-click) */}
+      {contextMenu && (
+        <div className="fixed z-[60]" style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}>
+          <div className="bg-dark-card border border-dark-border rounded-xl shadow-2xl py-1 min-w-[140px] animate-in fade-in slide-in-from-top-2 duration-150">
+            {(isAdmin || contextMenu.senderId === user.id) && (
+              <button onClick={() => handleDeleteMessage(contextMenu.messageId)}
+                className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-dark-surface flex items-center gap-2 transition-colors">
+                <FaTrash size={12} /> Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Member action modal */}
+      <AnimatePresence>
+        {memberAction && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center"
+            onClick={() => setMemberAction(null)}>
+            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full max-w-lg bg-dark-card rounded-t-2xl p-4 pb-8 space-y-1"
+              onClick={e => e.stopPropagation()}>
+              <p className="text-dark-text font-semibold text-center mb-3">{memberAction.username}</p>
+              <button onClick={() => { handlePromoteMember(memberAction.userId); }}
+                className="w-full py-3 text-left text-sm text-primary-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                <FaUserShield size={14} /> Сделать админом
+              </button>
+              <button onClick={() => { handleDemoteMember(memberAction.userId); }}
+                className="w-full py-3 text-left text-sm text-gray-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                <FaUserMinus size={14} /> Снять админа
+              </button>
+              <div className="border-t border-dark-border my-1" />
+              <button onClick={() => { handleKickMember(memberAction.userId); }}
+                className="w-full py-3 text-left text-sm text-orange-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                <FaUserMinus size={14} /> Исключить
+              </button>
+              <button onClick={() => { handleBanMember(memberAction.userId); }}
+                className="w-full py-3 text-left text-sm text-red-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                <FaUserSlash size={14} /> Заблокировать
+              </button>
+              <button onClick={() => setMemberAction(null)}
+                className="w-full py-3 text-center text-sm text-gray-500 hover:bg-dark-surface rounded-xl mt-2 transition-colors">
+                Отмена
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Group Info Panel (Telegram-style) */}
       <AnimatePresence>
         {showInfo && (
@@ -626,6 +829,46 @@ export default function GroupChatPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Invite link (admin/owner only) */}
+                {isAdmin && isMember && (
+                  <div className="bg-dark-surface rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <FaLink size={10} /> Инвайт-ссылка
+                    </p>
+                    {inviteLink ? (
+                      <div className="space-y-2">
+                        <div className="bg-dark-bg rounded-lg px-3 py-2 flex items-center gap-2">
+                          <p className="text-xs text-gray-400 truncate flex-1 font-mono">
+                            {`${typeof window !== 'undefined' ? window.location.origin : ''}/groups/join/${inviteLink}`}
+                          </p>
+                          <button onClick={copyInviteLink} className="text-primary-400 hover:text-primary-300 flex-shrink-0">
+                            <FaCopy size={12} />
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={shareInviteLink}
+                            className="flex-1 py-2 text-xs rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 flex items-center justify-center gap-1 transition-colors">
+                            <FaLink size={10} /> Поделиться
+                          </button>
+                          {isOwner && (
+                            <button onClick={regenerateInviteLink}
+                              className="flex-1 py-2 text-xs rounded-lg bg-dark-bg text-gray-400 hover:bg-dark-border flex items-center justify-center gap-1 transition-colors">
+                              <FaLink size={10} /> Обновить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={fetchInviteLink}
+                        className="w-full py-2 text-xs rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 flex items-center justify-center gap-1 transition-colors">
+                        <FaLink size={10} /> Создать ссылку
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Members list */}
                 <div className="bg-dark-surface rounded-xl p-4">
                   <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">
                     {t('groupDetails.members')} ({group.members?.length || 0})
@@ -642,10 +885,18 @@ export default function GroupChatPage() {
                         </div>
                         {m.isAdmin && <FaShieldAlt size={12} className="text-primary-400 flex-shrink-0" />}
                         {m.userId === group.ownerId && <FaCrown size={12} className="text-yellow-400 flex-shrink-0" />}
+                        {/* Admin action button */}
+                        {isAdmin && m.userId !== user.id && m.userId !== group.ownerId && (
+                          <button onClick={() => setMemberAction({ userId: m.userId, username: m.user.displayName })}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-dark-text hover:bg-dark-bg transition-colors flex-shrink-0">
+                            <FaChevronRight size={10} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
+
                 {!isMember ? (
                   <button onClick={handleJoin} disabled={joining}
                     className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-500 text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50">

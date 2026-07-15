@@ -432,7 +432,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const member = await this.prisma.groupMember.findFirst({
         where: { groupId: data.groupId, userId },
       });
-      if (!member) return;
+      if (!member || member.isBanned) return;
 
       const message = await this.prisma.groupMessage.create({
         data: {
@@ -532,6 +532,49 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       }
     } catch (err) {
       this.logger.warn(`Failed to notify friends of online status for ${userId}: ${(err as Error).message}`);
+    }
+  }
+
+  @SubscribeMessage('voice:call')
+  async handleVoiceCall(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { targetUserId: string; callerName: string; callerId?: string },
+  ) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId || !data.targetUserId) return;
+
+    this.gatewayService.sendToUser(data.targetUserId, 'voice:call', {
+      callerId: userId,
+      callerName: data.callerName || 'User',
+    });
+  }
+
+  @SubscribeMessage('voice:signal')
+  async handleVoiceSignal(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { targetUserId: string; signal: any },
+  ) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId || !data.targetUserId || !data.signal) return;
+
+    this.gatewayService.sendToUser(data.targetUserId, 'voice:signal', {
+      fromUserId: userId,
+      signal: data.signal,
+    });
+  }
+
+  @SubscribeMessage('voice:end')
+  async handleVoiceEnd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { targetUserId: string; groupId?: string },
+  ) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId) return;
+
+    if (data.groupId) {
+      this.server.to(`group:${data.groupId}`).emit('voice:end', { userId });
+    } else if (data.targetUserId) {
+      this.gatewayService.sendToUser(data.targetUserId, 'voice:end', { userId });
     }
   }
 

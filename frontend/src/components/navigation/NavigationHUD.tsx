@@ -379,7 +379,7 @@ export function NavigationHUD() {
         className="absolute top-0 left-0 right-0 pointer-events-auto"
       >
         <div className="bg-dark-card/95 backdrop-blur-xl border-b border-white/5">
-          <div className="px-4 pt-4 pb-3">
+          <div className="px-3 sm:px-4 pt-4 pb-3 overflow-hidden">
             {currentInstruction && !navigation.isArrived ? (
               <>
                 <div className="flex items-center gap-4">
@@ -390,7 +390,7 @@ export function NavigationHUD() {
                     <p className="text-3xl font-bold text-white tabular-nums leading-tight">
                       {formatDistance(navigation.distanceToManeuver || currentInstruction.distance)}
                     </p>
-                    <p className="text-sm text-gray-300 mt-0.5 truncate">
+                    <p className="text-sm sm:text-base text-gray-300 mt-0.5 truncate">
                       {currentInstruction.text}
                     </p>
                     {currentInstruction.streetName && (
@@ -435,31 +435,31 @@ export function NavigationHUD() {
         animate={{ y: 0, opacity: 1 }}
         className="absolute bottom-8 left-3 right-3 pointer-events-auto"
       >
-        <div className="bg-dark-card/95 backdrop-blur-xl rounded-2xl px-3 py-3 border border-white/5 shadow-2xl flex items-center justify-between gap-2">
+        <div className="bg-dark-card/95 backdrop-blur-xl rounded-2xl px-2 sm:px-3 py-3 border border-white/5 shadow-2xl flex items-center justify-between gap-1 sm:gap-2">
           {/* Speed */}
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-2xl font-bold text-white tabular-nums">{Math.round(userSpeed)}</span>
-            <span className="text-[10px] text-gray-400 uppercase">{t('navigationHud.kmh')}</span>
+            <span className="text-2xl sm:text-3xl font-bold text-white tabular-nums">{Math.round(userSpeed)}</span>
+            <span className="text-[10px] sm:text-xs text-gray-400 uppercase">{t('navigationHud.kmh')}</span>
           </div>
 
           <div className="w-px h-8 bg-white/10" />
 
           {/* ETA */}
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-xl font-bold text-white tabular-nums">
+            <span className="text-xl sm:text-2xl font-bold text-white tabular-nums">
               {remainingTime || '--'}
             </span>
-            <span className="text-[10px] text-gray-400">{t('navigationHud.eta')}</span>
+            <span className="text-[10px] sm:text-xs text-gray-400">{t('navigationHud.eta')}</span>
           </div>
 
           <div className="w-px h-8 bg-white/10" />
 
           {/* Distance */}
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-xl font-bold text-white tabular-nums">
+            <span className="text-xl sm:text-2xl font-bold text-white tabular-nums truncate">
               {remainingDist !== null ? formatDistance(remainingDist) : '--'}
             </span>
-            <span className="text-[10px] text-gray-400">{t('navigationHud.remaining')}</span>
+            <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">{t('navigationHud.remaining')}</span>
           </div>
 
           {/* Actions */}

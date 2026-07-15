@@ -339,6 +339,71 @@ Respond in JSON with: recommendation (string), reasoning (string), warnings (arr
     return response.data.choices[0].message.content;
   }
 
+  async chat(chatId: number, userMessage: string): Promise<string> {
+    const historyKey = `ai:chat:${chatId}`;
+    const historyRaw = await this.redis.get(historyKey);
+    const history: Array<{ role: string; content: string }> = historyRaw ? JSON.parse(historyRaw) : [];
+
+    history.push({ role: 'user', content: userMessage });
+    if (history.length > 20) history.splice(0, history.length - 20);
+
+    const systemPrompt = `Ты — ROVX AI, умный помощник для водителей. Ты помогаешь с навигацией, дорогами, камерами, репортами и общими вопросами.
+
+Возможности:
+- Помощь с навигацией и маршрутами
+- Информация о камерах, радарах, пробках
+- Советы по вождению
+- Ответы на вопросы о приложении ROVX
+- Общий чат и поддержка
+
+Правила:
+- Отвечай кратко и по делу
+- Используй эмодзи умеренно
+- Отвечай на языке пользователя (руз/англ/узб)
+- Если не знаешь ответ — скажи честно
+- Не придумывай факты о камерах или дорогах — лучше скажи "проверь на карте"
+- Будь дружелюбным и полезным
+
+Язык ответа определи по сообщению пользователя.`;
+
+    try {
+      const apiKey = this.config.get('OPENAI_API_KEY');
+      if (!apiKey) return '⚠️ AI не настроен. Обратитесь к администратору.';
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.map(h => ({ role: h.role, content: h.content })),
+      ];
+
+      const response = await axios.post(
+        `${this.openaiBase}/chat/completions`,
+        {
+          model: this.config.get('AI_MODEL', 'llama-3.3-70b-versatile'),
+          messages,
+          temperature: 0.7,
+          max_tokens: 1000,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        },
+      );
+
+      const reply = response.data.choices[0].message.content;
+      history.push({ role: 'assistant', content: reply });
+      if (history.length > 20) history.splice(0, history.length - 20);
+      await this.redis.set(historyKey, JSON.stringify(history), 3600);
+
+      return reply;
+    } catch (error) {
+      this.logger.error('AI chat failed', error instanceof Error ? error.message : String(error));
+      return '❌ Ошибка AI. Попробуйте позже.';
+    }
+  }
+
   private getFallbackSuggestion(ctx: RouteContext) {
     return {
       recommendation: ctx.userPreferences.lang === 'ru'

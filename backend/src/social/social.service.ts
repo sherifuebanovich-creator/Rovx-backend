@@ -2,6 +2,11 @@ import { Injectable, NotFoundException, ConflictException, ForbiddenException, B
 import { PrismaService } from '../prisma/prisma.service';
 import { GatewayService } from '../websocket/gateway.service';
 import { PremiumService, PREMIUM_TIERS } from '../premium/premium.service';
+import { randomBytes } from 'crypto';
+
+function generateInviteToken(): string {
+  return randomBytes(6).toString('base64url');
+}
 
 @Injectable()
 export class SocialService {
@@ -177,6 +182,7 @@ export class SocialService {
         city: data.city,
         ownerId: userId,
         isPublic: data.isPublic ?? true,
+        inviteToken: generateInviteToken(),
         members: {
           create: { userId, isAdmin: true },
         },
@@ -260,7 +266,10 @@ export class SocialService {
     const existing = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId: group.id, userId } },
     });
-    if (existing) return { joined: true, group };
+    if (existing) {
+      if (existing.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
+      return { joined: true, group };
+    }
 
     // Check user's city matches group city if city is set
     if (group.city) {
@@ -291,7 +300,10 @@ export class SocialService {
     const existing = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
-    if (existing) return { joined: true };
+    if (existing) {
+      if (existing.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
+      return { joined: true };
+    }
 
     if (group.city) {
       const user = await this.prisma.user.findUnique({
@@ -321,6 +333,167 @@ export class SocialService {
       });
     }
     return { left: true };
+  }
+
+  // ── Invite Links ─────────────────────────────────────
+
+  async joinByInviteToken(userId: string, token: string) {
+    const group = await this.prisma.group.findUnique({ where: { inviteToken: token } });
+    if (!group) throw new NotFoundException('Ссылка-приглашение недействительна');
+
+    const existing = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId } },
+    });
+    if (existing) {
+      if (existing.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
+      return { joined: true, group };
+    }
+
+    if (group.city) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { city: true } });
+      if (user?.city && user.city.toLowerCase() !== group.city.toLowerCase()) {
+        throw new ForbiddenException(`Группа доступна только для города ${group.city}`);
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.groupMember.create({ data: { groupId: group.id, userId } }),
+      this.prisma.group.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } }),
+    ]);
+
+    await this.gateway.broadcastToGroup(group.id, 'group:member_joined', { userId });
+    return { joined: true, group };
+  }
+
+  async regenerateInviteToken(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.ownerId !== userId) throw new ForbiddenException('Только владелец может обновить ссылку');
+
+    const newToken = generateInviteToken();
+    await this.prisma.group.update({ where: { id: groupId }, data: { inviteToken: newToken } });
+    return { inviteToken: newToken };
+  }
+
+  async getInviteToken(userId: string, groupId: string) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member) throw new ForbiddenException('Вы не участник группы');
+
+    const group = await this.prisma.group.findUnique({ where: { id: groupId }, select: { inviteToken: true } });
+    if (!group?.inviteToken) throw new NotFoundException('Ссылка-приглашение не создана');
+
+    return { inviteToken: group.inviteToken };
+  }
+
+  // ── Moderation ───────────────────────────────────────
+
+  private async checkAdmin(userId: string, groupId: string) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member?.isAdmin) throw new ForbiddenException('Нет прав администратора');
+    return member;
+  }
+
+  private async checkOwner(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.ownerId !== userId) throw new ForbiddenException('Только владелец');
+    return group;
+  }
+
+  async deleteMessage(userId: string, groupId: string, messageId: string) {
+    const msg = await this.prisma.groupMessage.findUnique({ where: { id: messageId } });
+    if (!msg || msg.groupId !== groupId) throw new NotFoundException('Сообщение не найдено');
+
+    const isSender = msg.senderId === userId;
+    if (!isSender) {
+      const member = await this.prisma.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId } },
+      });
+      if (!member?.isAdmin) throw new ForbiddenException('Нет прав на удаление');
+    }
+
+    await this.prisma.groupMessage.update({ where: { id: messageId }, data: { isDeleted: true } });
+    await this.gateway.broadcastToGroup(groupId, 'group:message_deleted', { messageId });
+    return { deleted: true };
+  }
+
+  async banMember(userId: string, groupId: string, targetUserId: string) {
+    await this.checkAdmin(userId, groupId);
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.ownerId === targetUserId) throw new ForbiddenException('Нельзя забанить владельца');
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+    });
+    if (!member) throw new NotFoundException('Пользователь не в группе');
+
+    await this.prisma.groupMember.update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { isBanned: true },
+    });
+
+    await this.gateway.broadcastToGroup(groupId, 'group:member_banned', { userId: targetUserId, bannedBy: userId });
+    return { banned: true };
+  }
+
+  async unbanMember(userId: string, groupId: string, targetUserId: string) {
+    await this.checkAdmin(userId, groupId);
+
+    await this.prisma.groupMember.update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { isBanned: false },
+    });
+
+    await this.gateway.broadcastToGroup(groupId, 'group:member_unbanned', { userId: targetUserId });
+    return { unbanned: true };
+  }
+
+  async kickMember(userId: string, groupId: string, targetUserId: string) {
+    await this.checkAdmin(userId, groupId);
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.ownerId === targetUserId) throw new ForbiddenException('Нельзя удалить владельца');
+
+    const { count } = await this.prisma.groupMember.deleteMany({ where: { groupId, userId: targetUserId } });
+    if (count === 0) throw new NotFoundException('Пользователь не в группе');
+
+    await this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { decrement: 1 } } });
+    await this.gateway.broadcastToGroup(groupId, 'group:member_kicked', { userId: targetUserId, kickedBy: userId });
+    return { kicked: true };
+  }
+
+  async promoteMember(userId: string, groupId: string, targetUserId: string) {
+    await this.checkOwner(userId, groupId);
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+    });
+    if (!member) throw new NotFoundException('Пользователь не в группе');
+
+    await this.prisma.groupMember.update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { isAdmin: true },
+    });
+
+    await this.gateway.broadcastToGroup(groupId, 'group:member_promoted', { userId: targetUserId });
+    return { promoted: true };
+  }
+
+  async demoteMember(userId: string, groupId: string, targetUserId: string) {
+    await this.checkOwner(userId, groupId);
+
+    await this.prisma.groupMember.update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { isAdmin: false },
+    });
+
+    await this.gateway.broadcastToGroup(groupId, 'group:member_demoted', { userId: targetUserId });
+    return { demoted: true };
   }
 
   // ── Favorites ─────────────────────────────────────────────
@@ -402,6 +575,7 @@ export class SocialService {
 
     let isMember = false;
     let isFavorited = false;
+    let memberIsAdmin = false;
     if (userId) {
       const [membership, favorite] = await Promise.all([
         this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } }),
@@ -409,9 +583,14 @@ export class SocialService {
       ]);
       isMember = !!membership;
       isFavorited = !!favorite;
+      memberIsAdmin = !!membership?.isAdmin;
     }
 
-    return { ...group, memberCount: group._count.members, isMember, isFavorited };
+    const result: any = { ...group, memberCount: group._count.members, isMember, isFavorited };
+    if (memberIsAdmin || userId === group.ownerId) {
+      result.inviteToken = group.inviteToken;
+    }
+    return result;
   }
 
   async getGroupMessages(groupId: string, userId: string, page = 1, limit = 50) {
@@ -419,11 +598,12 @@ export class SocialService {
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) return { messages: [], total: 0, isMember: false };
+    if (member.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
 
     const skip = (page - 1) * limit;
     const [messages, total] = await Promise.all([
       this.prisma.groupMessage.findMany({
-        where: { groupId },
+        where: { groupId, isDeleted: false },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -431,7 +611,7 @@ export class SocialService {
           sender: { select: { id: true, displayName: true, avatar: true } },
         },
       }),
-      this.prisma.groupMessage.count({ where: { groupId } }),
+      this.prisma.groupMessage.count({ where: { groupId, isDeleted: false } }),
     ]);
 
     return { messages: messages.reverse(), total, isMember: true };

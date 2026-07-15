@@ -166,4 +166,29 @@ export class TelegramService {
       this.logger.error('Failed to send photo to chat', error instanceof Error ? error.message : String(error));
     }
   }
+
+  async setMyCommands(commands: Array<{ command: string; description: string }>) {
+    if (!this.botToken) return;
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/setMyCommands`, {
+        commands,
+      }, { timeout: 10000 });
+      this.logger.log(`Set ${commands.length} bot commands`);
+    } catch (error) {
+      this.logger.error('Failed to set bot commands', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async forwardMessage(chatId: number, fromChatId: number, fromMessageId: number) {
+    if (!this.botToken) return;
+    try {
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/forwardMessage`, {
+        chat_id: chatId,
+        from_chat_id: fromChatId,
+        message_id: fromMessageId,
+      }, { timeout: 10000 });
+    } catch (error) {
+      this.logger.error('Failed to forward message', error instanceof Error ? error.message : String(error));
+    }
+  }
 }

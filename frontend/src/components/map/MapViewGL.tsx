@@ -15,6 +15,7 @@ import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
 import UserLocationLayer from './UserLocationLayer';
 import MapFeaturesLayer from './MapFeaturesLayer';
 import FriendMarkers from './FriendMarkers';
+import TrafficLayer from './TrafficLayer';
 
 function escapeHtml(text: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -556,6 +557,7 @@ export default function MapViewGL() {
       <UserLocationLayer map={mapRef.current} />
       <MapFeaturesLayer map={mapRef.current} />
       <FriendMarkers map={mapRef.current} />
+      <TrafficLayer map={mapRef.current} />
     </div>
   );
 }

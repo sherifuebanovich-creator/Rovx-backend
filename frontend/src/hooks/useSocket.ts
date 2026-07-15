@@ -97,6 +97,30 @@ export function useSocket() {
       }
     });
 
+    socketInstance.on('report:new', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:report-new', { detail: data }));
+      }
+    });
+
+    socketInstance.on('voice:call', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:voice-call', { detail: data }));
+      }
+    });
+
+    socketInstance.on('voice:signal', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:voice-signal', { detail: data }));
+      }
+    });
+
+    socketInstance.on('voice:end', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:voice-end', { detail: data }));
+      }
+    });
+
     socketRef.current = socketInstance;
     return socketInstance;
   }, []);
@@ -172,7 +196,19 @@ export function useSocket() {
     subscribeToArea(userLocationLat, userLocationLng);
   }, [userLocationLat, userLocationLng, updateLocation, subscribeToArea]);
 
-  return { connect, disconnect, socket: socketRef, updateLocation, sendMessage, joinGroup, joinCity, sendCityMessage };
+  const sendVoiceCall = useCallback((targetUserId: string, callerName: string) => {
+    socketInstance?.emit('voice:call', { targetUserId, callerName });
+  }, []);
+
+  const sendVoiceSignal = useCallback((targetUserId: string, signal: any) => {
+    socketInstance?.emit('voice:signal', { targetUserId, signal });
+  }, []);
+
+  const endVoiceCall = useCallback((targetUserId: string) => {
+    socketInstance?.emit('voice:end', { targetUserId });
+  }, []);
+
+  return { connect, disconnect, socket: socketRef, updateLocation, sendMessage, joinGroup, joinCity, sendCityMessage, sendVoiceCall, sendVoiceSignal, endVoiceCall };
 }
 
 export function getSocket(): Socket | null {

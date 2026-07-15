@@ -257,6 +257,7 @@ export interface Group {
   city?: string;
   ownerId: string;
   isPublic: boolean;
+  inviteToken?: string;
   memberCount: number;
   isAdmin?: boolean;
   isMember?: boolean;
@@ -271,6 +272,7 @@ export interface GroupMember {
   id: string;
   userId: string;
   isAdmin: boolean;
+  isBanned?: boolean;
   joinedAt: string;
   user: { id: string; username: string; displayName: string; avatar?: string };
 }
@@ -284,6 +286,7 @@ export interface GroupMessage {
   sticker?: string;
   audioUrl?: string;
   videoUrl?: string;
+  isDeleted?: boolean;
   createdAt: string;
   sender: { id: string; displayName: string; avatar?: string };
 }

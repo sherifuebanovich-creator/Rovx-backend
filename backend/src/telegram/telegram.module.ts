@@ -6,9 +6,10 @@ import { ReportsModule } from '../reports/reports.module';
 import { PremiumModule } from '../premium/premium.module';
 import { RedisModule } from '../redis/redis.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
-  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule, PrismaModule],
+  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule, PrismaModule, AiModule],
   controllers: [TelegramController],
   providers: [TelegramService],
   exports: [TelegramService],

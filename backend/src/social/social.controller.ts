@@ -279,6 +279,86 @@ export class SocialController {
     return this.socialService.leaveGroup(userId, groupId);
   }
 
+  // ── Invite Links ──
+  @Post('groups/join/:token')
+  @ApiOperation({ summary: 'Join group by invite token' })
+  async joinByToken(@CurrentUser('id') userId: string, @Param('token') token: string) {
+    return this.socialService.joinByInviteToken(userId, token);
+  }
+
+  @Get('groups/:groupId/invite-link')
+  @ApiOperation({ summary: 'Get invite link (admin only)' })
+  async getInviteLink(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
+    return this.socialService.getInviteToken(userId, groupId);
+  }
+
+  @Post('groups/:groupId/invite-link')
+  @ApiOperation({ summary: 'Regenerate invite link (owner only)' })
+  async regenerateInviteLink(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
+    return this.socialService.regenerateInviteToken(userId, groupId);
+  }
+
+  // ── Moderation ──
+  @Delete('groups/:groupId/messages/:messageId')
+  @ApiOperation({ summary: 'Delete message (sender or admin)' })
+  async deleteMessage(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.socialService.deleteMessage(userId, groupId, messageId);
+  }
+
+  @Post('groups/:groupId/ban/:targetUserId')
+  @ApiOperation({ summary: 'Ban user from group (admin)' })
+  async banMember(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.banMember(userId, groupId, targetUserId);
+  }
+
+  @Post('groups/:groupId/unban/:targetUserId')
+  @ApiOperation({ summary: 'Unban user (admin)' })
+  async unbanMember(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.unbanMember(userId, groupId, targetUserId);
+  }
+
+  @Post('groups/:groupId/kick/:targetUserId')
+  @ApiOperation({ summary: 'Kick user (admin)' })
+  async kickMember(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.kickMember(userId, groupId, targetUserId);
+  }
+
+  @Post('groups/:groupId/promote/:targetUserId')
+  @ApiOperation({ summary: 'Promote to admin (owner)' })
+  async promoteMember(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.promoteMember(userId, groupId, targetUserId);
+  }
+
+  @Post('groups/:groupId/demote/:targetUserId')
+  @ApiOperation({ summary: 'Demote admin (owner)' })
+  async demoteMember(
+    @CurrentUser('id') userId: string,
+    @Param('groupId') groupId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.demoteMember(userId, groupId, targetUserId);
+  }
+
   @Post('groups/:groupId/favorite')
   @ApiOperation({ summary: 'Toggle group favorite' })
   async toggleFavorite(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
