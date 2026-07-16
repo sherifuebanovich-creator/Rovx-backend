@@ -49,11 +49,17 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       });
       streamRef.current = stream;
 
-      const mr = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-          ? 'video/webm;codecs=vp8,opus'
-          : 'video/webm',
-      });
+      // Safari doesn't support video/webm at all — probe a list of
+      // candidates and let the browser pick its own default (by omitting
+      // mimeType) rather than throwing NotSupportedError on construction.
+      const candidates = [
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=avc1,mp4a',
+        'video/mp4',
+      ];
+      const supported = candidates.find(m => MediaRecorder.isTypeSupported(m));
+      const mr = new MediaRecorder(stream, supported ? { mimeType: supported } : undefined);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
 

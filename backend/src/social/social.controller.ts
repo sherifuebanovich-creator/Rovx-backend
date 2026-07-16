@@ -196,7 +196,14 @@ export class SocialController {
       }),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^video\//)) {
+        // Some mobile browsers/webviews send recorded video Blobs with a
+        // generic/missing Content-Type (application/octet-stream or empty)
+        // instead of the actual video/* mimetype. Fall back to the file
+        // extension in that case rather than rejecting a genuine video.
+        const isVideoMime = /^video\//.test(file.mimetype);
+        const isGenericMime = !file.mimetype || file.mimetype === 'application/octet-stream';
+        const hasVideoExt = /\.(webm|mp4|mov|m4v|3gp)$/i.test(file.originalname || '');
+        if (!isVideoMime && !(isGenericMime && hasVideoExt)) {
           return cb(new BadRequestException('Only video files allowed'), false);
         }
         cb(null, true);
