@@ -74,6 +74,7 @@ export class TelegramController implements OnModuleInit {
       { command: 'server', description: 'Нагрузка сервера' },
       { command: 'dashboard', description: 'Полная статистика' },
       { command: 'grant', description: 'Выдать премиум' },
+      { command: 'setrole', description: 'Сменить роль пользователя' },
       { command: 'logout', description: 'Выйти из бота' },
     ]);
   }
@@ -173,6 +174,7 @@ export class TelegramController implements OnModuleInit {
             '🚫 /ban <id> [причина] — забанить\n' +
             '✅ /unban <id> — разбанить\n' +
             '🔑 /role <id> <роль> — сменить роль\n' +
+            '   Доступные роли: USER, MODERATOR, ADMIN, SUPERADMIN\n' +
             '🏠 /groups — список групп\n' +
             '📋 /group <id> — инфо о группе\n' +
             '🚫 /deactivate <id> — деактивировать подписку\n' +
@@ -380,7 +382,7 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
-        if (cmd === '/role') {
+        if (cmd === '/role' || cmd === '/setrole') {
           const parts = args;
           if (parts.length < 2) {
             await this.telegram.sendMessageToChat(chatId,

@@ -126,8 +126,8 @@ export class SocialController {
       }),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime|x-matroska))/)) {
-          return cb(new BadRequestException('Only images (JPEG, PNG, WebP, GIF) and videos (MP4, WebM) allowed'), false);
+        if (!file.mimetype.match(/^(image\/|video\/)/)) {
+          return cb(new BadRequestException('Only images and videos allowed'), false);
         }
         cb(null, true);
       },
@@ -161,8 +161,8 @@ export class SocialController {
       }),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^audio\/(webm|ogg|opus|mp3|m4a|x-m4a)/)) {
-          return cb(new BadRequestException('Only WebM, OGG, MP3, M4A audio allowed'), false);
+        if (!file.mimetype.match(/^audio\//)) {
+          return cb(new BadRequestException('Only audio files allowed'), false);
         }
         cb(null, true);
       },
@@ -196,8 +196,8 @@ export class SocialController {
       }),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^video\/(webm|mp4|quicktime|x-matroska)/)) {
-          return cb(new BadRequestException('Only WebM, MP4 video allowed'), false);
+        if (!file.mimetype.match(/^video\//)) {
+          return cb(new BadRequestException('Only video files allowed'), false);
         }
         cb(null, true);
       },

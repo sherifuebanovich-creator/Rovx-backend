@@ -111,17 +111,21 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       const res = await socialApi.uploadGroupVideoMsg(groupId, file);
       const videoUrl = res.data?.url || res.data?.data?.url || res.data?.data?.data?.url;
 
-      if (videoUrl) {
-        const socket = getSocket();
-        socket?.emit('group:message', {
-          groupId,
-          content: '',
-          videoUrl,
-        });
-        onSent?.();
+      if (!videoUrl) {
+        console.error('Video upload response:', res.data);
+        throw new Error('No URL in response');
       }
-    } catch {
-      toast.error('Ошибка отправки видео');
+
+      const socket = getSocket();
+      socket?.emit('group:message', {
+        groupId,
+        content: '',
+        videoUrl,
+      });
+      onSent?.();
+    } catch (err: any) {
+      console.error('Video send error:', err?.response?.data || err.message || err);
+      toast.error(err?.response?.data?.message || 'Ошибка отправки видео');
     } finally {
       setIsSending(false);
       cleanup();

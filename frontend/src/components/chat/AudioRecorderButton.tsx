@@ -107,17 +107,21 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       const res = await socialApi.uploadGroupAudio(groupId, file);
       const audioUrl = res.data?.url || res.data?.data?.url;
 
-      if (audioUrl) {
-        const socket = getSocket();
-        socket?.emit('group:message', {
-          groupId,
-          content: '',
-          audioUrl,
-        });
-        onSent?.();
+      if (!audioUrl) {
+        console.error('Audio upload response:', res.data);
+        throw new Error('No URL in response');
       }
-    } catch {
-      toast.error('Ошибка отправки голосового');
+
+      const socket = getSocket();
+      socket?.emit('group:message', {
+        groupId,
+        content: '',
+        audioUrl,
+      });
+      onSent?.();
+    } catch (err: any) {
+      console.error('Audio send error:', err?.response?.data || err.message || err);
+      toast.error(err?.response?.data?.message || 'Ошибка отправки голосового');
     } finally {
       setIsSending(false);
       cleanup();

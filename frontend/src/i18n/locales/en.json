@@ -79,7 +79,18 @@
       "hospitals": "Hospitals",
       "shops": "Shops",
       "carService": "Car Service",
-      "evChargers": "EV Chargers"
+      "evChargers": "EV Chargers",
+      "truckParking": "Truck Parking",
+      "pharmacy": "Pharmacies",
+      "atm": "ATMs",
+      "police": "Police",
+      "toilet": "Toilets",
+      "park": "Parks",
+      "metro": "Metro",
+      "busStop": "Bus Stops",
+      "shower": "Showers",
+      "motel": "Motels",
+      "supermarket": "Supermarkets"
     },
     "routeTypes": {
       "fastest": "Fastest",
@@ -135,6 +146,10 @@
     "startTyping": "Start typing to find a place",
     "noResults": "No results found",
     "foundNearby": "Found {{count}} places nearby",
+    "foundResults": "Found {{count}} results",
+    "navigate": "Route",
+    "showOnMap": "On Map",
+    "noCategoryResults": "Nothing found nearby",
     "km": "km",
     "m": "m"
   },
@@ -191,7 +206,10 @@
     "recalculating": "Recalculating route...",
     "rerouted": "Route recalculated",
     "endTrip": "End trip",
-    "sec": "sec"
+    "sec": "sec",
+    "wrongWay": "Wrong direction!",
+    "turnAround": "Make a U-turn",
+    "wrongWayVoice": "Warning! You are going the wrong way. Make a U-turn!"
   },
   "objectDetailPanel": {
     "categories": {

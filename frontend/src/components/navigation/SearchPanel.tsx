@@ -22,7 +22,7 @@ import toast from 'react-hot-toast';
 
 const QUICK_CATEGORIES = [
   { key: 'GAS_STATION', labelKey: 'searchPanel.categories.gasStations', icon: <FaGasPump size={14} />, color: '#f97316' },
-  { key: 'EV_CHARGER', labelKey: 'searchPanel.categories.evChargers', icon: <FaRoad size={14} />, color: '#22c55e' },
+  { key: 'EV_CHARGER', labelKey: 'searchPanel.categories.evChargers', icon: <FaBolt size={14} />, color: '#22c55e' },
   { key: 'PARKING', labelKey: 'searchPanel.categories.parking', icon: <FaParking size={14} />, color: '#0ea5e9' },
   { key: 'TRUCK_PARKING', labelKey: 'searchPanel.categories.truckParking', icon: <FaTruck size={14} />, color: '#f97316' },
   { key: 'CAFE', labelKey: 'searchPanel.categories.cafe', icon: <FaCoffee size={14} />, color: '#a78bfa' },
@@ -31,6 +31,14 @@ const QUICK_CATEGORIES = [
   { key: 'HOSPITAL', labelKey: 'searchPanel.categories.hospitals', icon: <FaHospital size={14} />, color: '#ef4444' },
   { key: 'SHOP', labelKey: 'searchPanel.categories.shops', icon: <FaShoppingCart size={14} />, color: '#22c55e' },
   { key: 'CAR_SERVICE', labelKey: 'searchPanel.categories.carService', icon: <FaCar size={14} />, color: '#6b7280' },
+  { key: 'PHARMACY', labelKey: 'searchPanel.categories.pharmacy', icon: <FaHospital size={14} />, color: '#ec4899' },
+  { key: 'ATM', labelKey: 'searchPanel.categories.atm', icon: <FaShoppingCart size={14} />, color: '#14b8a6' },
+  { key: 'POLICE', labelKey: 'searchPanel.categories.police', icon: <FaShieldAlt size={14} />, color: '#3b82f6' },
+  { key: 'TOILET', labelKey: 'searchPanel.categories.toilet', icon: <FaHotel size={14} />, color: '#78716c' },
+  { key: 'PARK', labelKey: 'searchPanel.categories.park', icon: <FaLeaf size={14} />, color: '#22c55e' },
+  { key: 'METRO_STATION', labelKey: 'searchPanel.categories.metro', icon: <FaRoad size={14} />, color: '#6366f1' },
+  { key: 'BUS_STOP', labelKey: 'searchPanel.categories.busStop', icon: <FaRoad size={14} />, color: '#eab308' },
+  { key: 'SUPERMARKET', labelKey: 'searchPanel.categories.supermarket', icon: <FaShoppingCart size={14} />, color: '#22d3ee' },
 ];
 
 const ROUTE_OPTIONS: { key: RouteType; labelKey: string; icon: React.ReactNode; color: string }[] = [
@@ -119,6 +127,8 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
+  const [isFullSearching, setIsFullSearching] = useState(false);
 
   // Focus input on mount
   useEffect(() => {
@@ -224,7 +234,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       if (activeIdx >= 0 && items[activeIdx]) {
         selectSuggestion(items[activeIdx]);
       } else if (query.length >= 1) {
-        fetchSuggestions(query);
+        performFullSearch(query);
       }
     } else if (e.key === 'Escape') {
       if (selectedItem && showRouteResults) {
@@ -235,6 +245,8 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         setSelectedSearchResult(null);
         setQuery('');
         inputRef.current?.focus();
+      } else if (searchResults.length > 0) {
+        setSearchResults([]);
       } else if (query) {
         setQuery('');
         setSearchQuery('');
@@ -262,6 +274,25 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     setSelectedSearchResult(item);
     setActiveIdx(-1);
   };
+
+  const performFullSearch = useCallback(async (q: string) => {
+    if (q.length < 1) return;
+    setIsFullSearching(true);
+    setSearchSuggestions([]);
+    try {
+      const res = await mapApi.search(q, userLocation?.lat, userLocation?.lng, 50);
+      const data = res.data?.data || res.data || [];
+      setSearchResults(data);
+      if (data.length > 0) {
+        setMapCenter({ lat: data[0].lat, lng: data[0].lng });
+        setZoom(14);
+      }
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsFullSearching(false);
+    }
+  }, [userLocation, setMapCenter, setZoom]);
 
   const calculateMultiRoutes = async () => {
     if (!selectedItem || selectedTypes.length === 0 || isGoing) return;
@@ -516,19 +547,27 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const categoryClick = (cat: string) => {
     if (!userLocation) { toast(t('searchPanel.enableGeolocation'), { icon: '📍' }); return; }
     if (isGoing) return;
-    const item: SearchSuggestion = { id: `nearby-${cat}`, name: cat, lat: userLocation.lat, lng: userLocation.lng, category: cat };
-    setSelectedItem(item);
-    setIsGoing(true);
-    mapApi.getNearby(userLocation.lat, userLocation.lng, 10, cat).then((res) => {
-      const objs = res.data.data || res.data || [];
+    setQuery('');
+    setSearchSuggestions([]);
+    setIsFullSearching(true);
+    mapApi.getNearby(userLocation.lat, userLocation.lng, 15, cat).then((res) => {
+      const objs = (res.data.data || res.data || []).map((o: any) => ({
+        ...o,
+        category: o.category || cat,
+        distance: o.distance || undefined,
+      }));
       if (objs.length > 0) {
+        setSearchResults(objs);
         useMapStore.getState().setVisibleObjects(objs);
         setMapCenter({ lat: objs[0].lat, lng: objs[0].lng });
         setZoom(14);
         speak(t('searchPanel.foundNearby', { count: objs.length }), false);
+      } else {
+        setSearchResults([]);
+        toast(t('searchPanel.noCategoryResults'));
       }
-    }).catch(() => {}).finally(() => {
-      setIsGoing(false);
+    }).catch(() => { setSearchResults([]); }).finally(() => {
+      setIsFullSearching(false);
     });
   };
 
@@ -830,6 +869,50 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
             <div className="flex flex-col items-center py-10">
               <div className="w-8 h-8 border-3 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mb-3" />
               <p className="text-sm text-gray-400">{t('searchPanel.buildingRoute')}</p>
+            </div>
+          ) : isFullSearching ? (
+            <div className="flex flex-col items-center py-10">
+              <div className="w-8 h-8 border-3 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mb-3" />
+              <p className="text-sm text-gray-400">{t('searchPanel.searchPlaceholder')}</p>
+            </div>
+          ) : searchResults.length > 0 ? (
+            /* === Full search results / category results === */
+            <div className="py-1">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-border">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">{t('searchPanel.foundResults', { count: searchResults.length })}</p>
+                <button onClick={() => { setSearchResults([]); setQuery(''); setSearchQuery(''); }}
+                  className="text-[10px] text-gray-600 hover:text-gray-400 flex items-center gap-1">
+                  <FaTimes size={9} /> {t('searchPanel.back')}
+                </button>
+              </div>
+              {searchResults.map((item, idx) => (
+                <button
+                  key={item.id || idx}
+                  onClick={() => selectSuggestion(item)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all text-left hover:bg-white/5`}
+                >
+                  <span className="text-base flex-shrink-0">{getEmoji(item.category)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                    {item.address && (
+                      <p className="text-[11px] text-gray-500 truncate">{item.address}</p>
+                    )}
+                  </div>
+                  {item.distance !== undefined && item.distance > 0 && (
+                    <span className="text-[11px] text-gray-500 flex-shrink-0">{formatDistance(item.distance)}</span>
+                  )}
+                  <div className="flex gap-1 flex-shrink-0">
+                    <span onClick={(e) => { e.stopPropagation(); navigateToSaved(item); }}
+                      className="text-[10px] px-2 py-0.5 rounded bg-primary-600/20 text-primary-400 hover:bg-primary-600/30">
+                      {t('searchPanel.navigate')}
+                    </span>
+                    <span onClick={(e) => { e.stopPropagation(); showOnMap(item); }}
+                      className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-gray-400 hover:bg-white/20">
+                      {t('searchPanel.showOnMap')}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </div>
           ) : suggestions.length > 0 ? (
             /* === Autocomplete results === */

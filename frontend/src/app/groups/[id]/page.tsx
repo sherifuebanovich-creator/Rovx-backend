@@ -283,13 +283,18 @@ export default function GroupChatPage() {
   const handleJoin = async () => {
     setJoining(true);
     try {
-      await socialApi.joinGroup(groupId);
-      setIsMember(true);
-      toast.success('Вы вступили в группу!');
-      // Reload messages
-      const mRes = await socialApi.getGroupMessages(groupId);
-      const msgs = mRes.data?.data || mRes.data;
-      setMessages(msgs?.messages || msgs || []);
+      const res = await socialApi.joinGroup(groupId);
+      const data = res.data?.data || res.data;
+      if (data?.requested) {
+        toast.success('Заявка отправлена! Ожидайте одобрения владельца.');
+        setIsMember(false);
+      } else {
+        setIsMember(true);
+        toast.success('Вы вступили в группу!');
+        const mRes = await socialApi.getGroupMessages(groupId);
+        const msgs = mRes.data?.data || mRes.data;
+        setMessages(msgs?.messages || msgs || []);
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Ошибка');
     } finally {

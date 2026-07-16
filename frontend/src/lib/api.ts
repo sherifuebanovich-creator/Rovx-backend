@@ -20,6 +20,9 @@ api.interceptors.request.use((config) => {
     const lang = document.documentElement.lang || localStorage.getItem('i18nextLng') || 'ru';
     config.headers['Accept-Language'] = lang;
   }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
 
@@ -194,8 +197,8 @@ export const mapApi = {
     api.get('/map/government-traffic-signals', { params: { lat, lng, radius } }),
   getFeatures: (bbox: string, types?: string) =>
     api.get('/map-features', { params: { bbox, types } }),
-  search: (q: string, lat?: number, lng?: number) =>
-    api.get('/map/search', { params: { q, lat, lng } }),
+  search: (q: string, lat?: number, lng?: number, radius?: number) =>
+    api.get('/map/search', { params: { q, lat, lng, radius } }),
   suggest: (q: string, lat?: number, lng?: number) =>
     api.get('/map/suggest', { params: { q, lat, lng } }),
   reverseGeocode: (lat: number, lng: number) =>

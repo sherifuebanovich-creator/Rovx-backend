@@ -70,7 +70,18 @@
       "hospitals": "Больницы",
       "shops": "Магазины",
       "carService": "Автосервис",
-      "evChargers": "Зарядки"
+      "evChargers": "Зарядки",
+      "truckParking": "Грузовая стоянка",
+      "pharmacy": "Аптеки",
+      "atm": "Банкоматы",
+      "police": "Полиция",
+      "toilet": "Туалеты",
+      "park": "Парки",
+      "metro": "Метро",
+      "busStop": "Остановки",
+      "shower": "Душевые",
+      "motel": "Мотели",
+      "supermarket": "Супермаркеты"
     },
     "routeTypes": {
       "fastest": "Быстрый",
@@ -126,6 +137,10 @@
     "startTyping": "Начните вводить, чтобы найти место",
     "noResults": "Ничего не найдено",
     "foundNearby": "Найдено {{count}} мест рядом",
+    "foundResults": "Найдено {{count}} результатов",
+    "navigate": "Маршрут",
+    "showOnMap": "На карте",
+    "noCategoryResults": "Поблизости ничего не найдено",
     "km": "км",
     "m": "м"
   },
@@ -182,7 +197,10 @@
     "recalculating": "Пересчёт маршрута...",
     "rerouted": "Маршрут пересчитан",
     "endTrip": "Завершить поездку",
-    "sec": "сек"
+    "sec": "сек",
+    "wrongWay": "Едете не в том направлении!",
+    "turnAround": "Развернитесь",
+    "wrongWayVoice": "Внимание! Вы едете не в том направлении. Развернитесь!"
   },
   "objectDetailPanel": {
     "categories": {

@@ -33,6 +33,7 @@ export function NavigationHUD() {
   const setActiveTrip = useMapStore(s => s.setActiveTrip);
   const { speak, announceNavigation } = useVoiceAssistant();
   const { t, i18n } = useTranslation();
+  const wrongWayAnnouncedRef = useRef(false);
 
   const monitorRef = useRef<SpeedCameraMonitor | null>(null);
   const [cameraWarning, setCameraWarning] = useState<ReturnType<typeof buildCameraAlertText> | null>(null);
@@ -272,6 +273,17 @@ export function NavigationHUD() {
   }, [navigation.isNavigating, i18n.language, speak]);
 
   useEffect(() => {
+    if (navigation.isWrongWay) {
+      if (!wrongWayAnnouncedRef.current) {
+        speak(t('navigationHud.wrongWayVoice'), true);
+        wrongWayAnnouncedRef.current = true;
+      }
+    } else {
+      wrongWayAnnouncedRef.current = false;
+    }
+  }, [navigation.isWrongWay, speak, t]);
+
+  useEffect(() => {
     return () => { if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current); };
   }, []);
 
@@ -300,36 +312,7 @@ export function NavigationHUD() {
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Camera warning */}
-      <AnimatePresence>
-        {cameraWarning && (
-          <motion.div
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -30 }}
-            className="absolute top-4 left-4 right-4 pointer-events-auto z-10"
-          >
-            <div className="bg-red-600/90 backdrop-blur-xl rounded-2xl px-4 py-3 border border-red-400/30 shadow-2xl">
-              <div className="flex items-center gap-3">
-                <div className="text-3xl">{cameraWarning.title.split(' ')[0]}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-base font-bold text-white">{cameraWarning.title}</p>
-                  <p className="text-xs text-red-200">{cameraWarning.subtitle}</p>
-                  {cameraWarning.desc && (
-                    <p className="text-xs text-red-300/70 mt-0.5">{cameraWarning.desc}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setCameraWarning(null)}
-                  className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
-                >
-                  <FaTimes size={10} className="text-white/70" />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Camera warning removed — cameras show on map with voice alerts */}
 
       {/* Off-route / rerouting banner */}
       <AnimatePresence>
