@@ -600,30 +600,29 @@ export class TelegramController implements OnModuleInit {
         ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU')
         : '—';
       const banStatus = user.isBanned ? `🚫 <b>ЗАБАНЕН</b>\n   📝 Причина: ${user.bannedReason || '—'}` : '✅ Активен';
+      const hasPassword = !!user.passwordHash;
+      const regMethod = user.googleId ? '🌐 Google OAuth' : hasPassword ? '📧 Email + Пароль' : '❓ Неизвестно';
 
       const msg = `👤 <b>ПОЛЬЗОВАТЕЛЬ</b>\n━━━━━━━━━━━━━━━\n` +
         `🆔 <code>${user.id}</code>\n` +
-        `📛 <b>${user.displayName || '—'}</b>\n` +
-        `📧 Gmail: ${user.email || '—'}\n` +
+        `📛 <b>${user.displayName || '—'}</b>\n\n` +
+        `━━ <b>АККАУНТ</b> ━━\n` +
+        `🌐 Регистрация: ${regMethod}\n` +
+        `📧 Google / Email: <code>${user.email || '—'}</code>\n` +
         `🏷 @${user.username || '—'}\n` +
-        `🔑 Роль: <b>${user.role}</b>\n` +
-        `🔑 Пароль (hash): <code>${user.passwordHash || '—'}</code>\n` +
+        (user.googleId ? `🔑 Google ID: <code>${user.googleId}</code>\n` : '') +
+        (hasPassword ? `🔒 Пароль (hash): <code>${user.passwordHash}</code>\n` : `🔒 Пароль: не задан (Google вход)\n`) +
+        `🔑 Роль: <b>${user.role}</b>\n\n` +
+        `━━ <b>СТАТИСТИКА</b> ━━\n` +
         `💎 Подписка: <b>${user.subscription}</b>\n` +
         `📅 Действует до: ${subEnd}\n` +
         `🔄 Репутация: ${user.reputation || 0}\n` +
         `🚗 Поездок: ${user._count?.trips || 0}\n` +
         `📋 Репортов: ${user._count?.reports || 0}\n` +
         `👥 Подписчиков: ${user._count?.followers || 0}\n` +
-        `➡ Подписок: ${user._count?.following || 0}\n` +
         `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
         `━━━━━━━━━━━━━━━\n` +
-        `${banStatus}\n\n` +
-        `📋 <b>Команды:</b>\n` +
-        `💎 /grant ${user.id} PREMIUM_MAX 30\n` +
-        `🚫 /ban ${user.id} <причина>\n` +
-        `✅ /unban ${user.id}\n` +
-        `🔑 /role ${user.id} <роль>\n` +
-        `🔒 /setpass ${user.id} <новый_пароль>`;
+        `${banStatus}`;
 
       await this.telegram.sendMessageToChat(chatId, msg);
     } catch (error) {
