@@ -478,6 +478,77 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     });
   }
 
+  @SubscribeMessage('group:message_read')
+  async handleMessageRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { groupId: string; messageId: string },
+  ) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId) return;
+
+    try {
+      const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
+      if (!msg || msg.groupId !== data.groupId || msg.senderId === userId) return;
+      if (msg.readBy.includes(userId)) return;
+
+      const updated = await this.prisma.groupMessage.update({
+        where: { id: data.messageId },
+        data: { readBy: { push: userId } },
+        include: { sender: { select: { id: true } } },
+      });
+
+      this.server.to(`group:${data.groupId}`).emit('group:message_read', {
+        messageId: data.messageId,
+        readBy: updated.readBy,
+        readByUser: userId,
+      });
+    } catch (err) {
+      this.logger.warn(`Message read failed: ${(err as Error).message}`);
+    }
+  }
+
+  @SubscribeMessage('group:reaction')
+  async handleReaction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { groupId: string; messageId: string; emoji: string },
+  ) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId) return;
+
+    try {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId },
+      });
+      if (!member || member.isBanned) return;
+
+      const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
+      if (!msg) return;
+
+      let reactions: Record<string, string[]> = {};
+      try { reactions = JSON.parse(msg.reactions || '{}'); } catch {}
+
+      const existing = reactions[data.emoji] || [];
+      if (existing.includes(userId)) {
+        reactions[data.emoji] = existing.filter(id => id !== userId);
+        if (reactions[data.emoji].length === 0) delete reactions[data.emoji];
+      } else {
+        reactions[data.emoji] = [...existing, userId];
+      }
+
+      await this.prisma.groupMessage.update({
+        where: { id: data.messageId },
+        data: { reactions: JSON.stringify(reactions) },
+      });
+
+      this.server.to(`group:${data.groupId}`).emit('group:reaction', {
+        messageId: data.messageId,
+        reactions,
+      });
+    } catch (err) {
+      this.logger.warn(`Reaction failed: ${(err as Error).message}`);
+    }
+  }
+
   @SubscribeMessage('group:edit')
   async handleGroupEdit(
     @ConnectedSocket() client: Socket,

@@ -516,6 +516,8 @@ model GroupMessage {
   audioUrl  String?
   videoUrl  String?
   isDeleted Boolean  @default(false)
+  readBy    String[] @default([])
+  reactions String   @default("{}")
   createdAt DateTime @default(now())
   group  Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)

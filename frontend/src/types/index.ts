@@ -297,6 +297,8 @@ export interface GroupMessage {
   audioUrl?: string;
   videoUrl?: string;
   isDeleted?: boolean;
+  readBy?: string[];
+  reactions?: Record<string, string[]>;
   createdAt: string;
   sender: { id: string; displayName: string; avatar?: string };
 }

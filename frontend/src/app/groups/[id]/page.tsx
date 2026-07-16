@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi } from '@/lib/api';
 import { useSocket, getSocket } from '@/hooks/useSocket';
-import { Group, GroupMessage, GroupRequest } from '@/types';
+import { Group, GroupMessage, GroupMember, GroupRequest } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaArrowLeft, FaUsers, FaEdit, FaTrash, FaTimes, FaSave, FaPaperPlane,
@@ -81,7 +81,11 @@ export default function GroupChatPage() {
   const [memberAction, setMemberAction] = useState<{ userId: string; username: string } | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
+  const [showReadBy, setShowReadBy] = useState<string | null>(null);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const joinedRef = useRef(false);
+  const readSentRef = useRef<Set<string>>(new Set());
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🙏'];
 
   // Socket connection
   useEffect(() => {
@@ -197,6 +201,13 @@ export default function GroupChatPage() {
     const onMemberPromoted = () => { toast('Пользователь повышен до админа'); };
     const onMemberDemoted = () => { toast('Пользователь понижен'); };
 
+    const onMessageRead = (data: { messageId: string; readBy: string[]; readByUser: string }) => {
+      setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, readBy: data.readBy } : m));
+    };
+    const onReaction = (data: { messageId: string; reactions: Record<string, string[]> }) => {
+      setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    };
+
     const onRequestNew = (data: { groupId: string; userId: string; groupName: string }) => {
       if (data.groupId !== groupId) return;
       toast(`Новая заявка на вступление в группу`, { icon: '📩' });
@@ -243,6 +254,8 @@ export default function GroupChatPage() {
     ws?.on('group:member_kicked', onMemberKicked);
     ws?.on('group:member_promoted', onMemberPromoted);
     ws?.on('group:member_demoted', onMemberDemoted);
+    ws?.on('group:message_read', onMessageRead);
+    ws?.on('group:reaction', onReaction);
     ws?.on('group:request_new', onRequestNew);
     ws?.on('group:request_approved', onRequestApproved);
     ws?.on('group:request_rejected', onRequestRejected);
@@ -256,6 +269,8 @@ export default function GroupChatPage() {
       ws?.off('group:member_kicked', onMemberKicked);
       ws?.off('group:member_promoted', onMemberPromoted);
       ws?.off('group:member_demoted', onMemberDemoted);
+      ws?.off('group:message_read', onMessageRead);
+      ws?.off('group:reaction', onReaction);
       ws?.off('group:request_new', onRequestNew);
       ws?.off('group:request_approved', onRequestApproved);
       ws?.off('group:request_rejected', onRequestRejected);
@@ -313,6 +328,41 @@ export default function GroupChatPage() {
       toast.error('Ошибка');
     }
   };
+
+  // Send reaction
+  const toggleReaction = useCallback((messageId: string, emoji: string) => {
+    const ws = getSocket();
+    if (!ws) return;
+    ws.emit('group:reaction', { groupId, messageId, emoji });
+    setReactionPickerMsgId(null);
+  }, [groupId]);
+
+  // Mark message as read
+  const markAsRead = useCallback((messageId: string) => {
+    if (!user?.id || readSentRef.current.has(messageId)) return;
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg || msg.senderId === user.id) return;
+    if (msg.readBy?.includes(user.id)) return;
+    readSentRef.current.add(messageId);
+    const ws = getSocket();
+    ws?.emit('group:message_read', { groupId, messageId });
+  }, [groupId, user, messages]);
+
+  // Auto-read visible messages on scroll
+  useEffect(() => {
+    const container = document.querySelector('.overflow-y-auto');
+    if (!container || !user?.id) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const msgId = entry.target.getAttribute('data-msg-id');
+          if (msgId) markAsRead(msgId);
+        }
+      });
+    }, { root: container, threshold: 0.8 });
+    container.querySelectorAll('[data-msg-id]').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, [messages, user?.id, markAsRead]);
 
   // Upload media
   const handleFileUpload = async (files: FileList | null) => {
@@ -642,12 +692,22 @@ export default function GroupChatPage() {
       ) : (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" onClick={() => setContextMenu(null)}>
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" onClick={() => { setContextMenu(null); setReactionPickerMsgId(null); setShowReadBy(null); }}>
             {messages.filter(m => !m.isDeleted).map(msg => {
               const showDelete = isAdmin || msg.senderId === user.id;
+              const isOwn = msg.senderId === user.id;
+              const readByArr = msg.readBy || [];
+              const reactions = msg.reactions || {};
+              const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
+              const memberCount = group?.members?.length || 0;
+              const allRead = readByArr.length >= 1;
+              const readByNames = readByArr.map(uid => {
+                const m = group?.members?.find((mem: GroupMember) => mem.userId === uid);
+                return m?.user?.displayName || uid.slice(0, 8);
+              });
               return (
-              <div key={msg.id}
-                className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}
+              <div key={msg.id} data-msg-id={msg.id}
+                className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                 onContextMenu={(e) => {
                   if (!showDelete) return;
                   e.preventDefault();
@@ -657,15 +717,16 @@ export default function GroupChatPage() {
                   if (!showDelete) return;
                   handleDeleteMessage(msg.id);
                 }}
+                onClick={(e) => { e.stopPropagation(); setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id); }}
               >
-                <div className={`max-w-[80%] ${
+                <div className={`max-w-[80%] relative group ${
                   msg.sticker ? 'text-6xl py-1' : `px-4 py-2.5 rounded-2xl ${
-                    msg.senderId === user.id
+                    isOwn
                       ? 'bg-primary-600 text-white rounded-br-md'
                       : 'bg-dark-surface text-dark-text rounded-bl-md'
                   }`
                 }`}>
-                  {msg.senderId !== user.id && !msg.sticker && (
+                  {!isOwn && !msg.sticker && (
                     <p className="text-[10px] text-primary-300 font-medium mb-1">{msg.sender?.displayName || msg.senderId}</p>
                   )}
                   {msg.sticker && <span className="block">{msg.sticker}</span>}
@@ -684,10 +745,10 @@ export default function GroupChatPage() {
                     </div>
                   )}
                   {msg.audioUrl && (
-                    <div className={`py-1 ${msg.sticker ? '' : ''}`}>
+                    <div className={`py-1`}>
                       <AudioMessagePlayer
                         src={BASE_URL + msg.audioUrl}
-                        isOwn={msg.senderId === user.id}
+                        isOwn={isOwn}
                       />
                     </div>
                   )}
@@ -695,7 +756,7 @@ export default function GroupChatPage() {
                     <div className="py-1">
                       <VideoMessagePlayer
                         src={BASE_URL + msg.videoUrl}
-                        isOwn={msg.senderId === user.id}
+                        isOwn={isOwn}
                       />
                     </div>
                   )}
@@ -703,9 +764,59 @@ export default function GroupChatPage() {
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                   )}
                   {!msg.sticker && (
-                    <p className="text-[10px] opacity-50 text-right mt-1">
-                      {new Date(msg.createdAt).toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                    <div className="flex items-center justify-end gap-1 mt-1">
+                      <p className="text-[10px] opacity-50">
+                        {new Date(msg.createdAt).toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      {isOwn && (
+                        readByArr.length > 0
+                          ? <span className="text-[10px] text-blue-300">✓✓</span>
+                          : <span className="text-[10px] opacity-50">✓</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Read by indicator for own messages (tap to expand) */}
+                  {isOwn && readByArr.length > 0 && !msg.sticker && (
+                    <button onClick={(e) => { e.stopPropagation(); setShowReadBy(showReadBy === msg.id ? null : msg.id); }}
+                      className="text-[10px] text-blue-300/70 hover:text-blue-300 text-left">
+                      {readByArr.length > 0 && (
+                        showReadBy === msg.id
+                          ? `✓✓ ${readByNames.join(', ')}`
+                          : `✓✓ ${readByNames.length}`
+                      )}
+                    </button>
+                  )}
+
+                  {/* Reactions display */}
+                  {reactionEntries.length > 0 && !msg.sticker && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {reactionEntries.map(([emoji, users]) => {
+                        const reacted = users.includes(user?.id || '');
+                        return (
+                          <button key={emoji} onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs transition-all ${
+                              reacted ? 'bg-primary-600/30 border border-primary-500/50' : 'bg-white/10 border border-white/5 hover:bg-white/15'
+                            }`}>
+                            <span>{emoji}</span>
+                            <span className={`text-[10px] ${isOwn ? 'text-white/70' : 'text-gray-400'}`}>{users.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Reaction picker popup */}
+                  {reactionPickerMsgId === msg.id && (
+                    <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} -top-10 z-20 flex gap-1 bg-dark-card/95 backdrop-blur-xl rounded-xl px-2 py-1.5 border border-white/10 shadow-xl`}
+                      onClick={(e) => e.stopPropagation()}>
+                      {QUICK_REACTIONS.map(emoji => (
+                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
+                          className="w-8 h-8 flex items-center justify-center text-lg hover:bg-white/10 rounded-lg transition-all active:scale-125">
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
