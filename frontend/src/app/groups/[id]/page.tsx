@@ -404,16 +404,10 @@ export default function GroupChatPage() {
     setPendingImages([]);
   }, [input, pendingImages, groupId, t]);
 
-  // Send sticker
-  const sendSticker = (sticker: string) => {
-    const ws = getSocket();
-    if (!ws?.connected) return;
-    ws.emit('group:message', {
-      groupId,
-      content: '',
-      sticker,
-    });
-    setShowStickers(false);
+  // Insert an emoji into the compose field instead of sending it as a
+  // standalone oversized "sticker" message — these packs are just emoji.
+  const insertEmoji = (emoji: string) => {
+    setInput(prev => prev + emoji);
   };
 
   const removePendingImage = (idx: number) => {
@@ -850,7 +844,7 @@ export default function GroupChatPage() {
             )}
           </AnimatePresence>
 
-          {/* Sticker picker */}
+          {/* Emoji picker */}
           <AnimatePresence>
             {showStickers && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
@@ -868,7 +862,7 @@ export default function GroupChatPage() {
                   </div>
                   <div className="grid grid-cols-8 gap-0.5">
                     {STICKER_PACKS[activeStickerPack].stickers.map((s, i) => (
-                      <button key={i} onClick={() => sendSticker(s)}
+                      <button key={i} onClick={() => insertEmoji(s)}
                         className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-dark-bg rounded-lg transition-all active:scale-90">
                         {s}
                       </button>
