@@ -221,10 +221,17 @@ export class SocialService {
         city: data.city,
         isPublic: data.isPublic,
       },
+      include: { _count: { select: { members: true } } },
     });
 
-    await this.gateway.broadcastToGroup(groupId, 'group:updated', updated);
-    return updated;
+    // Never broadcast the raw stored `memberCount` — it's a denormalized
+    // counter maintained by scattered increment/decrement calls elsewhere
+    // and can drift from the real membership. Always derive it live.
+    const { _count, ...rest } = updated as any;
+    const payload = { ...rest, memberCount: _count.members };
+
+    await this.gateway.broadcastToGroup(groupId, 'group:updated', payload);
+    return payload;
   }
 
   async deleteGroup(userId: string, groupId: string) {
