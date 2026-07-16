@@ -269,16 +269,26 @@ export class PremiumService {
 
         const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
 
-        if (existingSub?.status === 'active') {
+        // Idempotency: only skip a webhook redelivery for a transaction we've
+        // already applied. Checking `status === 'active'` alone would also
+        // silently swallow a legitimate renewal payment for the same user.
+        if (existingSub?.status === 'active' && transactionId && existingSub.paymentId === transactionId) {
           this.logger.log(`Xsolla payment ${transactionId} already processed — skipping`);
           return { received: true };
         }
 
+        // `createCheckoutSession` writes a `pending` row with the exact tier
+        // the user selected before Xsolla redirects them to pay. Prefer that
+        // over re-deriving the tier from the paid amount, since `amount` is
+        // `tierPrice * months` and comparing it directly against per-month
+        // tier prices picks the wrong (often higher) tier for multi-month
+        // purchases.
         const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
-        const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
-        const tierName = matchedTier?.name || existingSub?.levelName || 'PREMIUM_BASIC';
-        if (matchedTier && matchedTier.price > 0) {
-          this.logger.log(`Xsolla: detected tier ${tierName} from paid amount ${paidAmount}`);
+        let tierName = existingSub?.levelName;
+        if (!tierName) {
+          const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
+          tierName = matchedTier?.name || 'PREMIUM_BASIC';
+          this.logger.warn(`Xsolla: no pending subscription for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
         }
         const tier = this.getTierInfo(tierName);
 
@@ -343,7 +353,7 @@ export class PremiumService {
       }
 
       const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId: user.id } });
-      if (existingSub?.status === 'active') {
+      if (existingSub?.status === 'active' && invoiceId && existingSub.paymentId === invoiceId) {
         this.logger.log(`Lava.top invoice ${invoiceId} already processed — skipping`);
         return { received: true };
       }
@@ -472,7 +482,7 @@ export class PremiumService {
       }
 
       const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-      if (existingSub?.status === 'active') {
+      if (existingSub?.status === 'active' && orderId && existingSub.paymentId === String(orderId)) {
         this.logger.log(`Lemon Squeezy order ${orderId} already processed — skipping`);
         return { received: true };
       }
@@ -612,10 +622,18 @@ export class PremiumService {
   }
 
   async getPaymentDetails() {
+    const cardNumber = this.config.get('PAYMENT_CARD_NUMBER');
+    const cardHolder = this.config.get('PAYMENT_CARD_HOLDER');
+    const cardBank = this.config.get('PAYMENT_CARD_BANK');
+    if (!cardNumber || !cardHolder || !cardBank) {
+      // Fail closed: never show a stale/wrong hardcoded payment destination
+      // if the real one isn't configured for this environment.
+      throw new BadRequestException('Payment details are not configured');
+    }
     return {
-      cardNumber: this.config.get('PAYMENT_CARD_NUMBER') || '5614 6805 7053 0846',
-      cardHolder: this.config.get('PAYMENT_CARD_HOLDER') || 'N/S Uzcard',
-      cardBank: this.config.get('PAYMENT_CARD_BANK') || 'UzCard',
+      cardNumber,
+      cardHolder,
+      cardBank,
       amount: this.config.get('PAYMENT_AMOUNT') || '6.49',
       currency: this.config.get('PAYMENT_CURRENCY') || 'USD',
     };

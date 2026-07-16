@@ -86,6 +86,7 @@ interface CreateReportDto {
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
   private readonly aiBaseUrl: string;
+  private readonly backendBaseUrl: string;
 
   constructor(
     private prisma: PrismaService,
@@ -95,6 +96,15 @@ export class ReportsService {
     private config: ConfigService,
   ) {
     this.aiBaseUrl = this.config.get('AI_API_BASE_URL', 'https://api.groq.com/openai/v1');
+    this.backendBaseUrl = (
+      this.config.get<string>('BACKEND_URL') ||
+      `http://localhost:${this.config.get('PORT', 3001)}`
+    ).replace(/\/+$/, '');
+  }
+
+  /** Resolve a possibly-relative image path (e.g. `/uploads/reports/x.jpg`) to an absolute URL. */
+  private resolveImageUrl(imageUrl: string): string {
+    return imageUrl.startsWith('/') ? `${this.backendBaseUrl}${imageUrl}` : imageUrl;
   }
 
   private formatReport(report: any) {
@@ -135,21 +145,35 @@ export class ReportsService {
       return { valid: false, reason: 'AI validation unavailable' };
     }
 
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(imageUrl);
-    } catch {
-      return { valid: false, reason: 'Invalid image URL format' };
-    }
-    if (!['https:', 'http:'].includes(parsedUrl.protocol)) {
-      return { valid: false, reason: 'Only HTTP/HTTPS URLs are allowed' };
-    }
-    if (/^(localhost|127\.|10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.|0\.)/.test(parsedUrl.hostname)) {
-      this.logger.warn(`SSRF attempt blocked: ${imageUrl}`);
-      return { valid: false, reason: 'Internal URLs are not allowed' };
-    }
-    if (imageUrl.length > 2048) {
-      return { valid: false, reason: 'URL too long' };
+    imageUrl = this.resolveImageUrl(imageUrl);
+
+    if (imageUrl.startsWith('data:')) {
+      // Client-side pre-flight check sends a base64 data URL before the file is uploaded.
+      const match = /^data:image\/(jpeg|png|webp|gif);base64,([a-zA-Z0-9+/]+={0,2})$/.exec(imageUrl);
+      if (!match) {
+        return { valid: false, reason: 'Invalid image data URL' };
+      }
+      const approxBytes = (match[2].length * 3) / 4;
+      if (approxBytes > 8 * 1024 * 1024) {
+        return { valid: false, reason: 'Image too large' };
+      }
+    } else {
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(imageUrl);
+      } catch {
+        return { valid: false, reason: 'Invalid image URL format' };
+      }
+      if (!['https:', 'http:'].includes(parsedUrl.protocol)) {
+        return { valid: false, reason: 'Only HTTP/HTTPS URLs are allowed' };
+      }
+      if (/^(localhost|127\.|10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.|169\.254\.|0\.)/.test(parsedUrl.hostname)) {
+        this.logger.warn(`SSRF attempt blocked: ${imageUrl}`);
+        return { valid: false, reason: 'Internal URLs are not allowed' };
+      }
+      if (imageUrl.length > 2048) {
+        return { valid: false, reason: 'URL too long' };
+      }
     }
 
     const visionModel = this.config.get('AI_VISION_MODEL', '');

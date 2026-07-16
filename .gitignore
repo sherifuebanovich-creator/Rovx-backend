@@ -37,6 +37,7 @@ Thumbs.db
 
 ## Docker
 .dockerignore
+!backend/.dockerignore
 
 ## Coverage
 coverage/

@@ -2,8 +2,8 @@ services:
   - type: web
     name: rovx-backend
     env: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: ./
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     region: oregon
     plan: free
     healthCheckPath: /api/v1/health
@@ -83,6 +83,36 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: TELEGRAM_BOT_PASSWORD
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMENT_CARD_NUMBER
+        sync: false
+      - key: PAYMENT_CARD_HOLDER
+        sync: false
+      - key: PAYMENT_CARD_BANK
+        sync: false
+      - key: PAYMENT_AMOUNT
+        sync: false
+      - key: PAYMENT_CURRENCY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: LEMON_SQUEEZY_API_KEY
+        sync: false
+      - key: LEMON_SQUEEZY_STORE_ID
+        sync: false
+      - key: LEMON_SQUEEZY_VARIANT_ID
+        sync: false
+      - key: LEMON_SQUEEZY_WEBHOOK_SECRET
+        sync: false
+      - key: LAVA_TOP_API_KEY
+        sync: false
+      - key: LAVA_TOP_OFFER_ID
+        sync: false
+      - key: LAVA_TOP_WEBHOOK_KEY
         sync: false
       - key: GOVERNMENT_API_URL
         sync: false

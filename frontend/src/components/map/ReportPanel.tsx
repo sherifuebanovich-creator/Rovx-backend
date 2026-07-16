@@ -59,6 +59,11 @@ export function ReportPanel() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoChecking, setPhotoChecking] = useState(false);
   const [photoValidated, setPhotoValidated] = useState<boolean[]>([]);
+  // Stable per-photo ids (mirrors photos/photoFiles/photoValidated order) so
+  // async validation results can be written to the photo's CURRENT index
+  // even if photos were removed while validation was still in flight.
+  const photoIdCounterRef = useRef(0);
+  const photoIdsRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -69,7 +74,6 @@ export function ReportPanel() {
     }).catch(() => {});
   }, []);
 
-  const photoValidationIdRef = useRef(0);
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -94,8 +98,8 @@ export function ReportPanel() {
 
     if (addedPhotos.length === 0) return;
 
-    const myValidationId = ++photoValidationIdRef.current;
-    const startIndex = currentCount;
+    const addedIds = addedPhotos.map(() => ++photoIdCounterRef.current);
+    photoIdsRef.current = [...photoIdsRef.current, ...addedIds];
 
     setPhotos(prev => [...prev, ...addedPhotos]);
     setPhotoFiles(prev => [...prev, ...addedFiles]);
@@ -119,12 +123,14 @@ export function ReportPanel() {
       }
     }
 
-    if (myValidationId !== photoValidationIdRef.current) return;
-
+    // Write each result to that photo's CURRENT index (looked up by its
+    // stable id), so a removal that happened while validation was in
+    // flight can't corrupt a sibling photo's slot or leave it stuck.
     setPhotoValidated(prev => {
       const copy = [...prev];
       for (let i = 0; i < newValidations.length; i++) {
-        copy[startIndex + i] = newValidations[i];
+        const idx = photoIdsRef.current.indexOf(addedIds[i]);
+        if (idx !== -1) copy[idx] = newValidations[i];
       }
       return copy;
     });
@@ -136,6 +142,7 @@ export function ReportPanel() {
   };
 
   const removePhoto = (index: number) => {
+    photoIdsRef.current = photoIdsRef.current.filter((_, i) => i !== index);
     setPhotos(prev => prev.filter((_, i) => i !== index));
     setPhotoFiles(prev => prev.filter((_, i) => i !== index));
     setPhotoValidated(prev => prev.filter((_, i) => i !== index));
@@ -189,6 +196,7 @@ export function ReportPanel() {
         setPhotos([]);
         setPhotoFiles([]);
         setPhotoValidated([]);
+        photoIdsRef.current = [];
       }, 3000);
     } catch (err: any) {
       const msg = err?.response?.data?.message || t('reportPanel.submitFailed');

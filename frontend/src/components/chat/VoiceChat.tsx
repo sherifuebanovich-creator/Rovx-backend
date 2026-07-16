@@ -25,6 +25,45 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const durationRef = useRef(0);
 
+  // WebRTC transport. Signaling (offer/answer/ICE candidates) rides over
+  // the existing voice:signal socket relay; only STUN is configured (no
+  // TURN server in this deployment), so calls across strict/symmetric NATs
+  // may fail to establish — acceptable for a P2P voice feature with no
+  // media server infra.
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const peerIdRef = useRef<string | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const ICE_SERVERS: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+
+  const createPeerConnection = useCallback((peerId: string) => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    localStreamRef.current?.getTracks().forEach(track => {
+      pc.addTrack(track, localStreamRef.current!);
+    });
+
+    pc.ontrack = (event) => {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        getSocket()?.emit('voice:signal', {
+          targetUserId: peerId,
+          signal: { type: 'candidate', candidate: event.candidate.toJSON() },
+        });
+      }
+    };
+
+    pcRef.current = pc;
+    return pc;
+  }, []);
+
   const formatDuration = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -49,6 +88,9 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
         return;
       }
 
+      peerIdRef.current = targetId;
+      createPeerConnection(targetId);
+
       socket.emit('voice:call', {
         targetUserId: targetId,
         callerName: user?.displayName || 'User',
@@ -69,14 +111,19 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     } catch (err) {
       toast.error('Не удалось получить доступ к микрофону');
     }
-  }, [user]);
+  }, [user, createPeerConnection]);
 
   const endCall = useCallback(() => {
     const socket = getSocket();
-    const targetId = targetUserId || groupId;
+    const targetId = peerIdRef.current || targetUserId || groupId;
     if (targetId) {
       socket?.emit('voice:end', { targetUserId: targetId, groupId });
     }
+
+    pcRef.current?.close();
+    pcRef.current = null;
+    peerIdRef.current = null;
+    pendingCandidatesRef.current = [];
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
@@ -111,6 +158,12 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     setIsSpeakerOn(!isSpeakerOn);
   }, [isSpeakerOn]);
 
+  useEffect(() => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !isSpeakerOn;
+    }
+  }, [isSpeakerOn]);
+
   // Listen for incoming call
   useEffect(() => {
     const handler = (e: Event) => {
@@ -141,6 +194,8 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
         localStreamRef.current = stream;
+        peerIdRef.current = data.callerId;
+        createPeerConnection(data.callerId);
 
         setIsInCall(true);
         setRemoteUser(data.callerName);
@@ -164,16 +219,75 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
 
     window.addEventListener('rovx:voice-call', handler);
     return () => window.removeEventListener('rovx:voice-call', handler);
-  }, [isInCall]);
+  }, [isInCall, createPeerConnection]);
 
-  // Listen for voice signals
+  // Listen for voice signals (SDP offer/answer + ICE candidates)
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const data = (e as CustomEvent).detail;
-      if (!data?.signal) return;
+      const signal = data?.signal;
+      const fromUserId = data?.fromUserId;
+      if (!signal) return;
 
-      if (data.signal.type === 'accepted') {
+      const pc = pcRef.current;
+
+      if (signal.type === 'accepted') {
         toast.success('Звонок принят');
+        // We're the caller — now that the callee agreed, create and send the offer.
+        if (!pc || !peerIdRef.current) return;
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          getSocket()?.emit('voice:signal', {
+            targetUserId: peerIdRef.current,
+            signal: { type: 'offer', sdp: offer.sdp },
+          });
+        } catch {
+          toast.error('Не удалось установить соединение');
+        }
+        return;
+      }
+
+      if (signal.type === 'offer') {
+        // We're the callee — answer it.
+        if (!pc) return;
+        try {
+          await pc.setRemoteDescription({ type: 'offer', sdp: signal.sdp });
+          for (const candidate of pendingCandidatesRef.current) {
+            await pc.addIceCandidate(candidate).catch(() => {});
+          }
+          pendingCandidatesRef.current = [];
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          getSocket()?.emit('voice:signal', {
+            targetUserId: fromUserId,
+            signal: { type: 'answer', sdp: answer.sdp },
+          });
+        } catch {
+          toast.error('Не удалось установить соединение');
+        }
+        return;
+      }
+
+      if (signal.type === 'answer') {
+        if (!pc) return;
+        try {
+          await pc.setRemoteDescription({ type: 'answer', sdp: signal.sdp });
+          for (const candidate of pendingCandidatesRef.current) {
+            await pc.addIceCandidate(candidate).catch(() => {});
+          }
+          pendingCandidatesRef.current = [];
+        } catch {}
+        return;
+      }
+
+      if (signal.type === 'candidate' && signal.candidate) {
+        if (!pc) return;
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(signal.candidate).catch(() => {});
+        } else {
+          pendingCandidatesRef.current.push(signal.candidate);
+        }
       }
     };
     window.addEventListener('rovx:voice-signal', handler);
@@ -193,6 +307,8 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      pcRef.current?.close();
+      pcRef.current = null;
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       if (timerRef.current) clearInterval(timerRef.current);
     };

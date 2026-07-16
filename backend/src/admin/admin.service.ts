@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { GatewayService } from '../websocket/gateway.service';
 import * as bcrypt from 'bcrypt';
 import * as os from 'os';
 
@@ -11,6 +12,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private gatewayService: GatewayService,
   ) {}
 
   // ─── USERS ────────────────────────────────────────────────────────────────
@@ -64,10 +66,12 @@ export class AdminService {
     const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
     if (!user) throw new NotFoundException('User not found');
     if (adminId && id === adminId) throw new BadRequestException('Cannot ban yourself');
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data: { isBanned: true, bannedReason: reason, isActive: false },
     });
+    await this.gatewayService.disconnectUser(id);
+    return updated;
   }
 
   async unbanUser(id: string, adminId?: string) {

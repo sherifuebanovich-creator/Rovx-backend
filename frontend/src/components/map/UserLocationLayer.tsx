@@ -73,13 +73,20 @@ export default function UserLocationLayer({ map }: Props) {
   useEffect(() => {
     if (!map) return;
 
-    const onUserDrag = () => {
+    const onUserDragStart = () => {
       userDragRef.current = true;
+      clearTimeout(followTimeoutRef.current);
       if (followActiveRef.current) {
         followActiveRef.current = false;
         setFollowActive(false);
         setFollowUser(false);
       }
+    };
+
+    const onUserDragEnd = () => {
+      // Start the "return to follow" countdown only once the user actually
+      // stops interacting, not from the moment the gesture began — otherwise
+      // follow can snap back while they're still panning/zooming.
       clearTimeout(followTimeoutRef.current);
       followTimeoutRef.current = setTimeout(() => {
         if (map && useMapStore.getState().userLocation) {
@@ -90,8 +97,10 @@ export default function UserLocationLayer({ map }: Props) {
       }, 5000);
     };
 
-    map.on('dragstart', onUserDrag);
-    map.on('zoomstart', onUserDrag);
+    map.on('dragstart', onUserDragStart);
+    map.on('zoomstart', onUserDragStart);
+    map.on('dragend', onUserDragEnd);
+    map.on('zoomend', onUserDragEnd);
 
     initAccuracySource(map);
 
@@ -103,8 +112,10 @@ export default function UserLocationLayer({ map }: Props) {
     map.on('style.load', onStyleData);
 
     return () => {
-      map.off('dragstart', onUserDrag);
-      map.off('zoomstart', onUserDrag);
+      map.off('dragstart', onUserDragStart);
+      map.off('zoomstart', onUserDragStart);
+      map.off('dragend', onUserDragEnd);
+      map.off('zoomend', onUserDragEnd);
       map.off('style.load', onStyleData);
       clearTimeout(followTimeoutRef.current);
       cancelAnimationFrame(rafIdRef.current);

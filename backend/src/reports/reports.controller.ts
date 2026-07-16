@@ -82,22 +82,8 @@ export class ReportsController {
     if (!imageUrl || typeof imageUrl !== 'string') {
       throw new BadRequestException('imageUrl is required');
     }
-    let parsed: URL;
-    try {
-      parsed = new URL(imageUrl);
-    } catch {
-      throw new BadRequestException('Invalid imageUrl format');
-    }
-    if (!['https:', 'http:'].includes(parsed.protocol)) {
-      throw new BadRequestException('Only HTTP/HTTPS URLs are allowed');
-    }
-    if (/^(localhost|127\.|10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.|0\.)/.test(parsed.hostname)) {
-      throw new BadRequestException('Internal/private URLs are not allowed');
-    }
-    if (imageUrl.length > 2048) {
-      throw new BadRequestException('URL too long');
-    }
-
+    // URL/protocol/SSRF/size validation (incl. base64 data: URLs from the
+    // client's pre-upload preview) is handled centrally in the service.
     return this.reportsService.validatePhoto(imageUrl, reportType, description);
   }
 

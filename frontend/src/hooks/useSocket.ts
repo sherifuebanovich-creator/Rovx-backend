@@ -16,12 +16,14 @@ export function useSocket() {
   const connect = useCallback(() => {
     const token = Cookies.get('access_token');
     if (!token) return null;
-    if (socketInstance?.connected) return socketInstance;
-
+    // Reuse the existing socket whether it's already connected or still
+    // mid-handshake — tearing down an in-flight connection here just
+    // because a second consumer mounted around the same time restarts the
+    // handshake and drops any events that arrived in that window. A token
+    // change after connection is handled separately in the 'connect' handler below.
     if (socketInstance) {
-      socketInstance.removeAllListeners();
-      socketInstance.disconnect();
-      socketInstance = null;
+      socketRef.current = socketInstance;
+      return socketInstance;
     }
 
     socketInstance = io(WS_URL, {

@@ -99,7 +99,12 @@ api.interceptors.response.use(
         const newRefresh = payload?.refreshToken || inner?.refreshToken;
         if (!accessToken) throw new Error('Invalid refresh response');
 
-        Cookies.set('access_token', accessToken, { expires: 1 / 96, path: '/' }); // 15min
+        Cookies.set('access_token', accessToken, {
+          expires: 1 / 96, // 15min
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+        });
         if (newRefresh) {
           try {
             const stored = JSON.parse(localStorage.getItem('rovx-auth') || '{}');

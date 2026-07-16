@@ -63,6 +63,15 @@ export class GatewayService {
     this.server.to(room).emit(event, data);
   }
 
+  async disconnectUser(userId: string) {
+    if (!this.server) return;
+    const room = `user:${userId}`;
+    const sockets = await this.server.in(room).fetchSockets();
+    for (const socket of sockets) {
+      socket.disconnect(true);
+    }
+  }
+
   private getGridCell(lat: number, lng: number): string {
     // ~5km grid cells
     const gridLat = Math.floor(lat / 0.045) * 0.045;

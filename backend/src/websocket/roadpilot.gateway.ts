@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { GatewayService } from './gateway.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { AuthService } from '../auth/auth.service';
 
 @WebSocketGateway({
   cors: {
@@ -47,6 +48,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private gatewayService: GatewayService,
     private prisma: PrismaService,
     private redis: RedisService,
+    private authService: AuthService,
   ) {}
 
   afterInit(server: Server) {
@@ -76,6 +78,13 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const payload = this.jwtService.verify(token, {
         secret: this.configService.get('JWT_SECRET'),
       });
+
+      const user = await this.authService.validateJwtPayload(payload);
+      if (!user) {
+        this.logger.warn(`Rejected connection for ${client.id}: token blacklisted or user banned/inactive`);
+        client.disconnect(true);
+        return;
+      }
 
       const userId = payload.sub;
       this.connectedUsers.set(client.id, userId);

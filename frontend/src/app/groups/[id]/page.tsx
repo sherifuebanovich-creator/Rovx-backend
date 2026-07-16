@@ -132,6 +132,18 @@ export default function GroupChatPage() {
     };
     ws?.on('group:message', onMessage);
 
+    // Re-fetch messages on socket reconnect, but only while the user is a
+    // member — resolved once the group/member fetch below completes.
+    const isMemberForConnectRef = { current: false };
+    const onConnect = () => {
+      if (!isMemberForConnectRef.current) return;
+      socialApi.getGroupMessages(groupId).then(res => {
+        const m = res.data?.data || res.data;
+        setMessages(m?.messages || m || []);
+      }).catch(() => {});
+    };
+    ws?.on('connect', onConnect);
+
     Promise.all([
       socialApi.getGroup(groupId),
       socialApi.getGroupMessages(groupId),
@@ -158,15 +170,7 @@ export default function GroupChatPage() {
       }
 
       // If member, fetch messages on socket connect too
-      if (gData?.isMember) {
-        const onConnect = () => {
-          socialApi.getGroupMessages(groupId).then(res => {
-            const m = res.data?.data || res.data;
-            setMessages(m?.messages || m || []);
-          }).catch(() => {});
-        };
-        ws?.on('connect', onConnect);
-      }
+      isMemberForConnectRef.current = !!gData?.isMember;
     }).catch(() => {
       toast.error(t('groupDetails.notFound'));
       router.push('/groups');
@@ -263,6 +267,7 @@ export default function GroupChatPage() {
 
     return () => {
       ws?.off('group:message', onMessage);
+      ws?.off('connect', onConnect);
       ws?.off('group:updated', onUpdated);
       ws?.off('group:message_deleted', onMessageDeleted);
       ws?.off('group:member_banned', onMemberBanned);

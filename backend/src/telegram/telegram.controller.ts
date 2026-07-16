@@ -457,9 +457,14 @@ export class TelegramController implements OnModuleInit {
           }
           const bcrypt = require('bcrypt');
           const hash = await bcrypt.hash(parts[1], 10);
-          await this.prisma.user.update({ where: { id: parts[0] }, data: { passwordHash: hash } });
+          // Revoke the user's existing sessions so a compromised account can't
+          // keep using old tokens after the password is reset.
+          await this.prisma.user.update({
+            where: { id: parts[0] },
+            data: { passwordHash: hash, refreshToken: null },
+          });
           await this.telegram.sendMessageToChat(chatId,
-            `✅ Пароль изменён\n\n👤 <code>${parts[0]}</code>\n🔑 Новый пароль: <code>${parts[1]}</code>\n🔒 Hash: <code>${hash}</code>`);
+            `✅ Пароль изменён для <code>${parts[0]}</code>\nСтарые сессии отозваны.`);
           return { ok: true };
         }
 

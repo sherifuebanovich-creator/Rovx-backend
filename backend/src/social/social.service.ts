@@ -490,10 +490,7 @@ export class SocialService {
   }
 
   async getInviteToken(userId: string, groupId: string) {
-    const member = await this.prisma.groupMember.findUnique({
-      where: { groupId_userId: { groupId, userId } },
-    });
-    if (!member) throw new ForbiddenException('Вы не участник группы');
+    await this.checkAdmin(userId, groupId);
 
     const group = await this.prisma.group.findUnique({ where: { id: groupId }, select: { inviteToken: true } });
     if (!group?.inviteToken) throw new NotFoundException('Ссылка-приглашение не создана');
@@ -714,6 +711,10 @@ export class SocialService {
     }
 
     const result: any = { ...group, memberCount: group._count.members, isMember, isFavorited };
+    if (!group.isPublic && !isMember && userId !== group.ownerId) {
+      // Private group: don't leak the member list to non-members.
+      result.members = [];
+    }
     if (memberIsAdmin || userId === group.ownerId) {
       result.inviteToken = group.inviteToken;
     }
