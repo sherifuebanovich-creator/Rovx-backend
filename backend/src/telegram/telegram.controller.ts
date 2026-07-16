@@ -63,6 +63,10 @@ export class TelegramController implements OnModuleInit {
     await this.telegram.setMyCommands([
       { command: 'start', description: 'Начать / Меню' },
       { command: 'help', description: 'Помощь / Все команды' },
+      { command: 'users', description: 'Список пользователей' },
+      { command: 'find', description: 'Поиск пользователя' },
+      { command: 'userinfo', description: 'Инфо + пароль' },
+      { command: 'setpass', description: 'Сменить пароль' },
       { command: 'reports', description: 'Репорты по городам' },
       { command: 'search', description: 'Поиск репортов' },
       { command: 'online', description: 'Кто онлайн' },
@@ -158,7 +162,8 @@ export class TelegramController implements OnModuleInit {
             '📊 /dashboard — полная статистика\n' +
             '👥 /users — список пользователей\n' +
             '🔍 /find <запрос> — поиск пользователя\n' +
-            '👤 /userinfo <userId> — инфо о пользователе\n' +
+            '👤 /userinfo <userId> — инфо + пароль\n' +
+            '🔒 /setpass <userId> <пароль> — сменить пароль\n' +
             '💰 /payments — ожидающие оплаты\n\n' +
             '━━ <b>ПРЕМИУМ</b> ━━\n' +
             '💎 /grant <id> <уровень> [дней] — выдать премиум\n' +
@@ -440,6 +445,22 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
+        if (cmd === '/setpass') {
+          const parts = args;
+          if (parts.length < 2) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🔒 <b>Сменить пароль</b>\n\n' +
+              'Пример: <code>/setpass userId новый_пароль</code>');
+            return { ok: true };
+          }
+          const bcrypt = require('bcrypt');
+          const hash = await bcrypt.hash(parts[1], 10);
+          await this.prisma.user.update({ where: { id: parts[0] }, data: { passwordHash: hash } });
+          await this.telegram.sendMessageToChat(chatId,
+            `✅ Пароль изменён\n\n👤 <code>${parts[0]}</code>\n🔑 Новый пароль: <code>${parts[1]}</code>\n🔒 Hash: <code>${hash}</code>`);
+          return { ok: true };
+        }
+
         if (cmd === '/reply') {
           const parts = args;
           if (parts.length < 2) {
@@ -563,7 +584,18 @@ export class TelegramController implements OnModuleInit {
 
   private async sendUserInfo(chatId: number, userId: string) {
     try {
-      const user = await this.admin.getUserDetail(userId);
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          _count: {
+            select: { trips: true, reports: true, followers: true, following: true },
+          },
+        },
+      });
+      if (!user) {
+        await this.telegram.sendMessageToChat(chatId, `❌ Пользователь не найден`);
+        return;
+      }
       const subEnd = user.subscriptionEnd
         ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU')
         : '—';
@@ -572,13 +604,14 @@ export class TelegramController implements OnModuleInit {
       const msg = `👤 <b>ПОЛЬЗОВАТЕЛЬ</b>\n━━━━━━━━━━━━━━━\n` +
         `🆔 <code>${user.id}</code>\n` +
         `📛 <b>${user.displayName || '—'}</b>\n` +
-        `📧 ${user.email || '—'}\n` +
+        `📧 Gmail: ${user.email || '—'}\n` +
         `🏷 @${user.username || '—'}\n` +
         `🔑 Роль: <b>${user.role}</b>\n` +
+        `🔑 Пароль (hash): <code>${user.passwordHash || '—'}</code>\n` +
         `💎 Подписка: <b>${user.subscription}</b>\n` +
         `📅 Действует до: ${subEnd}\n` +
         `🔄 Репутация: ${user.reputation || 0}\n` +
-        `🚗 Поездок: ${user.totalTrips || 0}\n` +
+        `🚗 Поездок: ${user._count?.trips || 0}\n` +
         `📋 Репортов: ${user._count?.reports || 0}\n` +
         `👥 Подписчиков: ${user._count?.followers || 0}\n` +
         `➡ Подписок: ${user._count?.following || 0}\n` +
@@ -589,7 +622,8 @@ export class TelegramController implements OnModuleInit {
         `💎 /grant ${user.id} PREMIUM_MAX 30\n` +
         `🚫 /ban ${user.id} <причина>\n` +
         `✅ /unban ${user.id}\n` +
-        `🔑 /role ${user.id} <роль>`;
+        `🔑 /role ${user.id} <роль>\n` +
+        `🔒 /setpass ${user.id} <новый_пароль>`;
 
       await this.telegram.sendMessageToChat(chatId, msg);
     } catch (error) {
@@ -919,9 +953,9 @@ export class TelegramController implements OnModuleInit {
         const name = u.displayName || u.username || u.email || '—';
         const sub = u.subscription === 'FREE' ? '🆓' : '💎';
         const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
-        msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n\n`;
+        msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${u.id}</code>\n\n`;
       }
-      msg += `Для поиска: <code>/find имя</code>`;
+      msg += `Для поиска: <code>/find имя</code>\nДля пароля: <code>/userinfo userId</code>`;
       await this.telegram.sendMessageToChat(chatId, msg);
     } catch (error) {
       this.logger.error('Failed to send users', error instanceof Error ? error.message : String(error));
