@@ -4,6 +4,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiExcludeEndpoint } from '@nestj
 import { Throttle } from '@nestjs/throttler';
 import { PremiumService } from './premium.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/current-user.decorator';
+import { USER_ROLES } from '../common/constants/roles';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -161,7 +164,8 @@ export class PremiumController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
   @Get('pending-payments')
   @ApiOperation({ summary: 'Get pending payments (admin)' })
   async getPendingPayments() {
@@ -169,7 +173,8 @@ export class PremiumController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
   @Post('approve-payment/:userId')
   @ApiOperation({ summary: 'Approve pending payment (admin)' })
   async approvePayment(@Param('userId') userId: string) {
@@ -177,7 +182,8 @@ export class PremiumController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(USER_ROLES.ADMIN)
   @Post('reject-payment/:userId')
   @ApiOperation({ summary: 'Reject pending payment (admin)' })
   async rejectPayment(@Param('userId') userId: string) {

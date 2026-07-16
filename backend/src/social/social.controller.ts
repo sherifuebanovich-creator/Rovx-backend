@@ -248,6 +248,12 @@ export class SocialController {
     return this.socialService.searchGroups(query, city, userId);
   }
 
+  @Get('groups/favorites')
+  @ApiOperation({ summary: 'Get my favorite groups' })
+  async getMyFavorites(@CurrentUser('id') userId: string) {
+    return this.socialService.getMyFavorites(userId);
+  }
+
   @Get('groups/:groupId')
   @ApiOperation({ summary: 'Get group details' })
   async getGroup(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
@@ -364,12 +370,6 @@ export class SocialController {
   @ApiOperation({ summary: 'Toggle group favorite' })
   async toggleFavorite(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
     return this.socialService.toggleFavorite(userId, groupId);
-  }
-
-  @Get('groups/favorites')
-  @ApiOperation({ summary: 'Get my favorite groups' })
-  async getMyFavorites(@CurrentUser('id') userId: string) {
-    return this.socialService.getMyFavorites(userId);
   }
 
   // ── Join Requests ──

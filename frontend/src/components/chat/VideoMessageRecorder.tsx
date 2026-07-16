@@ -41,16 +41,6 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isRecording) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); stopRecording(true); }
-      if (e.key === 'Escape') { e.preventDefault(); stopRecording(false); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isRecording, stopRecording]);
-
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -137,6 +127,16 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       cleanup();
     }
   }, [groupId, onSent, cleanup]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') { e.preventDefault(); stopRecording(true); }
+      if (e.key === 'Escape') { e.preventDefault(); stopRecording(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isRecording, stopRecording]);
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);

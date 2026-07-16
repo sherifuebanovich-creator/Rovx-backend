@@ -339,11 +339,8 @@ export class AuthService {
 
   async sendVerification(email: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    if (user.isVerified) {
-      throw new BadRequestException('Email already verified');
+    if (!user || user.isVerified) {
+      return { message: 'Verification code sent' };
     }
 
     const code = await this.verificationService.generateCode(email);

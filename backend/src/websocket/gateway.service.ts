@@ -46,6 +46,18 @@ export class GatewayService {
     this.server.to(`group:${groupId}`).emit(event, data);
   }
 
+  async forceLeaveGroup(userId: string, groupId: string) {
+    if (!this.server) return;
+    const room = `group:${groupId}`;
+    const sockets = await this.server.in(room).fetchSockets();
+    for (const socket of sockets) {
+      if ((socket as any).userId === userId) {
+        socket.leave(room);
+      }
+    }
+    this.sendToUser(userId, 'group:force_leave', { groupId });
+  }
+
   async emitToRoom(room: string, event: string, data: any) {
     if (!this.server) return;
     this.server.to(room).emit(event, data);

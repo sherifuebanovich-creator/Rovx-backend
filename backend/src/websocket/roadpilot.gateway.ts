@@ -79,6 +79,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       const userId = payload.sub;
       this.connectedUsers.set(client.id, userId);
+      (client as any).userId = userId;
 
       let conns = this.userConnections.get(userId);
       const isFirstConnection = !conns || conns.size === 0;
@@ -341,6 +342,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.city || !data.content?.trim()) return;
+    if (data.content.trim().length > 2000) return;
 
     try {
       const user = await this.prisma.user.findUnique({
@@ -376,6 +378,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     });
 
     if (member) {
+      if (member.isBanned) return { joined: false, error: 'Banned' };
       client.join(`group:${data.groupId}`);
       return { joined: true };
     }
@@ -427,6 +430,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
     if (!data.content?.trim() && !data.images?.length && !data.sticker && !data.audioUrl && !data.videoUrl) return;
+    if (data.content && data.content.trim().length > 2000) return;
 
     try {
       const member = await this.prisma.groupMember.findFirst({
@@ -462,6 +466,11 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
+
+    const member = await this.prisma.groupMember.findFirst({
+      where: { groupId: data.groupId, userId },
+    });
+    if (!member || member.isBanned) return;
 
     client.to(`group:${data.groupId}`).emit('group:typing', {
       userId,

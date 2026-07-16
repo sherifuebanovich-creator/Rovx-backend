@@ -358,10 +358,13 @@ export class SocialService {
   async leaveGroup(userId: string, groupId: string) {
     const { count } = await this.prisma.groupMember.deleteMany({ where: { groupId, userId } });
     if (count > 0) {
-      await this.prisma.group.update({
-        where: { id: groupId },
-        data: { memberCount: { decrement: 1 } },
-      });
+      await this.prisma.$transaction([
+        this.prisma.group.update({
+          where: { id: groupId },
+          data: { memberCount: { decrement: 1 } },
+        }),
+        this.prisma.groupRequest.deleteMany({ where: { groupId, userId } }),
+      ]);
     }
     return { left: true };
   }
@@ -548,6 +551,7 @@ export class SocialService {
       data: { isBanned: true },
     });
 
+    await this.gateway.forceLeaveGroup(targetUserId, groupId);
     await this.gateway.broadcastToGroup(groupId, 'group:member_banned', { userId: targetUserId, bannedBy: userId });
     return { banned: true };
   }
@@ -573,7 +577,11 @@ export class SocialService {
     const { count } = await this.prisma.groupMember.deleteMany({ where: { groupId, userId: targetUserId } });
     if (count === 0) throw new NotFoundException('Пользователь не в группе');
 
-    await this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { decrement: 1 } } });
+    await this.prisma.$transaction([
+      this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { decrement: 1 } } }),
+      this.prisma.groupRequest.deleteMany({ where: { groupId, userId: targetUserId } }),
+    ]);
+    await this.gateway.forceLeaveGroup(targetUserId, groupId);
     await this.gateway.broadcastToGroup(groupId, 'group:member_kicked', { userId: targetUserId, kickedBy: userId });
     return { kicked: true };
   }
