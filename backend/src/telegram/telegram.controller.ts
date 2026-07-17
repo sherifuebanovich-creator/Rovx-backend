@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Headers, Logger, OnModuleInit } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
@@ -115,6 +116,7 @@ export class TelegramController implements OnModuleInit {
   }
 
   @Public()
+  @Throttle({ short: { limit: 20, ttl: 60000 } })
   @Post('webhook')
   async webhook(@Body() body: any, @Headers('x-telegram-bot-api-secret-token') secretToken?: string) {
     const expectedSecret = this.config.get('TELEGRAM_WEBHOOK_SECRET');

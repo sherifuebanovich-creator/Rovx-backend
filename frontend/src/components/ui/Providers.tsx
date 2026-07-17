@@ -6,6 +6,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { useAuthStore } from '@/store/auth.store';
 import { I18nInitializer } from '@/i18n/I18nProvider';
+import { OfflineScreen } from '@/components/ui/OfflineScreen';
 import dynamic from 'next/dynamic';
 
 const SessionSyncLazy = dynamic(() => import('@/components/auth/SessionSync').then(m => ({ default: m.SessionSync })), { ssr: false });
@@ -90,6 +91,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <SessionSyncLazy />
         <I18nInitializer />
         <SocketInitializer />
+        <OfflineScreen />
         {children}
         <Toaster
           position="top-center"
