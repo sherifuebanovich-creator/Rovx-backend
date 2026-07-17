@@ -36,7 +36,11 @@ export const useAuthStore = create<AuthState>()(
 
       setTokens: (accessToken, refreshToken) => {
         if (!accessToken) return;
-        set({ accessToken, refreshToken: refreshToken || '', isAuthenticated: true });
+        set((state) => ({
+          accessToken,
+          refreshToken: refreshToken || state.refreshToken || '',
+          isAuthenticated: true,
+        }));
         Cookies.set('access_token', accessToken, {
           expires: 30,
           path: '/',

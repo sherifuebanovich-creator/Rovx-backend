@@ -62,7 +62,7 @@ export function useGeolocation() {
     setSmoothedSpeed(smoothSpeedRef.current);
 
     let resolvedHeading = heading ?? 0;
-    if ((heading == null || isNaN(heading) || heading === 0) && deviceHeadingRef.current != null) {
+    if ((heading == null || isNaN(heading)) && deviceHeadingRef.current != null) {
       resolvedHeading = deviceHeadingRef.current;
     }
 

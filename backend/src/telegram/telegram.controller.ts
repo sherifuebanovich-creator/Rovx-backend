@@ -9,6 +9,11 @@ import { RedisService } from '../redis/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 
+/** Escapes text interpolated into a Telegram `parse_mode: 'HTML'` message body. */
+function escapeTelegramHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
   'Узбекистан': ['Ташкент', 'Самарканд', 'Бухара', 'Наманган', 'Андижан', 'Фергана', 'Нукус', 'Карши', 'Джизак', 'Ургенч'],
@@ -188,7 +193,19 @@ export class TelegramController implements OnModuleInit {
             await this.telegram.sendMessageToChat(chatId, '❌ Bot not configured');
             return { ok: true };
           }
+
+          const attemptsKey = `telegram:auth_attempts:${chatId}`;
+          const attempts = await this.redis.incr(attemptsKey);
+          if (attempts === 1) {
+            await this.redis.expire(attemptsKey, 15 * 60);
+          }
+          if (attempts > 5) {
+            await this.telegram.sendMessageToChat(chatId, '⏳ Слишком много попыток. Попробуйте позже.');
+            return { ok: true };
+          }
+
           if (text === botPassword) {
+            await this.redis.del(attemptsKey);
             await this.authorizeChat(chatId);
             await this.telegram.sendMessageToChat(chatId, '✅ <b>Добро пожаловать!</b>');
             await this.sendMenu(chatId);
@@ -232,8 +249,8 @@ export class TelegramController implements OnModuleInit {
             caption += `📊 <b>Статус:</b> ${report.status}\n`;
             caption += `📍 <b>Координаты:</b> ${report.lat.toFixed(5)}, ${report.lng.toFixed(5)}\n`;
             caption += `🗺 <a href="${mapLink}">Открыть на карте</a>\n`;
-            if (report.address) caption += `📮 <b>Адрес:</b> ${report.address}\n`;
-            if (report.description) caption += `📝 <b>Описание:</b> ${report.description}\n`;
+            if (report.address) caption += `📮 <b>Адрес:</b> ${escapeTelegramHtml(report.address)}\n`;
+            if (report.description) caption += `📝 <b>Описание:</b> ${escapeTelegramHtml(report.description)}\n`;
             caption += `👍 <b>Подтверждений:</b> ${report.confirmedBy || 0} | 👎 <b>Отклонений:</b> ${report.rejectedBy || 0}\n`;
             caption += `━━━━━━━━━━━━━━━\n`;
             caption += `🆔 <code>${report.id}</code>`;

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 
@@ -26,7 +26,7 @@ export default function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
   const reports = useMapStore(s => s.reports);
   const prevReportsRef = useRef<string>('');
 
-  useEffect(() => {
+  const renderTraffic = useCallback((force = false) => {
     if (!map || !map.isStyleLoaded()) return;
 
     const trafficReports = reports.filter(r =>
@@ -34,7 +34,10 @@ export default function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
     );
 
     const dataKey = JSON.stringify(trafficReports.map(r => [r.id, r.lat, r.lng, r.severity]));
-    if (dataKey === prevReportsRef.current) return;
+    // A style change (e.g. switching to satellite) wipes all custom
+    // sources/layers even though `reports` hasn't changed, so `force` lets
+    // the style.load handler below re-add them regardless of the data memo.
+    if (!force && dataKey === prevReportsRef.current) return;
     prevReportsRef.current = dataKey;
 
     const geojson: GeoJSON.FeatureCollection = {
@@ -153,6 +156,17 @@ export default function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
     }, 'map-features-cameras');
 
   }, [map, reports]);
+
+  useEffect(() => {
+    renderTraffic();
+  }, [renderTraffic]);
+
+  useEffect(() => {
+    if (!map) return;
+    const onStyleLoad = () => renderTraffic(true);
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
+  }, [map, renderTraffic]);
 
   return null;
 }

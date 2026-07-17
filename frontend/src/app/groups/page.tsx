@@ -61,7 +61,10 @@ export default function GroupsPage() {
     try {
       const res = await socialApi.joinGroupByName(joinByName.trim());
       const data = res.data?.data || res.data;
-      if (data.joined) {
+      if (data.requested) {
+        toast.success('Заявка отправлена! Ожидайте одобрения владельца.');
+        setJoinByName('');
+      } else if (data.joined) {
         toast.success(t('groups.joinedSuccess'));
         setJoinByName('');
         router.push(`/groups/${data.group?.id || data.id}`);

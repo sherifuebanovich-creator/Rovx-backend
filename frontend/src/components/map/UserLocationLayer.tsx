@@ -74,6 +74,10 @@ export default function UserLocationLayer({ map }: Props) {
     if (!map) return;
 
     const onUserDragStart = () => {
+      // During active turn-by-turn navigation the camera stays locked onto
+      // the route; ambient drags/zooms shouldn't drop follow mode.
+      if (isNavigatingRef.current) return;
+
       userDragRef.current = true;
       clearTimeout(followTimeoutRef.current);
       if (followActiveRef.current) {

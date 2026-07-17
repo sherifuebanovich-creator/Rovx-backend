@@ -18,6 +18,15 @@ export class SocialService {
     private premiumService: PremiumService,
   ) {}
 
+  /** Throws if `userId` is not an active (non-banned) member of `groupId`. */
+  async assertMember(groupId: string, userId: string): Promise<void> {
+    const group = await this.prisma.group.findUnique({ where: { id: groupId }, select: { ownerId: true } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.ownerId === userId) return;
+    const member = await this.prisma.groupMember.findFirst({ where: { groupId, userId } });
+    if (!member || member.isBanned) throw new ForbiddenException('Not a member of this group');
+  }
+
   // ── Follow ──────────────────────────────────────────────
 
   async follow(followerId: string, followingId: string) {
@@ -563,6 +572,11 @@ export class SocialService {
   async unbanMember(userId: string, groupId: string, targetUserId: string) {
     await this.checkAdmin(userId, groupId);
 
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+    });
+    if (!member) throw new NotFoundException('Пользователь не в группе');
+
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId: targetUserId } },
       data: { isBanned: false },
@@ -609,6 +623,11 @@ export class SocialService {
 
   async demoteMember(userId: string, groupId: string, targetUserId: string) {
     await this.checkOwner(userId, groupId);
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+    });
+    if (!member) throw new NotFoundException('Пользователь не в группе');
 
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId: targetUserId } },

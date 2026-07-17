@@ -902,6 +902,9 @@ export function useVoiceAssistant() {
   const speak = useCallback(async (text: string, priority = false) => {
     if (typeof window === 'undefined') return;
     if (!useAuthStore.getState().preferences?.voiceEnabled) return;
+    // Low-priority announcements (e.g. reading a search result) shouldn't cut
+    // off a higher-priority one (arrival, reroute, wrong-way) already playing.
+    if (!priority && window.speechSynthesis.speaking) return;
 
     const normalizedText = lang === 'ru' ? normalizeRussianText(text) : text;
 

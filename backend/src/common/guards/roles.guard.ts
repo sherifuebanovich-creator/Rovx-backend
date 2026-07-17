@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { USER_ROLES, UserRole } from '../constants/roles';
+import { ROLE_HIERARCHY, UserRole } from '../constants/roles';
 
 export const ROLES_KEY = 'roles';
 
@@ -19,15 +19,8 @@ export class RolesGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
     if (!user) throw new ForbiddenException('Not authenticated');
 
-    const roleHierarchy: Record<UserRole, number> = {
-      [USER_ROLES.USER]: 1,
-      [USER_ROLES.MODERATOR]: 2,
-      [USER_ROLES.ADMIN]: 3,
-      [USER_ROLES.SUPERADMIN]: 4,
-    };
-
-    const userLevel = roleHierarchy[user.role as UserRole] || 0;
-    const requiredLevel = Math.min(...requiredRoles.map((r) => roleHierarchy[r]));
+    const userLevel = ROLE_HIERARCHY[user.role as UserRole] || 0;
+    const requiredLevel = Math.min(...requiredRoles.map((r) => ROLE_HIERARCHY[r]));
 
     if (userLevel < requiredLevel) {
       throw new ForbiddenException('Insufficient permissions');

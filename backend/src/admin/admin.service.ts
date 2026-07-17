@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { GatewayService } from '../websocket/gateway.service';
+import { ROLE_HIERARCHY, USER_ROLES, UserRole } from '../common/constants/roles';
 import * as bcrypt from 'bcrypt';
 import * as os from 'os';
 
@@ -62,10 +63,19 @@ export class AdminService {
     return safe;
   }
 
-  async banUser(id: string, reason: string, adminId?: string) {
+  private assertCanActOn(actorRole: UserRole | undefined, targetRole: UserRole) {
+    const actorLevel = ROLE_HIERARCHY[actorRole as UserRole] || 0;
+    const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
+    if (targetLevel >= actorLevel) {
+      throw new ForbiddenException('Cannot act on a user with an equal or higher role');
+    }
+  }
+
+  async banUser(id: string, reason: string, adminId?: string, actorRole?: UserRole) {
     const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
     if (!user) throw new NotFoundException('User not found');
     if (adminId && id === adminId) throw new BadRequestException('Cannot ban yourself');
+    this.assertCanActOn(actorRole, user.role as UserRole);
     const updated = await this.prisma.user.update({
       where: { id },
       data: { isBanned: true, bannedReason: reason, isActive: false },
@@ -74,20 +84,27 @@ export class AdminService {
     return updated;
   }
 
-  async unbanUser(id: string, adminId?: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+  async unbanUser(id: string, adminId?: string, actorRole?: UserRole) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
     if (!user) throw new NotFoundException('User not found');
     if (adminId && id === adminId) throw new BadRequestException('Cannot unban yourself');
+    this.assertCanActOn(actorRole, user.role as UserRole);
     return this.prisma.user.update({
       where: { id },
       data: { isBanned: false, bannedReason: null, isActive: true },
     });
   }
 
-  async updateUserRole(id: string, role: string, adminId?: string) {
+  async updateUserRole(id: string, role: string, adminId?: string, actorRole?: UserRole) {
     const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
     if (!user) throw new NotFoundException('User not found');
     if (adminId && id === adminId) throw new BadRequestException('Cannot change your own role');
+    this.assertCanActOn(actorRole, user.role as UserRole);
+    const newLevel = ROLE_HIERARCHY[role as UserRole] || 0;
+    const actorLevel = ROLE_HIERARCHY[actorRole as UserRole] || 0;
+    if (newLevel >= actorLevel && actorRole !== USER_ROLES.SUPERADMIN) {
+      throw new ForbiddenException('Cannot grant a role equal to or higher than your own');
+    }
     return this.prisma.user.update({ where: { id }, data: { role: role as any } });
   }
 

@@ -92,21 +92,17 @@ export class AuthService {
       },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (user.isBanned) {
-      throw new UnauthorizedException('Account has been banned');
-    }
-
-    if (!user.passwordHash) {
+    if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.isBanned) {
+      throw new UnauthorizedException('Account has been banned');
     }
 
     if (!user.isVerified) {
@@ -134,7 +130,12 @@ export class AuthService {
       });
 
       const lockKey = `refresh:lock:${payload.sub}`;
-      const locked = await this.redis.setnx(lockKey, '1', 5);
+      let locked = true;
+      try {
+        locked = await this.redis.setnx(lockKey, '1', 5);
+      } catch (e) {
+        this.logger.warn(`Redis unavailable for refresh lock, proceeding without it: ${(e as Error).message}`);
+      }
       if (!locked) {
         throw new UnauthorizedException('Token refresh in progress, try again');
       }

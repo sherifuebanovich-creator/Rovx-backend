@@ -19,6 +19,7 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { ReportsService } from './reports.service';
+import { CreateReportDto } from './dto/create-report.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -61,7 +62,7 @@ export class ReportsController {
   @ApiOperation({ summary: 'Create hazard/event report' })
   async create(
     @CurrentUser('id') userId: string,
-    @Body() dto: any,
+    @Body() dto: CreateReportDto,
     @UploadedFiles() files?: { photos?: Express.Multer.File[] },
   ) {
     if (files?.photos?.length) {

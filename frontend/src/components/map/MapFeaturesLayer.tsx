@@ -143,48 +143,6 @@ export default function MapFeaturesLayer({ map }: Props) {
         },
       });
 
-      // Popup on click
-      const popup = new maplibregl.Popup({ offset: [0, -12], maxWidth: '280px' });
-
-      const onClick = (e: maplibregl.MapLayerMouseEvent) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const props = feature.properties as any;
-        const coords = (feature.geometry as any).coordinates;
-        const typeLabel = props.type === 'speed_camera' ? '📷 Радар' : '🚦 Светофор';
-        const tags = props.tags || {};
-        const tagEntries = Object.entries(tags)
-          .filter(([k]) => !['highway', 'created_by'].includes(k))
-          .slice(0, 8);
-        const details = tagEntries
-          .map(([k, v]) => `<div><span style="color:#9ca3af;font-size:11px">${k}:</span> <span style="font-size:12px;color:white">${v}</span></div>`)
-          .join('');
-        const updated = props.updatedAt
-          ? new Date(props.updatedAt).toLocaleDateString('ru-RU')
-          : '';
-
-        popup
-          .setLngLat(coords)
-          .setHTML(`
-            <div style="min-width:140px">
-              <div style="font-weight:700;font-size:14px;margin-bottom:4px">${typeLabel}</div>
-              ${details || '<div style="font-size:11px;color:#6b7280">Нет данных</div>'}
-              ${updated ? `<div style="font-size:10px;color:#6b7280;margin-top:6px;border-top:1px solid #374151;padding-top:4px">OSM · ${updated}</div>` : ''}
-            </div>
-          `)
-          .addTo(map);
-      };
-
-      map.on('click', cameraLayerId, onClick);
-      map.on('click', signalLayerId, onClick);
-
-      const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
-      const onLeave = () => { map.getCanvas().style.cursor = ''; };
-      map.on('mouseenter', cameraLayerId, onEnter);
-      map.on('mouseleave', cameraLayerId, onLeave);
-      map.on('mouseenter', signalLayerId, onEnter);
-      map.on('mouseleave', signalLayerId, onLeave);
-
     } catch (err) {
       console.warn('[MapFeaturesLayer] Failed to load features:', err);
     }
@@ -198,6 +156,50 @@ export default function MapFeaturesLayer({ map }: Props) {
       debounceRef.current = setTimeout(loadFeatures, DEBOUNCE_MS);
     };
 
+    // Bound once per map instance — layer ids are stable across reloads, so
+    // re-registering these on every loadFeatures() call (which reruns on
+    // every pan/zoom/style change) would stack duplicate click/hover
+    // listeners instead of replacing them.
+    const popup = new maplibregl.Popup({ offset: [0, -12], maxWidth: '280px' });
+
+    const onClick = (e: maplibregl.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const props = feature.properties as any;
+      const coords = (feature.geometry as any).coordinates;
+      const typeLabel = props.type === 'speed_camera' ? '📷 Радар' : '🚦 Светофор';
+      const tags = props.tags || {};
+      const tagEntries = Object.entries(tags)
+        .filter(([k]) => !['highway', 'created_by'].includes(k))
+        .slice(0, 8);
+      const details = tagEntries
+        .map(([k, v]) => `<div><span style="color:#9ca3af;font-size:11px">${k}:</span> <span style="font-size:12px;color:white">${v}</span></div>`)
+        .join('');
+      const updated = props.updatedAt
+        ? new Date(props.updatedAt).toLocaleDateString('ru-RU')
+        : '';
+
+      popup
+        .setLngLat(coords)
+        .setHTML(`
+          <div style="min-width:140px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${typeLabel}</div>
+            ${details || '<div style="font-size:11px;color:#6b7280">Нет данных</div>'}
+            ${updated ? `<div style="font-size:10px;color:#6b7280;margin-top:6px;border-top:1px solid #374151;padding-top:4px">OSM · ${updated}</div>` : ''}
+          </div>
+        `)
+        .addTo(map);
+    };
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+    map.on('click', cameraLayerId, onClick);
+    map.on('click', signalLayerId, onClick);
+    map.on('mouseenter', cameraLayerId, onEnter);
+    map.on('mouseleave', cameraLayerId, onLeave);
+    map.on('mouseenter', signalLayerId, onEnter);
+    map.on('mouseleave', signalLayerId, onLeave);
+
     map.on('moveend', debouncedLoad);
     map.on('zoomend', debouncedLoad);
     map.on('style.load', loadFeatures);
@@ -209,6 +211,13 @@ export default function MapFeaturesLayer({ map }: Props) {
       map.off('moveend', debouncedLoad);
       map.off('zoomend', debouncedLoad);
       map.off('style.load', loadFeatures);
+      map.off('click', cameraLayerId, onClick);
+      map.off('click', signalLayerId, onClick);
+      map.off('mouseenter', cameraLayerId, onEnter);
+      map.off('mouseleave', cameraLayerId, onLeave);
+      map.off('mouseenter', signalLayerId, onEnter);
+      map.off('mouseleave', signalLayerId, onLeave);
+      popup.remove();
       cleanup();
     };
   }, [map, loadFeatures, cleanup]);

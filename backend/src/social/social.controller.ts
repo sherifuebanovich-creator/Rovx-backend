@@ -140,6 +140,7 @@ export class SocialController {
     @Param('groupId') groupId: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
+    await this.socialService.assertMember(groupId, userId);
     if (!files?.length) throw new BadRequestException('No files uploaded');
     const urls = files.map(f => `/uploads/messages/${f.filename}`);
     return { urls };
@@ -175,6 +176,7 @@ export class SocialController {
     @Param('groupId') groupId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    await this.socialService.assertMember(groupId, userId);
     if (!file) throw new BadRequestException('No audio file uploaded');
     const url = `/uploads/audio/${file.filename}`;
     return { url };
@@ -217,6 +219,7 @@ export class SocialController {
     @Param('groupId') groupId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    await this.socialService.assertMember(groupId, userId);
     if (!file) throw new BadRequestException('No video file uploaded');
     const url = `/uploads/video-messages/${file.filename}`;
     return { url };

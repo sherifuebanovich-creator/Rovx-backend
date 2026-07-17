@@ -22,6 +22,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const startTimeRef = useRef(0);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const stopRecordingRef = useRef<(send: boolean) => void>(() => {});
 
   const cleanup = useCallback(() => {
     clearInterval(timerRef.current);
@@ -79,7 +80,7 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
         durationRef.current = elapsed;
         setDuration(elapsed);
         if (elapsed >= 60) {
-          stopRecording(true);
+          stopRecordingRef.current(true);
         }
       }, 200);
     } catch {
@@ -139,10 +140,14 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
   }, [groupId, onSent, cleanup]);
 
   useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
+
+  useEffect(() => {
     if (!isRecording) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); stopRecording(true); }
-      if (e.key === 'Escape') { e.preventDefault(); stopRecording(false); }
+      if (e.key === 'Enter') { e.preventDefault(); stopRecordingRef.current(true); }
+      if (e.key === 'Escape') { e.preventDefault(); stopRecordingRef.current(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

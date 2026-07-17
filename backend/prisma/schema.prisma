@@ -82,6 +82,7 @@ model PremiumSubscription {
   userId        String   @unique
   tier          Int      @default(1)
   levelName     String   @default("PREMIUM_BASIC")
+  months        Int      @default(1)
   startDate     DateTime @default(now())
   endDate       DateTime
   autoRenew     Boolean  @default(true)

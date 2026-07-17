@@ -11,9 +11,16 @@ export default function JoinGroupPage() {
   const router = useRouter();
   const params = useParams();
   const token = params.token as string;
-  const { user } = useAuthStore();
+  const { user, isInitDone } = useAuthStore();
   const [status, setStatus] = useState<'loading' | 'joined' | 'error'>('loading');
   const [groupName, setGroupName] = useState('');
+
+  useEffect(() => {
+    if (!isInitDone) return;
+    if (!user) {
+      router.push('/auth/login');
+    }
+  }, [isInitDone, user, router]);
 
   useEffect(() => {
     if (!user || !token) return;
@@ -31,8 +38,7 @@ export default function JoinGroupPage() {
     });
   }, [user, token, router]);
 
-  if (!user) {
-    router.push('/auth/login');
+  if (!isInitDone || !user) {
     return null;
   }
 

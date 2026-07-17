@@ -496,6 +496,11 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!userId) return;
 
     try {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId },
+      });
+      if (!member || member.isBanned) return;
+
       const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
       if (!msg || msg.groupId !== data.groupId || msg.senderId === userId) return;
       if (msg.readBy.includes(userId)) return;

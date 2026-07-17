@@ -41,12 +41,12 @@ export class AdminController {
 
   @Post('users/:id/ban')
   async banUser(@Param('id') id: string, @Body('reason') reason: string, @CurrentUser() user: any) {
-    return this.adminService.banUser(id, reason, user.id);
+    return this.adminService.banUser(id, reason, user.id, user.role);
   }
 
   @Post('users/:id/unban')
   async unbanUser(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.adminService.unbanUser(id, user.id);
+    return this.adminService.unbanUser(id, user.id, user.role);
   }
 
   @Put('users/:id/role')
@@ -55,7 +55,7 @@ export class AdminController {
     if (!validRoles.includes(role)) {
       throw new BadRequestException(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
     }
-    return this.adminService.updateUserRole(id, role, user.id);
+    return this.adminService.updateUserRole(id, role, user.id, user.role);
   }
 
   // Reports

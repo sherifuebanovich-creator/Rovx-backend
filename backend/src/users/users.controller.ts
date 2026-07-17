@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -64,7 +64,14 @@ export class UsersController {
           cb(null, dir);
         },
         filename: (_req, file, cb) => {
-          const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+          const extByMimeType: Record<string, string> = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/webp': '.webp',
+            'image/gif': '.gif',
+          };
+          const ext = extByMimeType[file.mimetype] || '.jpg';
+          const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
           cb(null, uniqueName);
         },
       }),

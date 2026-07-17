@@ -46,8 +46,6 @@ export default function MapViewGL() {
   const show3D = useMapStore(s => s.show3D);
 
   const navigation = useMapStore(s => s.navigation);
-  const isNavigatingRef = useRef(false);
-  isNavigatingRef.current = navigation.isNavigating;
 
   const routeProgress = navigation.routeProgress;
   const forwardIndex = navigation.forwardIndex;
@@ -156,7 +154,7 @@ export default function MapViewGL() {
   // User location marker is handled by <UserLocationLayer />
 
   // Route polyline with progress visualization
-  useEffect(() => {
+  const drawRoute = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -236,6 +234,19 @@ export default function MapViewGL() {
       } catch {}
     }
   }, [selectedRoute, navigation.isNavigating, routeProgress, forwardIndex, isWrongWay]);
+
+  useEffect(() => {
+    drawRoute();
+  }, [drawRoute]);
+
+  // A style switch (setStyle) wipes all custom sources/layers, including the
+  // route line, without changing any of drawRoute's own dependencies.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.on('style.load', drawRoute);
+    return () => { map.off('style.load', drawRoute); };
+  }, [drawRoute]);
 
   // Render POI markers
   const renderObjectMarkers = useCallback(

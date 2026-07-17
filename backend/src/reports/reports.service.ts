@@ -5,8 +5,11 @@ import { GatewayService } from '../websocket/gateway.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { promises as dns } from 'dns';
+import { isIP } from 'net';
+import { CreateReportDto } from './dto/create-report.dto';
 
-const ReportType = {
+export const ReportType = {
   ACCIDENT: 'ACCIDENT',
   ROAD_CLOSURE: 'ROAD_CLOSURE',
   ROAD_WORKS: 'ROAD_WORKS',
@@ -70,18 +73,6 @@ const REPORT_TYPE_LABELS: Record<string, string> = {
   OTHER: 'другое',
 };
 
-interface CreateReportDto {
-  type: string;
-  lat: number;
-  lng: number;
-  address?: string;
-  description?: string;
-  severity?: number;
-  images?: string[];
-  videos?: string[];
-  city?: string;
-}
-
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
@@ -105,6 +96,58 @@ export class ReportsService {
   /** Resolve a possibly-relative image path (e.g. `/uploads/reports/x.jpg`) to an absolute URL. */
   private resolveImageUrl(imageUrl: string): string {
     return imageUrl.startsWith('/') ? `${this.backendBaseUrl}${imageUrl}` : imageUrl;
+  }
+
+  /**
+   * Resolves the hostname to its actual IP(s) and checks those (not just the
+   * literal string) against private/reserved ranges — a plain hostname regex
+   * misses DNS names that resolve to internal addresses (DNS rebinding) and
+   * non-decimal IPv4/IPv6 encodings entirely.
+   */
+  private async isHostnameBlocked(hostname: string): Promise<boolean> {
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost') return true;
+
+    let addresses: string[];
+    if (isIP(host)) {
+      addresses = [host];
+    } else {
+      try {
+        const results = await dns.lookup(host, { all: true, verbatim: true });
+        addresses = results.map((r) => r.address);
+      } catch {
+        return true; // can't resolve it — fail closed
+      }
+    }
+    return addresses.length === 0 || addresses.some((addr) => this.isPrivateOrReservedIp(addr));
+  }
+
+  private isPrivateOrReservedIp(addr: string): boolean {
+    const family = isIP(addr);
+    if (family === 4) {
+      const [a, b] = addr.split('.').map(Number);
+      if (a === 0 || a === 10 || a === 127) return true;
+      if (a === 169 && b === 254) return true; // link-local / cloud metadata
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+      if (a === 192 && b === 0) return true; // 192.0.0.0/24, 192.0.2.0/24 (TEST-NET-1)
+      if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
+      if (a >= 224) return true; // multicast/reserved/broadcast
+      return false;
+    }
+    if (family === 6) {
+      const normalized = addr.toLowerCase();
+      if (normalized === '::1' || normalized === '::') return true;
+      if (normalized.startsWith('::ffff:')) {
+        const embedded = normalized.slice('::ffff:'.length);
+        if (isIP(embedded) === 4) return this.isPrivateOrReservedIp(embedded);
+      }
+      if (normalized.startsWith('fe80:')) return true; // link-local
+      if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // unique local fc00::/7
+      return false;
+    }
+    return true; // not a recognizable IP — fail closed
   }
 
   private formatReport(report: any) {
@@ -167,7 +210,7 @@ export class ReportsService {
       if (!['https:', 'http:'].includes(parsedUrl.protocol)) {
         return { valid: false, reason: 'Only HTTP/HTTPS URLs are allowed' };
       }
-      if (/^(localhost|127\.|10\.|172\.(1[6-9]|2|3[01])\.|192\.168\.|169\.254\.|0\.)/.test(parsedUrl.hostname)) {
+      if (await this.isHostnameBlocked(parsedUrl.hostname)) {
         this.logger.warn(`SSRF attempt blocked: ${imageUrl}`);
         return { valid: false, reason: 'Internal URLs are not allowed' };
       }

@@ -185,17 +185,19 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Unlike the other helpers here, this does NOT swallow errors: callers use
+   * setnx for distributed locking and must be able to tell "lock held by
+   * someone else" (returns false) apart from "Redis is unreachable" (throws),
+   * since those two cases need different fallback behavior.
+   */
   async setnx(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
-    try {
-      if (ttlSeconds) {
-        const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
-        return result !== null;
-      }
-      const result = await this.client.setnx(key, value);
-      return result === 1;
-    } catch (e) {
-      return false;
+    if (ttlSeconds) {
+      const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+      return result !== null;
     }
+    const result = await this.client.setnx(key, value);
+    return result === 1;
   }
 
   getClient(): Redis {

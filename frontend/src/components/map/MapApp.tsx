@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { useSocket } from '@/hooks/useSocket';
 import { TopBar } from '@/components/navigation/TopBar';
 import { BottomBar } from '@/components/navigation/BottomBar';
 import { Sidebar } from '@/components/navigation/Sidebar';
@@ -46,6 +47,7 @@ export default function MapApp() {
 
   const { user } = useAuthStore();
   useGeolocation();
+  const { joinCity } = useSocket();
 
   // Friend location listener
   useEffect(() => {
@@ -99,9 +101,8 @@ export default function MapApp() {
   // Auto-join city room for notifications
   useEffect(() => {
     if (!user?.city) return;
-    const { joinCity } = require('@/hooks/useSocket').useSocket();
-    // joinCity is stable from useCallback
-  }, [user?.city]);
+    joinCity(user.city);
+  }, [user?.city, joinCity]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-dark-bg" style={{ isolation: 'isolate' }}>

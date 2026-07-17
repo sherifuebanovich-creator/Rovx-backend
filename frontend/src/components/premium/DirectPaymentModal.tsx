@@ -25,10 +25,14 @@ export default function DirectPaymentModal({ tierName, tierLabel, price, onClose
   const [last4, setLast4] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'details' | 'proof' | 'done'>('details');
+  const [detailsError, setDetailsError] = useState(false);
 
   useEffect(() => {
     premiumApi.getPaymentDetails().then(res => {
       setDetails(res.data?.data || res.data);
+    }).catch(() => {
+      setDetailsError(true);
+      toast.error('Не удалось загрузить реквизиты для оплаты. Попробуйте позже.');
     });
   }, []);
 
@@ -119,9 +123,16 @@ export default function DirectPaymentModal({ tierName, tierLabel, price, onClose
               </p>
             </div>
 
+            {detailsError && (
+              <p className="text-red-400 text-xs text-center mb-3">
+                Не удалось загрузить реквизиты для оплаты. Обновите страницу и попробуйте снова.
+              </p>
+            )}
+
             <button
               onClick={() => setStep('proof')}
-              className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-500 transition-all"
+              disabled={!details}
+              className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Я оплатил — Далее
             </button>

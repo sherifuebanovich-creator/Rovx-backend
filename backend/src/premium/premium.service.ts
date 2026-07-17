@@ -156,7 +156,8 @@ export class PremiumService {
           userId,
           tier: tier.tier,
           levelName: tier.name,
-          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          months,
+          endDate: new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000),
           price: amount,
           currency: 'USD',
           status: 'pending',
@@ -166,6 +167,7 @@ export class PremiumService {
         update: {
           tier: tier.tier,
           levelName: tier.name,
+          months,
           price: amount,
           paymentId: token,
           status: 'pending',
@@ -265,9 +267,9 @@ export class PremiumService {
       }
 
       if (status === 'done') {
-        const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
         const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+        const months = existingSub?.months || 1;
+        const endDate = new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000);
 
         // Idempotency: only skip a webhook redelivery for a transaction we've
         // already applied. Checking `status === 'active'` alone would also
@@ -299,6 +301,7 @@ export class PremiumService {
               userId,
               tier: tier.tier,
               levelName: tierName,
+              months,
               endDate,
               price: body.purchase?.checkout?.amount || tier.price,
               currency: 'USD',
@@ -567,8 +570,15 @@ export class PremiumService {
       const tier = PREMIUM_TIERS.find(t => t.name === tierName);
       if (!tier) return;
 
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       const paymentId = `stripe_${session.id}`;
+
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active' && existingSub.paymentId === paymentId) {
+        this.logger.log(`Stripe payment ${paymentId} already processed — skipping`);
+        return;
+      }
+
+      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
       await this.prisma.$transaction([
         this.prisma.premiumSubscription.upsert({

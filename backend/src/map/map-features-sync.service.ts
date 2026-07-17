@@ -288,10 +288,13 @@ out body;
 
     const results: any[] = [];
 
+    const MAX_FEATURES_PER_TYPE = 5000;
+
     if (wantSignals) {
       const signals = await this.prisma.mapFeature.findMany({
         where: { ...bboxWhere, type: 'traffic_signals' },
         select: { id: true, type: true, lat: true, lng: true, countryCode: true, tags: true, updatedAt: true },
+        take: MAX_FEATURES_PER_TYPE,
       });
       results.push(...signals);
     }
@@ -300,6 +303,7 @@ out body;
       const cameras = await this.prisma.speedCamera.findMany({
         where: { ...bboxWhere, isActive: true },
         select: { id: true, lat: true, lng: true, type: true, speedLimit: true, roadName: true, direction: true, source: true },
+        take: MAX_FEATURES_PER_TYPE,
       });
       results.push(...cameras.map(c => ({
         id: c.id,

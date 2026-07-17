@@ -130,6 +130,10 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
+    // Capture the pointer to this wrapper so it keeps receiving move/up/cancel
+    // events even after the child content swaps from the idle mic button to
+    // the recording UI once getUserMedia resolves mid-gesture.
+    e.currentTarget.setPointerCapture(e.pointerId);
     touchStartY.current = e.clientY;
     startRecording();
   }, [startRecording]);
@@ -165,40 +169,38 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
     );
   }
 
-  if (isRecording) {
-    return (
-      <div
-        className="flex items-center gap-3 flex-1"
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerCancel}
-        style={{ touchAction: 'none' }}
-      >
-        <button
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500/20 text-red-400 animate-pulse"
-        >
-          <FaTimes size={14} />
-        </button>
-        <div className="flex-1 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-sm text-red-400 font-mono font-medium tabular-nums">
-            {formatDuration(duration)}
-          </span>
-          <span className="text-xs text-gray-500">← отпустите или потяните вверх для отмены</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <button
-      onPointerDown={handlePointerDown}
-      className="w-10 h-10 flex items-center justify-center rounded-full bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 active:bg-primary-600/40 transition-colors select-none"
-      title="Удерживайте для записи голосового"
+    <div
+      className={isRecording ? 'flex items-center gap-3 flex-1' : 'inline-flex'}
+      onPointerDown={!isRecording ? handlePointerDown : undefined}
+      onPointerUp={isRecording ? handlePointerUp : undefined}
+      onPointerCancel={isRecording ? handlePointerCancel : undefined}
+      onPointerLeave={isRecording ? handlePointerCancel : undefined}
+      style={{ touchAction: 'none' }}
     >
-      <FaMicrophone size={16} />
-    </button>
+      {isRecording ? (
+        <>
+          <button
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500/20 text-red-400 animate-pulse"
+          >
+            <FaTimes size={14} />
+          </button>
+          <div className="flex-1 flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-sm text-red-400 font-mono font-medium tabular-nums">
+              {formatDuration(duration)}
+            </span>
+            <span className="text-xs text-gray-500">← отпустите или потяните вверх для отмены</span>
+          </div>
+        </>
+      ) : (
+        <button
+          className="w-10 h-10 flex items-center justify-center rounded-full bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 active:bg-primary-600/40 transition-colors select-none"
+          title="Удерживайте для записи голосового"
+        >
+          <FaMicrophone size={16} />
+        </button>
+      )}
+    </div>
   );
 }
