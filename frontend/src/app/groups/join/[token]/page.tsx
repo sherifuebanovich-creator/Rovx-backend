@@ -18,7 +18,7 @@ export default function JoinGroupPage() {
   useEffect(() => {
     if (!isInitDone) return;
     if (!user) {
-      router.push('/auth/login');
+      router.push('/auth/register');
     }
   }, [isInitDone, user, router]);
 

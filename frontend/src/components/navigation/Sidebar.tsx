@@ -106,7 +106,7 @@ export function Sidebar() {
           </div>
         ) : (
           <div className="px-4 py-4 border-b border-dark-border">
-            <Link href="/auth/login" onClick={toggleSidebar} className="btn-primary w-full flex items-center justify-center gap-2">
+            <Link href="/auth/register" onClick={toggleSidebar} className="btn-primary w-full flex items-center justify-center gap-2">
               <FaUser size={14} /> {t('sidebar.signIn')}
             </Link>
           </div>

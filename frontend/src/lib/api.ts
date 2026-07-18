@@ -122,10 +122,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         Cookies.remove('access_token', { path: '/' });
         // Don't remove localStorage here — initAuth/logout handles cleanup.
-        // Small delay before redirect to avoid race with concurrent state updates.
-        if (typeof window !== 'undefined') {
-          setTimeout(() => { window.location.href = '/auth/login'; }, 100);
-        }
+        // No forced navigation: let the calling page decide how to handle the unauthenticated state.
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

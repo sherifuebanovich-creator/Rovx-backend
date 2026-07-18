@@ -23,8 +23,8 @@ const authOptions: NextAuthOptions = {
     },
   },
   pages: {
-    signIn: '/auth/login',
-    error: '/auth/login',
+    signIn: '/auth/register',
+    error: '/auth/register',
   },
   callbacks: {
     async signIn({ account }) {

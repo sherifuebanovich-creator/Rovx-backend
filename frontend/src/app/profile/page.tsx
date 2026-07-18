@@ -163,7 +163,7 @@ export default function ProfilePage() {
       <div className="min-h-dvh bg-dark-bg flex flex-col items-center justify-center gap-4 px-6 safe-bottom safe-top">
         <FaUser size={48} className="text-gray-600" />
           <h2 className="text-white font-bold text-xl text-center">{t('profile.notSignedIn')}</h2>
-        <Link href="/auth/login" className="btn-primary px-6 py-3">{t('profile.signIn')}</Link>
+        <Link href="/auth/register" className="btn-primary px-6 py-3">{t('profile.signIn')}</Link>
         <button onClick={() => router.back()} className="text-gray-400 text-sm">{t('profile.goBack')}</button>
       </div>
     );

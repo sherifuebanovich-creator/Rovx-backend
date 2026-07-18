@@ -91,7 +91,7 @@ export default function NotificationsPage() {
       <div className="min-h-dvh bg-dark-bg flex flex-col items-center justify-center gap-4 px-6">
         <FaBell size={48} className="text-gray-600" />
         <p className="text-gray-400">{t('notifications.empty')}</p>
-        <button onClick={() => router.push('/auth/login')} className="btn-primary px-6 py-3">{t('notifications.signIn')}</button>
+        <button onClick={() => router.push('/auth/register')} className="btn-primary px-6 py-3">{t('notifications.signIn')}</button>
       </div>
     );
   }
