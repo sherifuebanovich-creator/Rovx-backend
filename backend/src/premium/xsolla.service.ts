@@ -52,6 +52,10 @@ export class XsollaService {
         checkout: { amount, currency: 'USD' },
         description: { value: `${tierName} - ${months} month(s)` },
       },
+      custom_parameters: {
+        tier_name: tierName,
+        months: String(months),
+      },
     };
 
     try {

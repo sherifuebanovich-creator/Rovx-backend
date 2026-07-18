@@ -13,6 +13,11 @@ interface Props {
 const STALE_MS = 5 * 60 * 1000;
 const PREMIUM_TIERS = ['PREMIUM_STANDARD', 'PREMIUM_MAX'];
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  return text.replace(/[&<>"']/g, (c) => map[c]);
+}
+
 function createMarkerEl(displayName: string): HTMLElement {
   const el = document.createElement('div');
   el.style.cssText = 'position:relative;cursor:pointer;';
@@ -83,7 +88,7 @@ export default function FriendMarkers({ map }: Props) {
       } else {
         const el = createMarkerEl(loc.displayName);
         const popup = new maplibregl.Popup({ closeButton: false, offset: 20, className: 'friend-popup' })
-          .setHTML(`<div style="padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;">${loc.displayName}</div>`);
+          .setHTML(`<div style="padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;">${escapeHtml(loc.displayName)}</div>`);
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([loc.lng, loc.lat])

@@ -155,10 +155,11 @@ export class UsersService {
   }
 
   async getLeaderboard(limit = 20) {
+    const cappedLimit = Math.min(Math.max(1, limit), 100);
     return this.prisma.user.findMany({
       where: { isActive: true, isBanned: false },
       orderBy: { reputation: 'desc' },
-      take: limit,
+      take: cappedLimit,
       select: {
         id: true,
         username: true,
@@ -183,6 +184,13 @@ export class UsersService {
   // --- Fuel Logs ---
 
   async addFuelLog(userId: string, data: any) {
+    if (data.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: data.vehicleId, userId },
+        select: { id: true },
+      });
+      if (!vehicle) throw new NotFoundException('Vehicle not found');
+    }
     return this.prisma.fuelLog.create({
       data: {
         userId,

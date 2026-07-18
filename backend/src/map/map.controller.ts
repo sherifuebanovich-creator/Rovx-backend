@@ -119,7 +119,20 @@ export class MapController {
     @Query('minLng') minLng: number,
     @Query('maxLng') maxLng: number,
   ) {
-    return this.mapService.getTrafficInBounds(+minLat, +maxLat, +minLng, +maxLng);
+    const nMinLat = +minLat, nMaxLat = +maxLat, nMinLng = +minLng, nMaxLng = +maxLng;
+    if ([nMinLat, nMaxLat, nMinLng, nMaxLng].some(v => !isFinite(v))) {
+      throw new BadRequestException('Invalid coordinates');
+    }
+    if (nMinLat < -90 || nMaxLat > 90 || nMinLng < -180 || nMaxLng > 180) {
+      throw new BadRequestException('Coordinates out of range');
+    }
+    if (nMinLat >= nMaxLat || nMinLng >= nMaxLng) {
+      throw new BadRequestException('minLat must be less than maxLat, minLng less than maxLng');
+    }
+    if (nMaxLat - nMinLat > 10 || nMaxLng - nMinLng > 10) {
+      throw new BadRequestException('Bounding box too large (max 10° per axis)');
+    }
+    return this.mapService.getTrafficInBounds(nMinLat, nMaxLat, nMinLng, nMaxLng);
   }
 
   @Get('speed-cameras')

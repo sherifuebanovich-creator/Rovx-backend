@@ -39,10 +39,9 @@ const authOptions: NextAuthOptions = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: user.email,
+              idToken: account.id_token,
               displayName: user.name,
               avatar: user.image,
-              googleId: account.providerAccountId,
               lang: 'en',
             }),
           });

@@ -2,10 +2,8 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
-import { LavaTopService } from './lava-top.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
 import { StripeService } from './stripe.service';
-import { PaymeService } from './payme.service';
 
 export const PREMIUM_TIERS = [
   {
@@ -48,10 +46,8 @@ export class PremiumService {
     private prisma: PrismaService,
     private config: ConfigService,
     private xsolla: XsollaService,
-    private lavaTop: LavaTopService,
     private lemonSqueezy: LemonSqueezyService,
     private stripeService: StripeService,
-    private paymeService: PaymeService,
   ) {}
 
   isStripeConfigured(): boolean {
@@ -64,10 +60,6 @@ export class PremiumService {
 
   verifyLemonSqueezyWebhook(rawBody: string, signature: string): boolean {
     return this.lemonSqueezy.verifyWebhookSignature(rawBody, signature);
-  }
-
-  verifyLavaTopWebhook(rawBody: string, signature: string): boolean {
-    return this.lavaTop.verifyWebhookSignature(rawBody, signature);
   }
 
   isYooKassaConfigured(): boolean {
@@ -182,55 +174,6 @@ export class PremiumService {
     }
   }
 
-  async createLavaTopCheckout(userId: string, tierName: string): Promise<{ url: string; invoiceId: string }> {
-    const tier = PREMIUM_TIERS.find(t => t.name === tierName);
-    if (!tier || tier.tier === 0) {
-      throw new BadRequestException('Invalid tier');
-    }
-
-    if (!this.lavaTop.configured) {
-      throw new BadRequestException('Lava.top payment is not configured');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-
-    const offerId = this.config.get('LAVA_TOP_OFFER_ID');
-    if (!offerId) throw new BadRequestException('LAVA_TOP_OFFER_ID not configured');
-
-    const { invoiceUrl, invoiceId } = await this.lavaTop.createInvoice({
-      email: user.email,
-      offerId,
-      amount: tier.price,
-      currency: 'RUB',
-    });
-
-    await this.prisma.premiumSubscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        tier: tier.tier,
-        levelName: tier.name,
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        price: tier.price,
-        currency: 'RUB',
-        status: 'pending',
-        paymentId: invoiceId,
-        autoRenew: false,
-      },
-      update: {
-        tier: tier.tier,
-        levelName: tier.name,
-        price: tier.price,
-        paymentId: invoiceId,
-        status: 'pending',
-      },
-    });
-
-    this.logger.log(`User ${userId} initiated lava.top invoice=${invoiceId}`);
-    return { url: invoiceUrl, invoiceId };
-  }
-
   async handleWebhook(rawBody: string, authHeader: string): Promise<any> {
     if (!this.xsolla.verifyWebhookSignature(rawBody, authHeader)) {
       this.logger.error('Xsolla webhook signature verification failed — rejecting event');
@@ -268,8 +211,6 @@ export class PremiumService {
 
       if (status === 'done') {
         const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-        const months = existingSub?.months || 1;
-        const endDate = new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000);
 
         // Idempotency: only skip a webhook redelivery for a transaction we've
         // already applied. Checking `status === 'active'` alone would also
@@ -279,20 +220,24 @@ export class PremiumService {
           return { received: true };
         }
 
-        // `createCheckoutSession` writes a `pending` row with the exact tier
-        // the user selected before Xsolla redirects them to pay. Prefer that
-        // over re-deriving the tier from the paid amount, since `amount` is
-        // `tierPrice * months` and comparing it directly against per-month
-        // tier prices picks the wrong (often higher) tier for multi-month
-        // purchases.
-        const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
-        let tierName = existingSub?.levelName;
+        // The tier/months are bound to THIS specific transaction via `custom_parameters`
+        // set at token-creation time and echoed back verbatim inside the HMAC-signed
+        // webhook body — this is the only tamper-proof source. `existingSub.levelName`
+        // is a mutable row keyed by userId that a second, later checkout attempt for a
+        // different tier can overwrite before the first one is paid, letting a user pay
+        // for a cheap tier but get credited for whatever tier is currently sitting in
+        // that row. Never derive the credited tier from it.
+        const customParams = body.custom_parameters || {};
+        let tierName = PREMIUM_TIERS.find(t => t.name === customParams.tier_name)?.name;
+        const months = parseInt(customParams.months, 10) || 1;
         if (!tierName) {
+          const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
           const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
           tierName = matchedTier?.name || 'PREMIUM_BASIC';
-          this.logger.warn(`Xsolla: no pending subscription for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
+          this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
         }
         const tier = this.getTierInfo(tierName);
+        const endDate = new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000);
 
         await this.prisma.$transaction([
           this.prisma.premiumSubscription.upsert({
@@ -335,86 +280,6 @@ export class PremiumService {
     return { received: true };
   }
 
-  async handleLavaTopWebhook(body: any): Promise<any> {
-    const eventType = body.eventType || body.event_type;
-    const status = body.status;
-    const invoiceId = body.invoiceId || body.invoice_id;
-
-    this.logger.log(`Lava.top webhook: event=${eventType} status=${status} invoice=${invoiceId}`);
-
-    if (eventType === 'payment.success' || status === 'success') {
-      const email = body.buyer?.email || body.email;
-      if (!email) {
-        this.logger.warn('Lava.top webhook missing buyer email');
-        return { received: true };
-      }
-
-      const user = await this.prisma.user.findFirst({ where: { email } });
-      if (!user) {
-        this.logger.warn(`Lava.top webhook: user not found for email ${email}`);
-        return { received: true };
-      }
-
-      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId: user.id } });
-      if (existingSub?.status === 'active' && invoiceId && existingSub.paymentId === invoiceId) {
-        this.logger.log(`Lava.top invoice ${invoiceId} already processed — skipping`);
-        return { received: true };
-      }
-
-      const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
-      const tier = this.getTierInfo(tierName);
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-      await this.prisma.$transaction([
-        this.prisma.premiumSubscription.upsert({
-          where: { userId: user.id },
-          create: {
-            userId: user.id,
-            tier: tier.tier,
-            levelName: tierName,
-            endDate,
-            price: body.amount || tier.price,
-            currency: 'RUB',
-            status: 'active',
-            paymentId: invoiceId,
-            autoRenew: false,
-          },
-          update: {
-            status: 'active',
-            tier: tier.tier,
-            levelName: tierName,
-            endDate,
-            paymentId: invoiceId,
-          },
-        }),
-        this.prisma.user.update({
-          where: { id: user.id },
-          data: { subscription: tierName, subscriptionEnd: endDate },
-        }),
-      ]);
-
-      this.logger.log(`User ${user.id} subscribed to ${tierName} via lava.top`);
-    } else if (status === 'failed' || status === 'cancelled') {
-      const sub = await this.prisma.premiumSubscription.findFirst({
-        where: { paymentId: invoiceId },
-      });
-      if (sub) {
-        await this.prisma.$transaction([
-          this.prisma.premiumSubscription.update({
-            where: { userId: sub.userId },
-            data: { status: 'cancelled' },
-          }),
-          this.prisma.user.update({
-            where: { id: sub.userId },
-            data: { subscription: 'FREE', subscriptionEnd: null },
-          }),
-        ]);
-      }
-    }
-
-    return { received: true };
-  }
-
   async createLemonSqueezyCheckout(userId: string, tierName: string): Promise<{ url: string; checkoutId: string }> {
     const tier = PREMIUM_TIERS.find(t => t.name === tierName);
     if (!tier || tier.tier === 0) {
@@ -434,6 +299,7 @@ export class PremiumService {
       const { checkoutUrl, checkoutId } = await this.lemonSqueezy.createCheckout({
         email: user.email,
         userId,
+        tierName: tier.name,
         amount: amountInCents,
         productName: `ROVX Premium - ${tier.label_en}`,
       });
@@ -490,7 +356,15 @@ export class PremiumService {
         return { received: true };
       }
 
-      const tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+      // Bound to this specific order via `checkout_data.custom.tier_name`, which Lemon
+      // Squeezy echoes back inside the HMAC-signed webhook body — not the mutable
+      // `existingSub.levelName` row, which a later checkout for a different tier could
+      // have overwritten before this order was paid.
+      let tierName: string | undefined = PREMIUM_TIERS.find(t => t.name === customData.tier_name)?.name;
+      if (!tierName) {
+        this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, falling back to pending subscription`);
+        tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+      }
       const tier = this.getTierInfo(tierName);
       const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 

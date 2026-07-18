@@ -446,28 +446,52 @@ export class ReportsService {
   }
 
   async createReport(userId: string, dto: CreateReportDto) {
-    await this.checkReportLimit(userId);
+    // Serialize report creation per user: checkReportLimit() reads a count that
+    // isn't re-verified until the AI validation calls below (several seconds)
+    // finish, so without a lock, N parallel requests can all pass the same
+    // stale count and blow past MAX_REPORTS_PER_USER. Falls back to no lock
+    // (best-effort) if Redis is unreachable rather than blocking report creation.
+    const lockKey = `report:create:lock:${userId}`;
+    let locked = true;
+    try {
+      locked = await this.redis.setnx(lockKey, '1', 60);
+    } catch (e) {
+      this.logger.warn(`Redis unavailable for report-create lock, proceeding without it: ${(e as Error).message}`);
+    }
+    if (!locked) {
+      throw new BadRequestException('Report creation already in progress, try again');
+    }
 
-    // AI validate photos against description (parallel)
-    if (dto.images && dto.images.length > 0) {
-      const results = await Promise.all(
-        dto.images.map(img => this.validatePhoto(img, dto.type, dto.description)),
-      );
-      for (const validation of results) {
-        if (!validation.valid) {
-          throw new BadRequestException(validation.reason || 'Фото не соответствует описанию');
+    try {
+      await this.checkReportLimit(userId);
+
+      // AI validate photos against description (parallel)
+      if (dto.images && dto.images.length > 0) {
+        const results = await Promise.all(
+          dto.images.map(img => this.validatePhoto(img, dto.type, dto.description)),
+        );
+        for (const validation of results) {
+          if (!validation.valid) {
+            throw new BadRequestException(validation.reason || 'Фото не соответствует описанию');
+          }
         }
       }
-    }
 
-    // AI validate description
-    if (dto.description && dto.description.trim()) {
-      const descValidation = await this.validateDescription(dto.description, dto.type);
-      if (!descValidation.valid) {
-        throw new BadRequestException(descValidation.reason || 'Описание не соответствует заявленному типу');
+      // AI validate description
+      if (dto.description && dto.description.trim()) {
+        const descValidation = await this.validateDescription(dto.description, dto.type);
+        if (!descValidation.valid) {
+          throw new BadRequestException(descValidation.reason || 'Описание не соответствует заявленному типу');
+        }
       }
-    }
 
+      return await this.createReportRecord(userId, dto);
+    } finally {
+      await this.redis.del(lockKey);
+    }
+  }
+
+  private async createReportRecord(userId: string, dto: CreateReportDto) {
     const ttlMap: Record<string, number> = {
       ACCIDENT: 4, ROAD_CLOSURE: 24, ROAD_WORKS: 168, TRAFFIC_JAM: 1,
       ICE: 8, FOG: 4, FLOODING: 12, POLICE: 2, POTHOLE: 720, BAD_ROAD: 720,

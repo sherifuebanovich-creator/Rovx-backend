@@ -372,6 +372,14 @@ export class SocialService {
   }
 
   async leaveGroup(userId: string, groupId: string) {
+    // A banned row is the only record of the ban — deleting it here would let
+    // a banned member "leave" and immediately rejoin (invite link, or a fresh
+    // join request) with no trace they were ever banned.
+    const existing = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (existing?.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
+
     const { count } = await this.prisma.groupMember.deleteMany({ where: { groupId, userId } });
     if (count > 0) {
       await this.prisma.$transaction([
@@ -558,6 +566,11 @@ export class SocialService {
       where: { groupId_userId: { groupId, userId: targetUserId } },
     });
     if (!member) throw new NotFoundException('Пользователь не в группе');
+    // Only the owner may act on a fellow admin — otherwise any admin could
+    // ban/kick every other admin (promote/demote are already owner-only).
+    if (member.isAdmin && group.ownerId !== userId) {
+      throw new ForbiddenException('Только владелец может забанить администратора');
+    }
 
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId: targetUserId } },

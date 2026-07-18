@@ -154,6 +154,7 @@ export class PremiumController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @Post('direct-pay')
   @ApiOperation({ summary: 'Submit manual payment proof (last 4 digits)' })
   async directPay(

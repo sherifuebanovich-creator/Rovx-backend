@@ -119,14 +119,20 @@ export class TelegramController implements OnModuleInit {
   @Throttle({ short: { limit: 20, ttl: 60000 } })
   @Post('webhook')
   async webhook(@Body() body: any, @Headers('x-telegram-bot-api-secret-token') secretToken?: string) {
+    // Fail closed: without a configured secret we cannot tell a real Telegram
+    // callback from a forged POST claiming an arbitrary chat.id, which would
+    // let an attacker walk straight into the bot-password prompt (and from
+    // there /setpass, /grant, etc.) with zero rate-limit protection.
     const expectedSecret = this.config.get('TELEGRAM_WEBHOOK_SECRET');
-    if (expectedSecret) {
-      if (!secretToken) return { ok: false };
-      const a = Buffer.from(secretToken);
-      const b = Buffer.from(expectedSecret);
-      if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
-        return { ok: false };
-      }
+    if (!expectedSecret) {
+      this.logger.error('TELEGRAM_WEBHOOK_SECRET is not set — rejecting webhook request');
+      return { ok: false };
+    }
+    if (!secretToken) return { ok: false };
+    const a = Buffer.from(secretToken);
+    const b = Buffer.from(expectedSecret);
+    if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) {
+      return { ok: false };
     }
     try {
       if (body.message?.text) {
@@ -637,7 +643,7 @@ export class TelegramController implements OnModuleInit {
         `📧 Google / Email: <code>${user.email || '—'}</code>\n` +
         `🏷 @${user.username || '—'}\n` +
         (user.googleId ? `🔑 Google ID: <code>${user.googleId}</code>\n` : '') +
-        (hasPassword ? `🔒 Пароль (hash): <code>${user.passwordHash}</code>\n` : `🔒 Пароль: не задан (Google вход)\n`) +
+        (hasPassword ? `🔒 Пароль: установлен (используйте /setpass для сброса)\n` : `🔒 Пароль: не задан (Google вход)\n`) +
         `🔑 Роль: <b>${user.role}</b>\n\n` +
         `━━ <b>СТАТИСТИКА</b> ━━\n` +
         `💎 Подписка: <b>${user.subscription}</b>\n` +
@@ -677,7 +683,11 @@ export class TelegramController implements OnModuleInit {
 
   private async sendBan(chatId: number, userId: string, reason: string) {
     try {
-      await this.admin.banUser(userId, reason);
+      // The Telegram operator channel is itself an authenticated super-admin
+      // surface (bot-password gated); pass SUPERADMIN explicitly so
+      // assertCanActOn's hierarchy check (which otherwise treats a missing
+      // actorRole as level 0 and rejects every target) doesn't always throw.
+      await this.admin.banUser(userId, reason, undefined, 'SUPERADMIN');
       await this.telegram.sendMessageToChat(chatId,
         `🚫 <b>Пользователь забанен</b>\n\n` +
         `🆔 <code>${userId}</code>\n` +
@@ -689,7 +699,7 @@ export class TelegramController implements OnModuleInit {
 
   private async sendUnban(chatId: number, userId: string) {
     try {
-      await this.admin.unbanUser(userId);
+      await this.admin.unbanUser(userId, undefined, 'SUPERADMIN');
       await this.telegram.sendMessageToChat(chatId,
         `✅ <b>Пользователь разбанен</b>\n\n` +
         `🆔 <code>${userId}</code>`);
@@ -706,7 +716,7 @@ export class TelegramController implements OnModuleInit {
           `❌ Неверная роль. Доступные: ${validRoles.join(', ')}`);
         return;
       }
-      await this.admin.updateUserRole(userId, role.toUpperCase());
+      await this.admin.updateUserRole(userId, role.toUpperCase(), undefined, 'SUPERADMIN');
       await this.telegram.sendMessageToChat(chatId,
         `🔑 <b>Роль изменена</b>\n\n` +
         `🆔 <code>${userId}</code>\n` +

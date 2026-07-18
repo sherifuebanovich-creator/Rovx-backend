@@ -34,6 +34,7 @@ export class LemonSqueezyService {
   async createCheckout(params: {
     email: string;
     userId: string;
+    tierName: string;
     amount: number;
     productName: string;
     redirectUrl?: string;
@@ -57,6 +58,7 @@ export class LemonSqueezyService {
               email: params.email,
               custom: {
                 user_id: params.userId,
+                tier_name: params.tierName,
               },
             },
           },

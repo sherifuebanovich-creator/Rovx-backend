@@ -270,7 +270,12 @@ export function NavigationHUD() {
     }, 1000);
 
     return () => { clearInterval(interval); };
-  }, [navigation.isNavigating, i18n.language, speak]);
+    // `userLocation` itself is read via a ref inside the interval (always fresh),
+    // but its presence must still gate effect setup — otherwise if GPS lock
+    // arrives after this effect's first run (very common), the early return
+    // above means the interval is never created for the rest of the session.
+    // Depend on presence only (not lat/lng) so this doesn't re-run on every fix.
+  }, [navigation.isNavigating, i18n.language, speak, Boolean(userLocation)]);
 
   useEffect(() => {
     if (navigation.isWrongWay) {

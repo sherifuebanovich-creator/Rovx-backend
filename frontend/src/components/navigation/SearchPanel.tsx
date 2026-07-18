@@ -190,6 +190,17 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
 
   const debouncedFetch = useRef<ReturnType<typeof setTimeout>>();
   const fetchIdRef = useRef(0);
+
+  // Clear any pending debounced fetch on unmount — otherwise it still fires
+  // after the panel closes and writes stale suggestions into the shared
+  // map store, which then reappear next time the panel is reopened.
+  useEffect(() => {
+    return () => {
+      clearTimeout(debouncedFetch.current);
+      fetchIdRef.current++;
+    };
+  }, []);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSelectedItem(null);

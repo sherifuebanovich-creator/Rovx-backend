@@ -72,7 +72,7 @@ const REPORT_CONFIG: Record<string, { emoji: string; color: string }> = {
   OTHER:              { emoji: '❗', color: '#6b7280' },
 };
 
-function escapeAttr(str: string): string {
+export function escapeAttr(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 

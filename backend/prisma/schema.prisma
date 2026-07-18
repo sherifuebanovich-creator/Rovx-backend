@@ -27,7 +27,7 @@ model User {
   isBanned          Boolean          @default(false)
   bannedReason      String?
   passwordHash      String    @default("")
-  googleId          String?
+  googleId          String?          @unique
   refreshToken      String?
   fcmToken          String?
   preferredLang     String           @default("ru")

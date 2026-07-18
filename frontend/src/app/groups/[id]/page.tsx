@@ -714,6 +714,7 @@ export default function GroupChatPage() {
                 }}
                 onDoubleClick={() => {
                   if (!showDelete) return;
+                  if (!confirm('Удалить сообщение?')) return;
                   handleDeleteMessage(msg.id);
                 }}
                 onClick={(e) => { e.stopPropagation(); setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id); }}

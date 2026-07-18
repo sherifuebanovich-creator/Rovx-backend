@@ -429,6 +429,7 @@ export class MapService {
         startLat: { gte: minLat, lte: maxLat },
         startLng: { gte: minLng, lte: maxLng },
       },
+      take: 500,
     });
 
     await this.redis.set(cacheKey, JSON.stringify(segments), 30);
@@ -520,7 +521,7 @@ export class MapService {
       where.lng = { gte: lng - lngDelta, lte: lng + lngDelta };
     }
 
-    const localResults = await this.prisma.mapObject.findMany({ where, take: 10 }).catch(() => []);
+    const localResults: any[] = await this.prisma.mapObject.findMany({ where, take: 10 }).catch(() => []);
 
     let externalResults: any[] = [];
     if (query.length >= 3) {

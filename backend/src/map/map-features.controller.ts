@@ -85,7 +85,10 @@ export class MapFeaturesController {
   @ApiOperation({ summary: 'Sync a single country by ISO code (admin only)' })
   async triggerSyncCountry(@Param('country') country: string) {
     const code = country.toUpperCase().trim();
-    if (code.length !== 2) {
+    // Must be exactly 2 alphabetic characters — this value is interpolated
+    // into an Overpass QL query string, so anything beyond `length === 2`
+    // (e.g. a quote + bracket) can break out of the quoted filter.
+    if (!/^[A-Z]{2}$/.test(code)) {
       throw new BadRequestException('Country must be a 2-letter ISO code (e.g. UZ, KZ)');
     }
     try {

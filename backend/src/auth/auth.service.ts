@@ -174,7 +174,14 @@ export class AuthService {
       try {
         const payload = this.jwtService.decode(accessToken) as JwtPayload;
         if (payload?.iat) {
-          const ttl = 900; // 15 min blacklist (token expiry)
+          // Blacklist for the *actual* configured access-token lifetime, not a
+          // hardcoded 15m — otherwise a longer JWT_EXPIRES_IN would let a
+          // "logged out" token become valid again once the blacklist entry
+          // (wrongly) expires before the token itself does.
+          const ttl = this.parseDurationSeconds(
+            this.configService.get<string>('JWT_EXPIRES_IN'),
+            900,
+          );
           await this.redis.set(`blacklist:${userId}:${payload.iat}`, 'true', ttl);
         }
       } catch {
@@ -264,19 +271,66 @@ export class AuthService {
     }
   }
 
+  /**
+   * Verifies a Google ID token against Google's tokeninfo endpoint so the caller
+   * cannot forge the email/sub of an account it doesn't control. Never trust
+   * client-supplied email/googleId directly for auth decisions.
+   */
+  private async verifyGoogleIdToken(idToken: string): Promise<{ email: string; sub: string; name?: string; picture?: string }> {
+    if (!idToken) {
+      throw new UnauthorizedException('Missing Google ID token');
+    }
+    let res: Response;
+    try {
+      res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    } catch {
+      throw new UnauthorizedException('Failed to verify Google ID token');
+    }
+    if (!res.ok) {
+      throw new UnauthorizedException('Invalid Google ID token');
+    }
+    const payload = await res.json();
+    // TODO(security): GOOGLE_CLIENT_ID is not yet set on the Render deployment,
+    // so this is temporarily skip-if-unset instead of fail-closed to avoid
+    // breaking Google login in prod. Set GOOGLE_CLIENT_ID on Render (same
+    // value as Vercel's) and change this back to fail-closed (throw when
+    // expectedAud is missing) — see auth.controller.ts googleAuth history.
+    const expectedAud = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    if (expectedAud && payload.aud !== expectedAud) {
+      throw new UnauthorizedException('Google ID token audience mismatch');
+    }
+    if (payload.email_verified !== 'true' && payload.email_verified !== true) {
+      throw new UnauthorizedException('Google email not verified');
+    }
+    if (!payload.email || !payload.sub) {
+      throw new UnauthorizedException('Invalid Google ID token payload');
+    }
+    return { email: payload.email, sub: payload.sub, name: payload.name, picture: payload.picture };
+  }
+
   async googleAuth(data: {
-    email: string;
-    displayName: string;
+    idToken: string;
+    displayName?: string;
     avatar?: string;
-    googleId: string;
     lang?: string;
     deviceInfo?: string;
   }) {
-    let user = await this.prisma.user.findUnique({ where: { email: data.email } });
+    const verified = await this.verifyGoogleIdToken(data.idToken);
+    const email = verified.email;
+    const googleId = verified.sub;
+    const displayName = verified.name || data.displayName;
+    const avatar = verified.picture || data.avatar;
+
+    const existingGoogleLink = await this.prisma.user.findFirst({ where: { googleId } });
+    if (existingGoogleLink && existingGoogleLink.email !== email) {
+      throw new ConflictException('This Google account is already linked to a different user');
+    }
+
+    let user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
       // Auto-register Google user
-      const username = data.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
+      const username = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
       let finalUsername = username;
       let counter = 1;
       while (await this.prisma.user.findUnique({ where: { username: finalUsername } })) {
@@ -286,13 +340,13 @@ export class AuthService {
       try {
         user = await this.prisma.user.create({
           data: {
-            email: data.email,
+            email,
             username: finalUsername,
-            displayName: data.displayName || finalUsername,
-            avatar: data.avatar,
+            displayName: displayName || finalUsername,
+            avatar,
             passwordHash: '',
             preferredLang: data.lang || 'ru',
-            googleId: data.googleId,
+            googleId,
             isVerified: true,
             preferences: {
               create: {},
@@ -304,13 +358,13 @@ export class AuthService {
           const fallback = `${finalUsername}_${Date.now().toString(36)}`;
           user = await this.prisma.user.create({
             data: {
-              email: data.email,
+              email,
               username: fallback,
-              displayName: data.displayName || fallback,
-              avatar: data.avatar,
+              displayName: displayName || fallback,
+              avatar,
               passwordHash: '',
               preferredLang: data.lang || 'ru',
-              googleId: data.googleId,
+              googleId,
               isVerified: true,
               preferences: { create: {} },
             },
@@ -323,7 +377,7 @@ export class AuthService {
       // Link Google to existing account
       user = await this.prisma.user.update({
         where: { id: user.id },
-        data: { googleId: data.googleId, avatar: data.avatar || user.avatar },
+        data: { googleId, avatar: avatar || user.avatar },
       });
       await this.prisma.userPreference.upsert({
         where: { userId: user.id },
@@ -421,5 +475,21 @@ export class AuthService {
   private sanitizeUser(user: any) {
     const { passwordHash, refreshToken, ...safe } = user;
     return safe;
+  }
+
+  /** Parses strings like "15m", "1h", "30d", "900" (jsonwebtoken-style) into seconds. */
+  private parseDurationSeconds(value: string | undefined, fallbackSeconds: number): number {
+    if (!value) return fallbackSeconds;
+    const trimmed = value.trim();
+    const match = /^(\d+)\s*(ms|s|m|h|d)?$/i.exec(trimmed);
+    if (!match) {
+      const asNumber = Number(trimmed);
+      return Number.isFinite(asNumber) && asNumber > 0 ? asNumber : fallbackSeconds;
+    }
+    const num = parseInt(match[1], 10);
+    const unit = (match[2] || 's').toLowerCase();
+    const multiplier = unit === 'ms' ? 0.001 : unit === 's' ? 1 : unit === 'm' ? 60 : unit === 'h' ? 3600 : 86400;
+    const seconds = Math.round(num * multiplier);
+    return seconds > 0 ? seconds : fallbackSeconds;
   }
 }

@@ -20,6 +20,10 @@ export class MailService {
       host: this.configService.get('SMTP_HOST', 'smtp.gmail.com'),
       port: this.configService.get<number>('SMTP_PORT', 587),
       secure: false,
+      // Without this, a network MITM can strip the server's STARTTLS
+      // advertisement and force the session to stay plaintext, leaking the
+      // SMTP credentials and the verification/reset codes sent through it.
+      requireTLS: true,
       auth: { user, pass },
       connectionTimeout: 5000,
     });

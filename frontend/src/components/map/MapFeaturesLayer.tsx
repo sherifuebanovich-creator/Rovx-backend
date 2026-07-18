@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { mapApi } from '@/lib/api';
+import { escapeAttr } from '@/lib/maplibreIcons';
 
 const MIN_ZOOM = 8;
 const DEBOUNCE_MS = 400;
@@ -173,7 +174,7 @@ export default function MapFeaturesLayer({ map }: Props) {
         .filter(([k]) => !['highway', 'created_by'].includes(k))
         .slice(0, 8);
       const details = tagEntries
-        .map(([k, v]) => `<div><span style="color:#9ca3af;font-size:11px">${k}:</span> <span style="font-size:12px;color:white">${v}</span></div>`)
+        .map(([k, v]) => `<div><span style="color:#9ca3af;font-size:11px">${escapeAttr(k)}:</span> <span style="font-size:12px;color:white">${escapeAttr(String(v))}</span></div>`)
         .join('');
       const updated = props.updatedAt
         ? new Date(props.updatedAt).toLocaleDateString('ru-RU')

@@ -137,9 +137,10 @@ export class AuthController {
 
   @Post('google')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Login or register with Google OAuth' })
   async googleAuth(
-    @Body() body: { email: string; displayName: string; avatar?: string; googleId: string; lang?: string; deviceInfo?: string },
+    @Body() body: { idToken: string; displayName?: string; avatar?: string; lang?: string; deviceInfo?: string },
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.googleAuth(body);
