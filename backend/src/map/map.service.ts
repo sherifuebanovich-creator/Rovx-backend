@@ -200,7 +200,15 @@ export class MapService {
       let lastErr: unknown = null;
       for (const url of overpassUrls) {
         try {
-          res = await axios.post(url, `data=${encodeURIComponent(query)}`, { timeout: 20000 });
+          const attempt = await axios.post(url, `data=${encodeURIComponent(query)}`, { timeout: 20000 });
+          // Rate-limit/quota errors come back as HTTP 200 with an HTML error
+          // page (not a non-2xx status), so axios won't throw — without this
+          // check that silently reads as "zero POIs found" here.
+          if (!attempt.data || !Array.isArray(attempt.data.elements)) {
+            lastErr = new Error(`Overpass ${url} returned a non-JSON/error response (likely rate-limited)`);
+            continue;
+          }
+          res = attempt;
           break;
         } catch (err) {
           lastErr = err;

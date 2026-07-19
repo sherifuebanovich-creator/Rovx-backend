@@ -1,5 +1,5 @@
 'use client';
-import { FaSearch, FaBars, FaBell, FaSun, FaMoon, FaCube, FaLayerGroup, FaSatellite, FaCrosshairs, FaTrafficLight } from 'react-icons/fa';
+import { FaSearch, FaBars, FaBell, FaSun, FaMoon, FaCube, FaLayerGroup, FaSatellite, FaCrosshairs, FaCarSide } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { motion } from 'framer-motion';
@@ -138,7 +138,7 @@ export function TopBar() {
             className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all ${showTraffic ? 'text-primary-400' : 'text-gray-400'}`}
             title={t('topbar.traffic') || 'Пробки'}
           >
-            <FaTrafficLight size={13} />
+            <FaCarSide size={13} />
           </button>
 
           {/* My location */}

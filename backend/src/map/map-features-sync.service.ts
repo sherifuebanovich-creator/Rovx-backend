@@ -179,6 +179,15 @@ out body;
               timeout: 180000,
             },
           );
+          // Rate-limit/quota errors come back as HTTP 200 with an HTML error
+          // page, not a non-2xx status, so axios won't throw for them. Left
+          // unchecked, callers read `data.elements` off that (undefined,
+          // treated as []) and silently record "0 features" instead of a
+          // real failure to retry.
+          if (!res.data || !Array.isArray(res.data.elements)) {
+            this.logger.warn(`Overpass ${url} returned a non-JSON/error response (likely rate-limited)`);
+            continue;
+          }
           return res;
         } catch (err) {
           this.logger.warn(`Overpass ${url} failed (attempt ${i + 1}): ${(err as Error).message}`);
@@ -346,23 +355,40 @@ out body;
     const tileKey = `mapfeatures:live:${minLat.toFixed(2)},${minLng.toFixed(2)},${maxLat.toFixed(2)},${maxLng.toFixed(2)}`;
     const alreadyTried = await this.redis.exists(tileKey).catch(() => false);
     if (alreadyTried) return { signals: [], cameras: [] };
-    await this.redis.set(tileKey, '1', 24 * 60 * 60).catch(() => {});
 
     const query = `[out:json][timeout:20];(node["highway"="speed_camera"](${minLat},${minLng},${maxLat},${maxLng});node["highway"="traffic_signals"](${minLat},${minLng},${maxLat},${maxLng}););out body;`;
 
     let elements: OverpassElement[] = [];
+    let succeeded = false;
     for (const url of OVERPASS_URLS) {
       try {
         const res = await axios.post(url, `data=${encodeURIComponent(query)}`, {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           timeout: 9000,
         });
-        elements = res.data?.elements || [];
+        // Overpass answers rate-limiting/quota errors with HTTP 200 and an
+        // HTML error page, not a non-2xx status — axios won't throw for
+        // that, and `res.data.elements` on a string body is just undefined,
+        // which used to silently look identical to "genuinely no features
+        // here." Require a real parsed array before treating this as data.
+        if (!res.data || !Array.isArray(res.data.elements)) {
+          this.logger.warn(`Live bbox Overpass fetch on ${url} returned a non-JSON/error response (likely rate-limited)`);
+          continue;
+        }
+        elements = res.data.elements;
+        succeeded = true;
         break;
       } catch (err) {
         this.logger.warn(`Live bbox Overpass fetch failed on ${url}: ${(err as Error).message}`);
       }
     }
+
+    // Only remember a genuinely-checked area for a full day. A failed
+    // attempt (rate limit, timeout, both mirrors down) gets a much shorter
+    // lock so the next pan through this tile retries soon instead of
+    // showing "nothing here" for 24h over what was really just a hiccup.
+    await this.redis.set(tileKey, '1', succeeded ? 24 * 60 * 60 : 90).catch(() => {});
+    if (!succeeded) return { signals: [], cameras: [] };
 
     const signals: any[] = [];
     const cameras: any[] = [];
