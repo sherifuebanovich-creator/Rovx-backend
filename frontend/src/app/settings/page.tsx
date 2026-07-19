@@ -248,16 +248,12 @@ export default function SettingsPage() {
 
                 {vehicles.map((v, i) => (
                   <div key={v.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-dark-border' : ''}`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs ${
-                      v.fuelType === 'ELECTRIC' ? 'bg-green-600/20 text-green-400' :
-                      v.fuelType === 'DIESEL' ? 'bg-orange-600/20 text-orange-400' :
-                      'bg-yellow-600/20 text-yellow-400'
-                    }`}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs bg-primary-600/20 text-primary-400">
                       {v.type === 'TRUCK' ? <FaTruck size={14} /> : <FaCar size={14} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white font-medium truncate">{v.name || `${v.make} ${v.model}`}</p>
-                      <p className="text-xs text-gray-500">{v.year} · {v.fuelType}</p>
+                      <p className="text-xs text-gray-500">{v.year}</p>
                     </div>
                     <button onClick={async () => {
                       try {

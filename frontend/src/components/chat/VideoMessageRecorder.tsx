@@ -115,6 +115,17 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
       const file = new File([blob], `videomsg-${Date.now()}.${ext}`, { type: mimeType });
 
+      // Matches the server's Multer fileSize limit (social.controller.ts) —
+      // catch it here so the user gets a specific message instead of a
+      // generic upload failure after waiting for the request to round-trip.
+      const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+      if (file.size > MAX_VIDEO_BYTES) {
+        toast.error('Видео слишком большое, запишите покороче');
+        setIsSending(false);
+        cleanup();
+        return;
+      }
+
       const res = await socialApi.uploadGroupVideoMsg(groupId, file);
       const videoUrl = res.data?.url || res.data?.data?.url || res.data?.data?.data?.url;
 
@@ -124,11 +135,20 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       }
 
       const socket = getSocket();
-      socket?.emit('group:message', {
-        groupId,
-        content: '',
-        videoUrl,
+      if (!socket?.connected) {
+        toast.error('Нет подключения к серверу');
+        return;
+      }
+
+      const delivered = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 8000);
+        socket.emit('group:message', { groupId, content: '', videoUrl }, (ack: any) => {
+          clearTimeout(timeout);
+          resolve(!ack?.error);
+        });
       });
+      if (!delivered) throw new Error('Message delivery not confirmed');
+
       onSent?.();
     } catch (err: any) {
       console.error('Video send error:', err?.response?.data || err.message || err);

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestion, FriendLocation } from '@/types';
+import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestion, FriendLocation, Vehicle } from '@/types';
 
 interface NavigationState {
   isNavigating: boolean;
@@ -17,6 +17,7 @@ interface NavigationState {
 interface MapState {
   // Location
   userLocation: Coordinates | null;
+  userLocationTimestamp: number | null;
   userHeading: number;
   userSpeed: number;
   userAccuracy: number;
@@ -71,10 +72,11 @@ interface MapState {
   isReportPanelOpen: boolean;
   isSidebarOpen: boolean;
   vehicleMode: 'CAR';
+  selectedVehicle: Vehicle | null;
   darkMode: boolean;
 
   // Actions
-  setUserLocation: (loc: Coordinates, heading?: number, speed?: number, accuracy?: number) => void;
+  setUserLocation: (loc: Coordinates, heading?: number, speed?: number, accuracy?: number, timestamp?: number) => void;
   setLocationError: (err: string | null) => void;
   setMapCenter: (center: Coordinates, zoom?: number) => void;
   setZoom: (zoom: number) => void;
@@ -108,6 +110,7 @@ interface MapState {
   toggleSidebar: () => void;
   toggleReportPanel: () => void;
   setVehicleMode: (mode: 'CAR') => void;
+  setSelectedVehicle: (vehicle: Vehicle | null) => void;
   setDarkMode: (dark: boolean) => void;
   setShow3D: (show: boolean) => void;
   toggle3D: () => void;
@@ -117,6 +120,7 @@ interface MapState {
 export const useMapStore = create<MapState>((set) => ({
   // Location
   userLocation: null,
+  userLocationTimestamp: null,
   userHeading: 0,
   userSpeed: 0,
   userAccuracy: 0,
@@ -195,11 +199,19 @@ export const useMapStore = create<MapState>((set) => ({
   isReportPanelOpen: false,
   isSidebarOpen: false,
   vehicleMode: 'CAR',
+  selectedVehicle: null,
   darkMode: true,
 
   // Actions
-  setUserLocation: (loc, heading = 0, speed = 0, accuracy = 0) =>
-    set({ userLocation: loc, userHeading: heading, userSpeed: speed, userAccuracy: accuracy, locationError: null }),
+  setUserLocation: (loc, heading = 0, speed = 0, accuracy = 0, timestamp) =>
+    set({
+      userLocation: loc,
+      userLocationTimestamp: timestamp ?? Date.now(),
+      userHeading: heading,
+      userSpeed: speed,
+      userAccuracy: accuracy,
+      locationError: null,
+    }),
 
   setLocationError: (err) => set({ locationError: err }),
 
@@ -280,6 +292,7 @@ export const useMapStore = create<MapState>((set) => ({
   toggleReportPanel: () => set((s) => ({ isReportPanelOpen: !s.isReportPanelOpen })),
 
   setVehicleMode: (vehicleMode) => set({ vehicleMode }),
+  setSelectedVehicle: (selectedVehicle) => set({ selectedVehicle }),
 
   setDarkMode: (darkMode) => set({ darkMode }),
 

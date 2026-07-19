@@ -44,7 +44,9 @@
   }
   :root:not(.dark) .bg-white\/5,
   :root:not(.dark) .bg-white\/10,
-  :root:not(.dark) .bg-white\/20 {
+  :root:not(.dark) .bg-white\/15,
+  :root:not(.dark) .bg-white\/20,
+  :root:not(.dark) .bg-white\/30 {
     background-color: rgb(var(--dark-card)) !important;
   }
   :root:not(.dark) .border-white\/10 {
@@ -63,6 +65,29 @@
   }
   :root:not(.dark) .scrollbar-thumb {
     background: rgb(var(--dark-border)) !important;
+  }
+
+  /* Browser autofill paints its own background over inputs but keeps the
+     site's text color, which produces white-on-white in dark mode's
+     white input text. Force both to the current theme's colors. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: rgb(var(--dark-text));
+    -webkit-box-shadow: 0 0 0 1000px rgb(var(--dark-surface)) inset;
+    box-shadow: 0 0 0 1000px rgb(var(--dark-surface)) inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
+  /* Native <option> elements don't inherit the input's themed background —
+     browsers render the open dropdown with their own default (often white),
+     while the inherited text color stays whatever the theme set it to. */
+  select.input-field option {
+    background-color: rgb(var(--dark-surface));
+    color: rgb(var(--dark-text));
   }
 
   /* Custom scrollbar */

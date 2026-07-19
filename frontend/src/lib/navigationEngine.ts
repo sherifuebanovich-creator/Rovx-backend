@@ -1,4 +1,4 @@
-import { Coordinates, TurnInstruction, RouteResult } from '@/types';
+import { Coordinates, TurnInstruction, RouteResult, VehicleType } from '@/types';
 import { haversineDist, bearing } from './geo';
 
 export interface NavigationUpdate {
@@ -234,16 +234,43 @@ export function getRemainingDistance(
   return totalDist;
 }
 
+// Typical cruising speed by vehicle model, used whenever there's no live
+// speed reading to derive an ETA from (route just calculated, backend gave
+// no usable duration, etc). Trucks run slower on average than cars.
+const AVERAGE_SPEED_KMH: Record<VehicleType, number> = {
+  CAR: 60,
+  TRUCK: 48,
+};
+
+export function estimateDurationFromDistanceKm(
+  distanceKm: number,
+  vehicleType: VehicleType = 'CAR',
+): number {
+  const avgSpeedKmh = AVERAGE_SPEED_KMH[vehicleType] || AVERAGE_SPEED_KMH.CAR;
+  if (avgSpeedKmh <= 0) return 0;
+  return (distanceKm / avgSpeedKmh) * 3600;
+}
+
 export function getRemainingDuration(
   userLat: number,
   userLng: number,
   polyline: Coordinates[],
   totalDurationSec: number,
   totalDistanceMeters: number,
+  vehicleType: VehicleType = 'CAR',
 ): number {
-  const remaining = getRemainingDistance(userLat, userLng, polyline);
-  if (totalDistanceMeters <= 0) return 0;
-  return (remaining / totalDistanceMeters) * totalDurationSec;
+  const remainingKm = getRemainingDistance(userLat, userLng, polyline) / 1000;
+  const totalKm = totalDistanceMeters / 1000;
+
+  const avgSpeedKmh = totalKm > 0 && totalDurationSec > 0
+    ? totalKm / (totalDurationSec / 3600)
+    : AVERAGE_SPEED_KMH[vehicleType] || AVERAGE_SPEED_KMH.CAR;
+
+  if (!isFinite(avgSpeedKmh) || avgSpeedKmh <= 0) {
+    return estimateDurationFromDistanceKm(remainingKm, vehicleType);
+  }
+
+  return (remainingKm / avgSpeedKmh) * 3600;
 }
 
 export function speedToAutoZoom(speedKmh: number): number {

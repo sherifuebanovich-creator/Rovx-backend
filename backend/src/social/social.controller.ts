@@ -196,7 +196,10 @@ export class SocialController {
           cb(null, uniqueName);
         },
       }),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      // Recording is capped at 60s client-side (VideoMessageRecorder.tsx);
+      // a 60s webm/vp8+opus clip can plausibly exceed 10MB, so the limit
+      // needs enough headroom to not reject legitimate full-length clips.
+      limits: { fileSize: 30 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         // Some mobile browsers/webviews send recorded video Blobs with a
         // generic/missing Content-Type (application/octet-stream or empty)

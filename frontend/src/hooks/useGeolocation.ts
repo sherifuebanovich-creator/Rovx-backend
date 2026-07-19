@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useMapStore } from '@/store/map.store';
+import { haversineDist } from '@/lib/geo';
 
 const SPEED_SMOOTHING_ALPHA = 0.35;
 const SMOOTHED_SPEED_KEY = 'rovx_smoothedSpeed';
 const AUTO_FOLLOW_SPEED_THRESHOLD = 10;
 const POSITION_THROTTLE_MS = 200;
+const MAX_PLAUSIBLE_SPEED_KMH = 250;
 
 interface LocationState {
   lat: number;
@@ -31,6 +33,7 @@ export function useGeolocation() {
   const watchIdRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
   const smoothSpeedRef = useRef(getInitialSmoothedSpeed());
+  const lastFixRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   const deviceHeadingRef = useRef<number | null>(null);
   const isActiveRef = useRef(true);
   const [location, setLocation] = useState<LocationState | null>(null);
@@ -52,13 +55,28 @@ export function useGeolocation() {
 
     const { latitude, longitude, speed, heading, accuracy } = position.coords;
 
-    const rawSpeed = speed != null ? speed * 3.6 : 0;
-    if (rawSpeed > 0) {
-      smoothSpeedRef.current = SPEED_SMOOTHING_ALPHA * rawSpeed + (1 - SPEED_SMOOTHING_ALPHA) * smoothSpeedRef.current;
+    // Device-reported speed is frequently null/0 between fixes on many
+    // browsers, which used to make the readout decay to 0 and "freeze"
+    // even while still moving. Fall back to a distance/time derivation
+    // from the last fix so the value keeps tracking real motion.
+    let rawSpeed: number;
+    if (speed != null && speed >= 0) {
+      rawSpeed = speed * 3.6;
     } else {
-      smoothSpeedRef.current = smoothSpeedRef.current * 0.95;
-      if (smoothSpeedRef.current < 1) smoothSpeedRef.current = 0;
+      const last = lastFixRef.current;
+      const dtSec = last ? (position.timestamp - last.time) / 1000 : 0;
+      if (last && dtSec > 0.1) {
+        const distMeters = haversineDist(last.lat, last.lng, latitude, longitude);
+        rawSpeed = (distMeters / dtSec) * 3.6;
+      } else {
+        rawSpeed = smoothSpeedRef.current;
+      }
     }
+    rawSpeed = Math.min(Math.max(rawSpeed, 0), MAX_PLAUSIBLE_SPEED_KMH);
+    lastFixRef.current = { lat: latitude, lng: longitude, time: position.timestamp };
+
+    smoothSpeedRef.current = SPEED_SMOOTHING_ALPHA * rawSpeed + (1 - SPEED_SMOOTHING_ALPHA) * smoothSpeedRef.current;
+    if (smoothSpeedRef.current < 1) smoothSpeedRef.current = 0;
     setSmoothedSpeed(smoothSpeedRef.current);
 
     let resolvedHeading = heading ?? 0;
@@ -76,7 +94,7 @@ export function useGeolocation() {
     };
 
     setLocation(loc);
-    setUserLocation({ lat: latitude, lng: longitude }, resolvedHeading, smoothSpeedRef.current, accuracy || 0);
+    setUserLocation({ lat: latitude, lng: longitude }, resolvedHeading, smoothSpeedRef.current, accuracy || 0, position.timestamp);
 
     if (followUserRef.current) {
       setMapCenter({ lat: latitude, lng: longitude });

@@ -10,8 +10,10 @@ import {
 } from '@/lib/maplibreIcons';
 import { speedToAutoZoom } from '@/lib/navigationEngine';
 
-const INTERPOLATION_DURATION_MS = 300;
+const MIN_INTERPOLATION_DURATION_MS = 300;
+const MAX_INTERPOLATION_DURATION_MS = 1500;
 const FOLLOW_THRESHOLD_PX = 60;
+const FOLLOW_RESUME_DELAY_MS = 10000;
 
 interface Props {
   map: maplibregl.Map | null;
@@ -35,6 +37,8 @@ export default function UserLocationLayer({ map }: Props) {
   const followActiveRef = useRef(true);
 
   const userLocation = useMapStore((s) => s.userLocation);
+  const userLocationTimestamp = useMapStore((s) => s.userLocationTimestamp);
+  const prevFixTimestampRef = useRef<number | null>(null);
   const userHeading = useMapStore((s) => s.userHeading);
   const userAccuracy = useMapStore((s) => s.userAccuracy);
   const userSpeed = useMapStore((s) => s.userSpeed);
@@ -73,11 +77,19 @@ export default function UserLocationLayer({ map }: Props) {
   useEffect(() => {
     if (!map) return;
 
-    const onUserDragStart = () => {
-      // During active turn-by-turn navigation the camera stays locked onto
-      // the route; ambient drags/zooms shouldn't drop follow mode.
-      if (isNavigatingRef.current) return;
+    // zoomstart/rotatestart/pitchstart/dragstart fire for ANY camera change,
+    // including our own programmatic map.easeTo() calls (follow-zoom during
+    // nav, the auto-tilt-on-nav-start). Only gesture-driven interactions
+    // carry `originalEvent` (set by maplibre's drag/zoom/rotate/pitch
+    // handlers) — without this check, our own follow animation would look
+    // like a user drag and immediately cancel itself.
+    const isUserGesture = (e: { originalEvent?: unknown }) => !!e?.originalEvent;
 
+    const onUserDragStart = (e: { originalEvent?: unknown }) => {
+      if (!isUserGesture(e)) return;
+
+      // The user is actively steering the camera (drag/zoom/rotate/tilt) —
+      // free it from follow mode immediately, even mid-navigation.
       userDragRef.current = true;
       clearTimeout(followTimeoutRef.current);
       if (followActiveRef.current) {
@@ -87,7 +99,9 @@ export default function UserLocationLayer({ map }: Props) {
       }
     };
 
-    const onUserDragEnd = () => {
+    const onUserDragEnd = (e: { originalEvent?: unknown }) => {
+      if (!isUserGesture(e)) return;
+
       // Start the "return to follow" countdown only once the user actually
       // stops interacting, not from the moment the gesture began — otherwise
       // follow can snap back while they're still panning/zooming.
@@ -98,13 +112,17 @@ export default function UserLocationLayer({ map }: Props) {
           setFollowActive(true);
           setFollowUser(true);
         }
-      }, 5000);
+      }, FOLLOW_RESUME_DELAY_MS);
     };
 
     map.on('dragstart', onUserDragStart);
     map.on('zoomstart', onUserDragStart);
+    map.on('rotatestart', onUserDragStart);
+    map.on('pitchstart', onUserDragStart);
     map.on('dragend', onUserDragEnd);
     map.on('zoomend', onUserDragEnd);
+    map.on('rotateend', onUserDragEnd);
+    map.on('pitchend', onUserDragEnd);
 
     initAccuracySource(map);
 
@@ -118,8 +136,12 @@ export default function UserLocationLayer({ map }: Props) {
     return () => {
       map.off('dragstart', onUserDragStart);
       map.off('zoomstart', onUserDragStart);
+      map.off('rotatestart', onUserDragStart);
+      map.off('pitchstart', onUserDragStart);
       map.off('dragend', onUserDragEnd);
       map.off('zoomend', onUserDragEnd);
+      map.off('rotateend', onUserDragEnd);
+      map.off('pitchend', onUserDragEnd);
       map.off('style.load', onStyleData);
       clearTimeout(followTimeoutRef.current);
       cancelAnimationFrame(rafIdRef.current);
@@ -187,11 +209,20 @@ export default function UserLocationLayer({ map }: Props) {
     animToRef.current = { lat: userLocation.lat, lng: userLocation.lng, heading: userHeading };
     animStartRef.current = performance.now();
 
+    // Size the glide to how long the real GPS gap was, so the dot keeps
+    // moving smoothly right up to the next fix instead of finishing early
+    // and sitting still (which reads as a jump-cut on the next update).
+    const prevFixTime = prevFixTimestampRef.current;
+    const duration = prevFixTime != null && userLocationTimestamp != null
+      ? Math.min(Math.max(userLocationTimestamp - prevFixTime, MIN_INTERPOLATION_DURATION_MS), MAX_INTERPOLATION_DURATION_MS)
+      : MIN_INTERPOLATION_DURATION_MS;
+    prevFixTimestampRef.current = userLocationTimestamp;
+
     const interpolate = (now: number) => {
       if (!blueDotRef.current || !markerRef.current || !map) return;
 
       const elapsed = now - animStartRef.current;
-      const t = Math.min(elapsed / INTERPOLATION_DURATION_MS, 1);
+      const t = Math.min(elapsed / duration, 1);
       const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
       const from = animFromRef.current;
@@ -212,7 +243,7 @@ export default function UserLocationLayer({ map }: Props) {
 
     cancelAnimationFrame(rafIdRef.current);
     rafIdRef.current = requestAnimationFrame(interpolate);
-  }, [map, userLocation, userHeading, setFollowUser]);
+  }, [map, userLocation, userLocationTimestamp, userHeading, setFollowUser]);
 
   useEffect(() => {
     if (!blueDotRef.current || !map || !userLocation) return;

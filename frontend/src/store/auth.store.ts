@@ -102,26 +102,35 @@ export const useAuthStore = create<AuthState>()(
           if (status === 401) {
             try {
               const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-              const storedRefresh = get().refreshToken;
               const axiosMod = (await import('axios')).default;
+              // Re-read from localStorage on every attempt (not just once,
+              // and not from the Zustand store — api.ts's own refresh path
+              // writes straight to localStorage without going through this
+              // store). If a concurrent refresh from that other path wins
+              // and rotates the token first, this picks up the new value
+              // instead of retrying with an already-stale one.
+              const getRefreshHeaders = () => {
+                const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
+                return {
+                  'Content-Type': 'application/json',
+                  ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+                };
+              };
               let res;
               try {
                 res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
                   withCredentials: true,
-                  headers: {
-                    'Content-Type': 'application/json',
-                    ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
-                  },
+                  headers: getRefreshHeaders(),
                 });
               } catch (firstErr: any) {
-                if (firstErr?.response?.status >= 500 || !firstErr?.response) {
+                // 409 = another in-flight request is already rotating this
+                // token (backend redis lock) — the session is fine, just
+                // retry shortly instead of treating it as an invalid token.
+                if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
                   await new Promise(r => setTimeout(r, 1500));
                   res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
                     withCredentials: true,
-                    headers: {
-                      'Content-Type': 'application/json',
-                      ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
-                    },
+                    headers: getRefreshHeaders(),
                   });
                 } else {
                   throw firstErr;

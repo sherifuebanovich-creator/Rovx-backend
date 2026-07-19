@@ -137,7 +137,13 @@ export class AuthService {
         this.logger.warn(`Redis unavailable for refresh lock, proceeding without it: ${(e as Error).message}`);
       }
       if (!locked) {
-        throw new UnauthorizedException('Token refresh in progress, try again');
+        // A concurrent refresh (from another in-flight request racing on the
+        // same expired access token) is already rotating this user's token.
+        // This is a 409, not a 401 — the session itself is fine, the caller
+        // just needs to retry shortly once the other request's new token
+        // lands. Frontend code distinguishes this from a genuinely invalid
+        // refresh token so it doesn't treat this as a logout signal.
+        throw new ConflictException('Token refresh in progress, try again');
       }
 
       try {
@@ -163,7 +169,7 @@ export class AuthService {
         await this.redis.del(lockKey);
       }
     } catch (e) {
-      if (e instanceof UnauthorizedException) throw e;
+      if (e instanceof UnauthorizedException || e instanceof ConflictException) throw e;
       this.logger.error(`Token refresh failed: ${e instanceof Error ? e.message : String(e)}`);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }

@@ -238,21 +238,14 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
         )}
       </div>
 
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.year')}</label>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))}
-            className="input-field text-sm">
-            {years.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1">
-          <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.fuel')}</label>
-          <input type="text" value={fuelType} disabled
-            className="input-field text-sm opacity-70" />
-        </div>
+      <div>
+        <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.year')}</label>
+        <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+          className="input-field text-sm">
+          {years.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
       </div>
 
       <div className="flex gap-2 pt-1">

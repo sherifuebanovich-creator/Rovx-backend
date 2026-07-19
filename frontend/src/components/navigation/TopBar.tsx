@@ -1,5 +1,5 @@
 'use client';
-import { FaSearch, FaBars, FaBell, FaSun, FaMoon, FaCube, FaLayerGroup, FaSatellite, FaCrosshairs } from 'react-icons/fa';
+import { FaSearch, FaBars, FaBell, FaSun, FaMoon, FaCube, FaLayerGroup, FaSatellite, FaCrosshairs, FaTrafficLight } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { motion } from 'framer-motion';
@@ -24,6 +24,8 @@ export function TopBar() {
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setFollowUser = useMapStore(s => s.setFollowUser);
   const show3D = useMapStore(s => s.show3D);
+  const showTraffic = useMapStore(s => s.showTraffic);
+  const setShowTraffic = useMapStore(s => s.setShowTraffic);
   const { user } = useAuthStore();
   const router = useRouter();
   const hasRoute = origin && destination;
@@ -129,6 +131,15 @@ export function TopBar() {
               </>
             )}
           </div>
+
+          {/* Traffic flow toggle */}
+          <button
+            onClick={() => setShowTraffic(!showTraffic)}
+            className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all ${showTraffic ? 'text-primary-400' : 'text-gray-400'}`}
+            title={t('topbar.traffic') || 'Пробки'}
+          >
+            <FaTrafficLight size={13} />
+          </button>
 
           {/* My location */}
           <button

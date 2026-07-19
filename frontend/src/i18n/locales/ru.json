@@ -24,7 +24,8 @@
   },
   "topbar": {
     "to": "Куда",
-    "whereTo": "Куда поедем?"
+    "whereTo": "Куда поедем?",
+    "traffic": "Пробки"
   },
   "bottombar": {
     "map": "Карта",

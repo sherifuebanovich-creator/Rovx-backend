@@ -33,7 +33,8 @@
     "view3dBuildings": "3D Buildings",
     "myLocation": "My location",
     "lightTheme": "Light theme",
-    "darkTheme": "Dark theme"
+    "darkTheme": "Dark theme",
+    "traffic": "Traffic"
   },
   "bottombar": {
     "map": "Map",

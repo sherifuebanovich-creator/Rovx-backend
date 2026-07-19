@@ -16,6 +16,7 @@ import UserLocationLayer from './UserLocationLayer';
 import MapFeaturesLayer from './MapFeaturesLayer';
 import FriendMarkers from './FriendMarkers';
 import TrafficLayer from './TrafficLayer';
+import TrafficFlowLayer from './TrafficFlowLayer';
 
 function escapeHtml(text: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -568,6 +569,7 @@ export default function MapViewGL() {
       <UserLocationLayer map={mapRef.current} />
       <MapFeaturesLayer map={mapRef.current} />
       <FriendMarkers map={mapRef.current} />
+      <TrafficFlowLayer map={mapRef.current} />
       <TrafficLayer map={mapRef.current} />
     </div>
   );

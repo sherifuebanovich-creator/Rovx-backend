@@ -67,25 +67,34 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
-        const refreshHeaders = {
-          'Content-Type': 'application/json',
-          ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+        // Re-read on every attempt, not just once — if a concurrent refresh
+        // (from another request racing on the same expired token) wins and
+        // rotates the token first, localStorage/cookies will already carry
+        // the new value by the time we retry, and reusing a captured stale
+        // value here would make the retry fail again with the same token.
+        const getRefreshHeaders = () => {
+          const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
+          return {
+            'Content-Type': 'application/json',
+            ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+          };
         };
 
         let res;
         try {
           res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
             withCredentials: true,
-            headers: refreshHeaders,
+            headers: getRefreshHeaders(),
           });
         } catch (firstErr: any) {
-          // Retry once — Render cold start or transient backend error
-          if (firstErr?.response?.status >= 500 || !firstErr?.response) {
+          // Retry once — Render cold start, transient backend error, or a
+          // 409 from a concurrent refresh already rotating this token
+          // (backend redis lock) that just needs a moment to land.
+          if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
             await new Promise(r => setTimeout(r, 1500));
             res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
               withCredentials: true,
-              headers: refreshHeaders,
+              headers: getRefreshHeaders(),
             });
           } else {
             throw firstErr;

@@ -6,6 +6,7 @@ import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { routesApi, usersApi } from '@/lib/api';
 import { resetRerouteCooldown } from '@/lib/navigationEngine';
+import { haversineDist } from '@/lib/geo';
 import { RouteResult, RouteType, Vehicle } from '@/types';
 import { getWeather, WeatherData } from '@/lib/weather';
 import { useTranslation } from 'react-i18next';
@@ -39,6 +40,8 @@ export function RoutePanel() {
   const setActiveTrip = useMapStore(s => s.setActiveTrip);
   const setNavigation = useMapStore(s => s.setNavigation);
   const vehicleMode = useMapStore(s => s.vehicleMode);
+  const setStoreSelectedVehicle = useMapStore(s => s.setSelectedVehicle);
+  const userLocation = useMapStore(s => s.userLocation);
   const { user } = useAuthStore();
 
   const [isCalculating, setIsCalculating] = useState(false);
@@ -59,6 +62,25 @@ export function RoutePanel() {
       })
       .catch(() => {});
   }, [user]);
+
+  useEffect(() => {
+    setStoreSelectedVehicle(selectedVehicle);
+  }, [selectedVehicle, setStoreSelectedVehicle]);
+
+  // Current-location weather, refreshed as the user actually moves rather
+  // than pinned to whatever origin point was picked for the route.
+  const lastWeatherFetchRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
+  useEffect(() => {
+    if (!userLocation) return;
+    const last = lastWeatherFetchRef.current;
+    const now = Date.now();
+    const movedFar = !last || haversineDist(last.lat, last.lng, userLocation.lat, userLocation.lng) > 2000;
+    const isStale = !last || now - last.time > 10 * 60 * 1000;
+    if (!movedFar && !isStale) return;
+
+    lastWeatherFetchRef.current = { lat: userLocation.lat, lng: userLocation.lng, time: now };
+    getWeather(userLocation.lat, userLocation.lng).then(setWeatherOrigin).catch(() => {});
+  }, [userLocation?.lat, userLocation?.lng]);
 
   const calcAttemptedRef = useRef(false);
   useEffect(() => {
@@ -96,8 +118,12 @@ export function RoutePanel() {
       setCalculatedRoutes(valid);
       if (valid.length > 0) setSelectedRoute(valid[0]);
 
-      // Fetch weather at origin and destination
-      getWeather(origin.lat, origin.lng).then(setWeatherOrigin).catch(() => {});
+      // Departure weather prefers live geolocation (kept fresh by the effect
+      // above); only fall back to the route's origin point if we don't have
+      // a GPS fix yet.
+      if (!userLocation) {
+        getWeather(origin.lat, origin.lng).then(setWeatherOrigin).catch(() => {});
+      }
       getWeather(destination.lat, destination.lng).then(setWeatherDest).catch(() => {});
     } catch (err) {
       toast.error(t('routePanel.routeCalcFailed'));

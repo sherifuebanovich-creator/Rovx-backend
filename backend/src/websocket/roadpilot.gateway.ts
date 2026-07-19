@@ -437,15 +437,17 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { groupId: string; content: string; replyTo?: string; images?: string[]; sticker?: string; audioUrl?: string; videoUrl?: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
-    if (!data.content?.trim() && !data.images?.length && !data.sticker && !data.audioUrl && !data.videoUrl) return;
-    if (data.content && data.content.trim().length > 2000) return;
+    if (!userId) return { error: 'Not authenticated' };
+    if (!data.content?.trim() && !data.images?.length && !data.sticker && !data.audioUrl && !data.videoUrl) {
+      return { error: 'Empty message' };
+    }
+    if (data.content && data.content.trim().length > 2000) return { error: 'Message too long' };
 
     try {
       const member = await this.prisma.groupMember.findFirst({
         where: { groupId: data.groupId, userId },
       });
-      if (!member || member.isBanned) return;
+      if (!member || member.isBanned) return { error: 'Not a member' };
 
       const message = await this.prisma.groupMessage.create({
         data: {
@@ -463,8 +465,10 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       });
 
       this.server.to(`group:${data.groupId}`).emit('group:message', message);
+      return message;
     } catch (err) {
       this.logger.warn(`Group message failed for ${userId}: ${(err as Error).message}`);
+      return { error: 'Failed to send message' };
     }
   }
 

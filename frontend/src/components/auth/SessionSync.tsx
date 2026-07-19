@@ -2,11 +2,10 @@
 import { useSession } from 'next-auth/react';
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth.store';
-import Cookies from 'js-cookie';
 
 export function SessionSync() {
   const { data: session, status } = useSession();
-  const { setTokens, initAuth } = useAuthStore();
+  const { setTokens, initAuth, accessToken } = useAuthStore();
   const syncedRef = useRef(false);
   const sessionRef = useRef(session);
 
@@ -16,9 +15,13 @@ export function SessionSync() {
 
     if (status === 'authenticated' && session) {
       const { accessToken: sessionToken } = session as any;
-      const cookieToken = Cookies.get('access_token');
 
-      if (sessionToken && !cookieToken) {
+      // Compare against the store's own token, not cookie *presence* — a
+      // leftover access_token cookie from a previous/different session
+      // (stale, expired, or a different account) would otherwise block
+      // this sync forever and leave the app running on the wrong token
+      // after a fresh Google sign-in.
+      if (sessionToken && sessionToken !== accessToken) {
         setTokens(sessionToken, '');
         // AuthInit may have already bailed — re-trigger initAuth to fetch /auth/me
         setTimeout(() => { initAuth(); }, 100);
@@ -31,7 +34,7 @@ export function SessionSync() {
     if (status === 'unauthenticated') {
       syncedRef.current = false;
     }
-  }, [status, session, setTokens, initAuth]);
+  }, [status, session, setTokens, initAuth, accessToken]);
 
   return null;
 }

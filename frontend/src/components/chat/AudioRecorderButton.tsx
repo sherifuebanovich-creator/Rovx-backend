@@ -113,11 +113,20 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       }
 
       const socket = getSocket();
-      socket?.emit('group:message', {
-        groupId,
-        content: '',
-        audioUrl,
+      if (!socket?.connected) {
+        toast.error('Нет подключения к серверу');
+        return;
+      }
+
+      const delivered = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 8000);
+        socket.emit('group:message', { groupId, content: '', audioUrl }, (ack: any) => {
+          clearTimeout(timeout);
+          resolve(!ack?.error);
+        });
       });
+      if (!delivered) throw new Error('Message delivery not confirmed');
+
       onSent?.();
     } catch (err: any) {
       console.error('Audio send error:', err?.response?.data || err.message || err);

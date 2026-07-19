@@ -26,6 +26,7 @@ export function NavigationHUD() {
   const userLocation = useMapStore(s => s.userLocation);
   const userHeading = useMapStore(s => s.userHeading);
   const userSpeed = useMapStore(s => s.userSpeed);
+  const selectedVehicle = useMapStore(s => s.selectedVehicle);
   const isAiCoDriverEnabled = useMapStore(s => s.isAiCoDriverEnabled);
   const setAiCoDriver = useMapStore(s => s.setAiCoDriver);
   const clearRoute = useMapStore(s => s.clearRoute);
@@ -45,9 +46,19 @@ export function NavigationHUD() {
   const engineInitRef = useRef(false);
   const handleArrivalRef = useRef<() => Promise<void>>(async () => {});
   const handleRerouteRef = useRef<() => Promise<void>>(async () => {});
+  // ETA should read "--" until the trip actually gets moving, then track
+  // the current pace — not the route's precomputed average.
+  const movementStartedRef = useRef(false);
+  const lastMovingSpeedKmhRef = useRef(0);
   userLocationRef.current = userLocation;
   userHeadingRef.current = userHeading;
   userSpeedRef.current = userSpeed;
+
+  const MOVING_SPEED_THRESHOLD_KMH = 2;
+  if (userSpeed > MOVING_SPEED_THRESHOLD_KMH) {
+    movementStartedRef.current = true;
+    lastMovingSpeedKmhRef.current = userSpeed;
+  }
 
   const formatDistance = (meters: number) => {
     if (meters >= 1000) return `${(meters / 1000).toFixed(1)} ${t('navigationHud.km')}`;
@@ -168,6 +179,8 @@ export function NavigationHUD() {
     if (navigation.isNavigating) {
       engineInitRef.current = false;
       legAnnouncedRef.current = -1;
+      movementStartedRef.current = false;
+      lastMovingSpeedKmhRef.current = 0;
     }
   }, [navigation.isNavigating]);
 
@@ -300,11 +313,18 @@ export function NavigationHUD() {
   const remainingDist = userLocation && selectedRoute
     ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
     : null;
-  const remainingSec = userLocation && selectedRoute
-    ? getRemainingDuration(
-        userLocation.lat, userLocation.lng, selectedRoute.polyline,
-        selectedRoute.duration, selectedRoute.distance * 1000,
-      )
+  // Before the trip starts moving, show "--" instead of a route-average
+  // guess. Once moving, derive ETA from the actual current pace (falling
+  // back to the last known moving speed through brief stops) so it doesn't
+  // flicker to "--" at a red light.
+  const remainingSec = userLocation && selectedRoute && remainingDist !== null && movementStartedRef.current
+    ? (lastMovingSpeedKmhRef.current > 0
+        ? (remainingDist / 1000) / (lastMovingSpeedKmhRef.current / 3.6) * 3600
+        : getRemainingDuration(
+            userLocation.lat, userLocation.lng, selectedRoute.polyline,
+            selectedRoute.duration, selectedRoute.distance * 1000,
+            selectedVehicle?.type,
+          ))
     : null;
   const remainingMin = remainingSec != null ? remainingSec / 60 : null;
   const remainingTime = remainingMin != null

@@ -95,6 +95,7 @@ const OSM_TAG_MAP: Record<string, string[]> = {
   TOURIST_ATTRACTION: ['["tourism"="information"]', '["tourism"="artwork"]', '["tourism"="theme_park"]'],
   POLICE: ['["amenity"="police"]'],
   TRAFFIC_LIGHT: ['["highway"="traffic_signals"]'],
+  SPEED_CAMERA: ['["highway"="speed_camera"]'],
 };
 
 const OSM_KEYS_CATEGORIES = new Set(Object.keys(OSM_TAG_MAP));
@@ -188,11 +189,25 @@ export class MapService {
 
     const query = `[out:json];(${filters.join('')});out body 50;`;
 
+    // Two Overpass mirrors — the public overpass-api.de instance rate-limits
+    // and times out under load often enough that a single-endpoint call
+    // silently drops POIs (including speed cameras/traffic lights) from the
+    // map for the rest of the cache TTL.
+    const overpassUrls = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
     try {
-      const res = await axios.post('https://overpass-api.de/api/interpreter',
-        `data=${encodeURIComponent(query)}`,
-        { timeout: 20000 },
-      );
+      let res: any = null;
+      let lastErr: unknown = null;
+      for (const url of overpassUrls) {
+        try {
+          res = await axios.post(url, `data=${encodeURIComponent(query)}`, { timeout: 20000 });
+          break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (!res) throw lastErr;
+
       const results = (res.data.elements || []).map((el: any) => {
         const t = el.tags || {};
         return {
@@ -260,6 +275,7 @@ export class MapService {
       [OSM_TAG_MAP.TOURIST_ATTRACTION, 'TOURIST_ATTRACTION'],
       [OSM_TAG_MAP.POLICE, 'POLICE'],
       [OSM_TAG_MAP.TRAFFIC_LIGHT, 'TRAFFIC_LIGHT'],
+      [OSM_TAG_MAP.SPEED_CAMERA, 'SPEED_CAMERA'],
     ];
     for (const [tagExprs, category] of tagMap) {
       for (const expr of tagExprs) {

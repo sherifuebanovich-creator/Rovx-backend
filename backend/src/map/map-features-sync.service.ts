@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import axios from 'axios';
 
 const OVERPASS_URLS = [
@@ -36,7 +37,7 @@ export class MapFeaturesSyncService {
   private readonly logger = new Logger(MapFeaturesSyncService.name);
   private isSyncing = false;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
   @Cron('0 3 * * 0', { timeZone: 'Asia/Tashkent' })
   async handleWeeklySync() {
@@ -316,7 +317,90 @@ out body;
       })));
     }
 
+    // The DB is only ever populated by the weekly whole-country cron sync
+    // (which, against public Overpass instances, is prone to timing out on
+    // large countries and can go weeks without ever completing for a given
+    // area). Rather than leave the map empty until that job happens to
+    // succeed, fall back to a live, viewport-scoped Overpass query — the
+    // same approach already used for every other POI category — and
+    // opportunistically persist what it finds so the area is DB-served
+    // (fast, no live fetch) on subsequent requests.
+    if (results.length === 0 && (wantSignals || wantSpeedCameras)) {
+      const live = await this.fetchLiveFeaturesForBbox(minLat, minLng, maxLat, maxLng);
+      if (wantSignals) results.push(...live.signals);
+      if (wantSpeedCameras) results.push(...live.cameras);
+    }
+
     return results;
+  }
+
+  /**
+   * Live, viewport-scoped Overpass fallback for when the pre-synced DB has
+   * nothing for this area yet. Rate-limited per rounded map tile (not per
+   * exact bbox, since panning by a few pixels shouldn't re-hit Overpass)
+   * so genuinely feature-empty areas don't get re-queried on every pan.
+   */
+  private async fetchLiveFeaturesForBbox(
+    minLat: number, minLng: number, maxLat: number, maxLng: number,
+  ): Promise<{ signals: any[]; cameras: any[] }> {
+    const tileKey = `mapfeatures:live:${minLat.toFixed(2)},${minLng.toFixed(2)},${maxLat.toFixed(2)},${maxLng.toFixed(2)}`;
+    const alreadyTried = await this.redis.exists(tileKey).catch(() => false);
+    if (alreadyTried) return { signals: [], cameras: [] };
+    await this.redis.set(tileKey, '1', 24 * 60 * 60).catch(() => {});
+
+    const query = `[out:json][timeout:20];(node["highway"="speed_camera"](${minLat},${minLng},${maxLat},${maxLng});node["highway"="traffic_signals"](${minLat},${minLng},${maxLat},${maxLng}););out body;`;
+
+    let elements: OverpassElement[] = [];
+    for (const url of OVERPASS_URLS) {
+      try {
+        const res = await axios.post(url, `data=${encodeURIComponent(query)}`, {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 9000,
+        });
+        elements = res.data?.elements || [];
+        break;
+      } catch (err) {
+        this.logger.warn(`Live bbox Overpass fetch failed on ${url}: ${(err as Error).message}`);
+      }
+    }
+
+    const signals: any[] = [];
+    const cameras: any[] = [];
+    for (const el of elements) {
+      if (!el.lat || !el.lon) continue;
+      const tags = el.tags || {};
+      const osmId = `osm_${el.id}`;
+
+      if (tags.highway === 'speed_camera') {
+        try { await this.upsertSpeedCamera(el, '', osmId); } catch { /* best-effort cache */ }
+        cameras.push({
+          id: osmId,
+          type: 'speed_camera',
+          lat: el.lat,
+          lng: el.lon,
+          countryCode: '',
+          tags: JSON.stringify({
+            cameraType: this.detectCameraType(tags),
+            maxSpeed: tags.maxspeed ? parseInt(tags.maxspeed, 10) : undefined,
+            road: tags.name || tags.operator,
+          }),
+          updatedAt: new Date(),
+        });
+      } else if (tags.highway === 'traffic_signals') {
+        try { await this.upsertMapFeature(el, '', osmId); } catch { /* best-effort cache */ }
+        signals.push({
+          id: osmId,
+          type: 'traffic_signals',
+          lat: el.lat,
+          lng: el.lon,
+          countryCode: '',
+          tags: JSON.stringify(tags),
+          updatedAt: new Date(),
+        });
+      }
+    }
+
+    return { signals, cameras };
   }
 
   async getStats() {
