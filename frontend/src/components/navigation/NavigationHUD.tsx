@@ -16,6 +16,9 @@ import {
 } from '@/lib/speedCameraMonitor';
 import { RouteResult } from '@/types';
 
+const NEAR_ANNOUNCE_METERS = 150;
+const NOW_ANNOUNCE_METERS = 40;
+
 export function NavigationHUD() {
   const navigation = useMapStore(s => s.navigation);
   const selectedRoute = useMapStore(s => s.selectedRoute);
@@ -43,6 +46,9 @@ export function NavigationHUD() {
   const userHeadingRef = useRef(userHeading);
   const userSpeedRef = useRef(userSpeed);
   const legAnnouncedRef = useRef(-1);
+  // 0 = only the initial "leg started" callout has been said, 1 = the near
+  // (~150m) re-announcement has fired, 2 = the final (~40m) one has too.
+  const voiceTierRef = useRef<0 | 1 | 2>(0);
   const engineInitRef = useRef(false);
   const handleArrivalRef = useRef<() => Promise<void>>(async () => {});
   const handleRerouteRef = useRef<() => Promise<void>>(async () => {});
@@ -179,12 +185,14 @@ export function NavigationHUD() {
     if (navigation.isNavigating) {
       engineInitRef.current = false;
       legAnnouncedRef.current = -1;
+      voiceTierRef.current = 0;
       movementStartedRef.current = false;
       lastMovingSpeedKmhRef.current = 0;
     }
   }, [navigation.isNavigating]);
 
-  // Voice guidance on leg change
+  // Voice guidance on leg change — initial callout as soon as a new
+  // maneuver becomes current.
   useEffect(() => {
     if (!navigation.isNavigating || !selectedRoute) return;
     const instructions = selectedRoute.instructions || [];
@@ -196,8 +204,32 @@ export function NavigationHUD() {
         announceNavigation(inst.text, inst.type, inst.distance, inst.streetName);
       }
       legAnnouncedRef.current = leg;
+      voiceTierRef.current = 0;
     }
   }, [navigation.currentLeg, navigation.isNavigating, selectedRoute, isAiCoDriverEnabled, announceNavigation]);
+
+  // Progressive re-announcement as the maneuver gets closer — Yandex-style
+  // "через 100 метров..." followed by a final callout right before the
+  // turn, instead of only ever saying it once when the leg starts.
+  useEffect(() => {
+    if (!navigation.isNavigating || !selectedRoute || !isAiCoDriverEnabled) return;
+    const instructions = selectedRoute.instructions || [];
+    const leg = navigation.currentLeg;
+    const inst = instructions[leg];
+    if (!inst) return;
+
+    const dist = navigation.distanceToManeuver;
+    // Only worth a repeat callout if the leg was long enough that the
+    // initial announcement's distance was meaningfully larger than this
+    // threshold — otherwise it'd just repeat almost the same distance.
+    if (voiceTierRef.current < 1 && dist <= NEAR_ANNOUNCE_METERS && inst.distance > NEAR_ANNOUNCE_METERS) {
+      voiceTierRef.current = 1;
+      announceNavigation(inst.text, inst.type, dist, inst.streetName);
+    } else if (voiceTierRef.current < 2 && dist <= NOW_ANNOUNCE_METERS && inst.distance > NOW_ANNOUNCE_METERS) {
+      voiceTierRef.current = 2;
+      announceNavigation(inst.text, inst.type, dist, inst.streetName);
+    }
+  }, [navigation.distanceToManeuver, navigation.isNavigating, navigation.currentLeg, selectedRoute, isAiCoDriverEnabled, announceNavigation]);
 
   // Speed camera monitoring — throttled to avoid API flood
   const lastCameraFetchRef = useRef(0);

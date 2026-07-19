@@ -130,7 +130,7 @@ export const useMapStore = create<MapState>((set) => ({
   mapCenter: { lat: 0, lng: 0 }, // Will be set by geolocation
   zoom: 13,
   mapStyle: 'streets',
-  showTraffic: false,
+  showTraffic: true,
   followUser: true,
 
   // Route
