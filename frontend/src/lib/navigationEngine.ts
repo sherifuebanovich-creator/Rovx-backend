@@ -14,13 +14,20 @@ export interface NavigationUpdate {
 }
 
 const ARRIVAL_THRESHOLD_METERS = 50;
-const OFF_ROUTE_THRESHOLD_METERS = 30;
+// Tight enough to notice a real wrong turn within a couple of seconds of
+// driving instead of waiting for tens of metres of drift to accumulate,
+// while staying comfortably above typical smartphone GPS noise (~5-15m
+// in open sky) so it doesn't false-trigger while genuinely on the route.
+const OFF_ROUTE_THRESHOLD_METERS = 18;
 const LEG_ADVANCE_DISTANCE_METERS = 15;
 const WRONG_WAY_ANGLE_DEG = 100;
 const FORWARD_SEARCH_RADIUS_M = 200;
 
 let lastRerouteTime = 0;
-const REROUTE_COOLDOWN_MS = 15000;
+// Shorter than before so a reroute that doesn't fully resolve the
+// deviation (e.g. still off-route on the newly calculated route) can be
+// retried sooner instead of leaving the driver stuck on a stale route.
+const REROUTE_COOLDOWN_MS = 7000;
 
 export function resetRerouteCooldown() {
   lastRerouteTime = 0;
