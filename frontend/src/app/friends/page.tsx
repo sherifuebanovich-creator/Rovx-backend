@@ -53,7 +53,7 @@ export default function FriendsPage() {
     try {
       await friendsApi.sendRequest(userId);
       toast.success(t('friends.requestSent'));
-      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFriend: true, requestSent: true } : u));
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, requestSent: true } : u));
     } catch (err: any) {
       toast.error(err?.response?.data?.message || t('friends.error'));
     }
@@ -137,7 +137,7 @@ export default function FriendsPage() {
               ) : searchResults.map(u => (
                 <div key={u.id} className="card p-3 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white font-bold text-sm">
-                    {(u.displayName ?? '?')[0].toUpperCase()}
+                    {(u.displayName?.[0] || '?').toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{u.displayName}</p>
@@ -172,7 +172,7 @@ export default function FriendsPage() {
             ) : requests.map(r => (
               <div key={r.id} className="card p-3 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white font-bold text-sm">
-                  {(r.user.displayName ?? '?')[0].toUpperCase()}
+                  {(r.user.displayName?.[0] || '?').toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <p className="text-white text-sm font-medium">{r.user.displayName}</p>
@@ -209,7 +209,7 @@ export default function FriendsPage() {
               <div key={f.id} className="card p-3 flex items-center gap-3">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white font-bold text-sm">
-                    {(f.displayName ?? '?')[0].toUpperCase()}
+                    {(f.displayName?.[0] || '?').toUpperCase()}
                   </div>
                   <FaCircle size={8} className={`absolute -top-0.5 -right-0.5 ${f.isOnline ? 'text-green-400' : 'text-gray-600'}`} />
                 </div>

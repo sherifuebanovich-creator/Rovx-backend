@@ -524,6 +524,7 @@
     "back": "Back",
     "title": "Achievements",
     "earned": "Earned",
+    "empty": "No data",
     "list": {
       "firstTrip": "First Trip",
       "firstTripDesc": "Complete your first navigation",

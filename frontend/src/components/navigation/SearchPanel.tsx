@@ -190,6 +190,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
 
   const debouncedFetch = useRef<ReturnType<typeof setTimeout>>();
   const fetchIdRef = useRef(0);
+  const fullSearchIdRef = useRef(0);
 
   // Clear any pending debounced fetch on unmount — otherwise it still fires
   // after the panel closes and writes stale suggestions into the shared
@@ -277,21 +278,36 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   }, [activeIdx]);
 
   const selectSuggestion = (item: SearchSuggestion) => {
-    setQuery(item.name);
-    setSearchQuery(item.name);
     setSearchSuggestions([]);
     addToSearchHistory(item);
+    setActiveIdx(-1);
+
+    // Picking a result while typing a custom "From" address was being
+    // treated the same as picking a destination — it opened the
+    // navigate-here sheet instead of actually setting the origin.
+    if (inputMode === 'origin') {
+      setOrigin({ lat: item.lat, lng: item.lng, name: item.name });
+      setQuery('');
+      setSearchQuery('');
+      setInputMode('destination');
+      setTimeout(() => inputRef.current?.focus(), 50);
+      return;
+    }
+
+    setQuery(item.name);
+    setSearchQuery(item.name);
     setSelectedItem(item);
     setSelectedSearchResult(item);
-    setActiveIdx(-1);
   };
 
   const performFullSearch = useCallback(async (q: string) => {
     if (q.length < 1) return;
+    const thisSearch = ++fullSearchIdRef.current;
     setIsFullSearching(true);
     setSearchSuggestions([]);
     try {
       const res = await mapApi.search(q, userLocation?.lat, userLocation?.lng, 50);
+      if (thisSearch !== fullSearchIdRef.current) return;
       const data = res.data?.data || res.data || [];
       setSearchResults(data);
       if (data.length > 0) {
@@ -299,9 +315,9 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         setZoom(14);
       }
     } catch {
-      setSearchResults([]);
+      if (thisSearch === fullSearchIdRef.current) setSearchResults([]);
     } finally {
-      setIsFullSearching(false);
+      if (thisSearch === fullSearchIdRef.current) setIsFullSearching(false);
     }
   }, [userLocation, setMapCenter, setZoom]);
 
@@ -561,7 +577,9 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     setQuery('');
     setSearchSuggestions([]);
     setIsFullSearching(true);
+    const thisSearch = ++fullSearchIdRef.current;
     mapApi.getNearby(userLocation.lat, userLocation.lng, 15, cat).then((res) => {
+      if (thisSearch !== fullSearchIdRef.current) return;
       const objs = (res.data.data || res.data || []).map((o: any) => ({
         ...o,
         category: o.category || cat,
@@ -577,8 +595,10 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         setSearchResults([]);
         toast(t('searchPanel.noCategoryResults'));
       }
-    }).catch(() => { setSearchResults([]); }).finally(() => {
-      setIsFullSearching(false);
+    }).catch(() => {
+      if (thisSearch === fullSearchIdRef.current) setSearchResults([]);
+    }).finally(() => {
+      if (thisSearch === fullSearchIdRef.current) setIsFullSearching(false);
     });
   };
 

@@ -83,6 +83,10 @@ function PremiumPage() {
   };
 
   const handleSubscribe = async (tier: PremiumTier) => {
+    // Covers the whole time the payment modal is open (not just the
+    // synchronous state update), so the tier button stays visibly
+    // disabled/loading instead of looking clickable again immediately.
+    setSubscribeLoading(tier.name);
     setPaymentTier(tier);
   };
 
@@ -149,7 +153,6 @@ function PremiumPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
             {tiers.filter((tier: PremiumTier) => tier.tier > 0).map((tier: PremiumTier, idx: number) => {
               const isActive = mySub?.name === tier.name && mySub?.active;
-              const isCurrent = mySub?.name === tier.name;
               const isPopular = tier.tier === 2;
               const isBest = tier.tier === 3;
 
@@ -243,8 +246,6 @@ function PremiumPage() {
                       <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     ) : isActive ? (
                       <><FaTimes size={12} /> {t('premium.cancelSubscription')}</>
-                    ) : isCurrent ? (
-                      t('premium.currentPlan')
                     ) : (
                       <><FaCrown size={12} /> {t('premium.subscribe')}</>
                     )}
@@ -262,7 +263,7 @@ function PremiumPage() {
             tierName={paymentTier.name}
             tierLabel={paymentTier.label}
             price={getTierPrice(paymentTier)}
-            onClose={() => setPaymentTier(null)}
+            onClose={() => { setPaymentTier(null); setSubscribeLoading(null); }}
           />
         )}
       </AnimatePresence>

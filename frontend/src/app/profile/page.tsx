@@ -120,6 +120,7 @@ export default function ProfilePage() {
       });
       setEditing(false);
       setAvatarFile(null);
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
       setAvatarPreview(null);
       toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
@@ -139,7 +140,7 @@ export default function ProfilePage() {
       const newVehicle = res.data.data || res.data;
       setVehicles(prev => [...prev, newVehicle]);
       setShowAddForm(false);
-      setAddForm({ type: 'CAR', make: '', model: '', year: currentYear });
+      setAddForm({ type: 'TRUCK', make: '', model: '', year: currentYear });
       toast.success(t('profile.vehicleAdded'));
     } catch {
       toast.error(t('profile.vehicleAddFailed'));
@@ -203,7 +204,7 @@ export default function ProfilePage() {
                   ) : user.avatar ? (
                     <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" />
                   ) : (
-                    <span>{(user.displayName ?? '?')[0].toUpperCase()}</span>
+                    <span>{(user.displayName?.[0] || '?').toUpperCase()}</span>
                   )}
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <FaCamera size={20} className="text-white" />
@@ -213,7 +214,7 @@ export default function ProfilePage() {
               </>
             ) : (
               <>
-                {user.avatar ? <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" /> : (user.displayName ?? '?')[0].toUpperCase()}
+                {user.avatar ? <Image src={user.avatar} alt={user.displayName} width={96} height={96} className="object-cover" /> : (user.displayName?.[0] || '?').toUpperCase()}
               </>
             )}
             <button onClick={startEditing} className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center border-2 border-dark-bg">

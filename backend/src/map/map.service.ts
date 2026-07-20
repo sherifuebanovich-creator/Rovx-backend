@@ -673,7 +673,7 @@ export class MapService {
   }
 
   async getBookmarks(userId: string) {
-    return this.prisma.bookmark.findMany({
+    const bookmarks = await this.prisma.bookmark.findMany({
       where: { userId },
       include: {
         mapObject: {
@@ -682,6 +682,14 @@ export class MapService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Flatten category/rating onto the bookmark itself — the frontend reads
+    // them unnested, and a bookmark's mapObject link is optional anyway.
+    return bookmarks.map(({ mapObject, ...b }) => ({
+      ...b,
+      category: mapObject?.category,
+      rating: mapObject?.rating,
+      images: mapObject?.images,
+    }));
   }
 
   async deleteBookmark(id: string, userId: string) {

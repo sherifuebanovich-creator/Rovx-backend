@@ -213,7 +213,7 @@ export class SocialService {
     const member = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
-    if (!member?.isAdmin) throw new ForbiddenException('Only admin can edit group');
+    if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Only admin can edit group');
 
     if (data.name && data.name !== group.name) {
       const existing = await this.prisma.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
@@ -528,7 +528,10 @@ export class SocialService {
     const member = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
-    if (!member?.isAdmin) throw new ForbiddenException('Нет прав администратора');
+    // A banned admin must lose admin powers immediately, not just after
+    // someone remembers to demote them — otherwise they can e.g. unban
+    // themselves right back.
+    if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Нет прав администратора');
     return member;
   }
 
@@ -548,7 +551,7 @@ export class SocialService {
       const member = await this.prisma.groupMember.findUnique({
         where: { groupId_userId: { groupId, userId } },
       });
-      if (!member?.isAdmin) throw new ForbiddenException('Нет прав на удаление');
+      if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Нет прав на удаление');
     }
 
     await this.prisma.groupMessage.update({ where: { id: messageId }, data: { isDeleted: true } });
@@ -604,6 +607,15 @@ export class SocialService {
     const group = await this.prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new NotFoundException('Group not found');
     if (group.ownerId === targetUserId) throw new ForbiddenException('Нельзя удалить владельца');
+
+    const targetMember = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+    });
+    // Same rule as banMember — otherwise any admin could kick every other
+    // admin (promote/demote are already owner-only).
+    if (targetMember?.isAdmin && group.ownerId !== userId) {
+      throw new ForbiddenException('Только владелец может удалить администратора');
+    }
 
     const { count } = await this.prisma.groupMember.deleteMany({ where: { groupId, userId: targetUserId } });
     if (count === 0) throw new NotFoundException('Пользователь не в группе');

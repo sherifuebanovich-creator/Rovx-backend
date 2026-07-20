@@ -78,7 +78,7 @@ export default function GroupChatPage() {
   const [joining, setJoining] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; senderId: string; x: number; y: number } | null>(null);
-  const [memberAction, setMemberAction] = useState<{ userId: string; username: string } | null>(null);
+  const [memberAction, setMemberAction] = useState<{ userId: string; username: string; isAdmin: boolean } | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
   const [showReadBy, setShowReadBy] = useState<string | null>(null);
@@ -395,13 +395,17 @@ export default function GroupChatPage() {
       toast.error(t('groupDetails.noConnection'));
       return;
     }
-    ws.emit('group:message', {
-      groupId,
-      content: input.trim(),
-      images: pendingImages.length > 0 ? pendingImages : undefined,
-    });
+    const trimmed = input.trim();
+    const images = pendingImages.length > 0 ? pendingImages : undefined;
     setInput('');
     setPendingImages([]);
+    ws.emit('group:message', { groupId, content: trimmed, images }, (ack: any) => {
+      if (ack?.error) {
+        toast.error('Не удалось отправить сообщение');
+        setInput(trimmed);
+        setPendingImages(images || []);
+      }
+    });
   }, [input, pendingImages, groupId, t]);
 
   // Insert an emoji into the compose field instead of sending it as a
@@ -441,6 +445,11 @@ export default function GroupChatPage() {
   const leaveGroup = async () => {
     try {
       await socialApi.leaveGroup(groupId);
+      // The REST call removes membership server-side, but the socket stays
+      // subscribed to the group's room until it explicitly leaves — without
+      // this it keeps receiving group:message/group:updated events for a
+      // group the user is no longer part of.
+      getSocket()?.emit('leave:group', { groupId });
       setIsMember(false);
       setMessages([]);
       toast.success(t('groupDetails.left'));
@@ -941,23 +950,34 @@ export default function GroupChatPage() {
               className="w-full max-w-lg bg-dark-card rounded-t-2xl p-4 pb-8 space-y-1"
               onClick={e => e.stopPropagation()}>
               <p className="text-dark-text font-semibold text-center mb-3">{memberAction.username}</p>
-              <button onClick={() => { handlePromoteMember(memberAction.userId); }}
-                className="w-full py-3 text-left text-sm text-primary-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
-                <FaUserShield size={14} /> Сделать админом
-              </button>
-              <button onClick={() => { handleDemoteMember(memberAction.userId); }}
-                className="w-full py-3 text-left text-sm text-gray-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
-                <FaUserMinus size={14} /> Снять админа
-              </button>
+              {/* Promote/demote require group ownership on the backend —
+                  only the owner can act on another admin at all. */}
+              {isOwner && !memberAction.isAdmin && (
+                <button onClick={() => { handlePromoteMember(memberAction.userId); }}
+                  className="w-full py-3 text-left text-sm text-primary-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                  <FaUserShield size={14} /> Сделать админом
+                </button>
+              )}
+              {isOwner && memberAction.isAdmin && (
+                <button onClick={() => { handleDemoteMember(memberAction.userId); }}
+                  className="w-full py-3 text-left text-sm text-gray-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                  <FaUserMinus size={14} /> Снять админа
+                </button>
+              )}
               <div className="border-t border-dark-border my-1" />
-              <button onClick={() => { handleKickMember(memberAction.userId); }}
-                className="w-full py-3 text-left text-sm text-orange-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
-                <FaUserMinus size={14} /> Исключить
-              </button>
-              <button onClick={() => { handleBanMember(memberAction.userId); }}
-                className="w-full py-3 text-left text-sm text-red-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
-                <FaUserSlash size={14} /> Заблокировать
-              </button>
+              {/* Kicking/banning a fellow admin is owner-only on the backend */}
+              {(isOwner || !memberAction.isAdmin) && (
+                <>
+                  <button onClick={() => { handleKickMember(memberAction.userId); }}
+                    className="w-full py-3 text-left text-sm text-orange-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                    <FaUserMinus size={14} /> Исключить
+                  </button>
+                  <button onClick={() => { handleBanMember(memberAction.userId); }}
+                    className="w-full py-3 text-left text-sm text-red-400 hover:bg-dark-surface rounded-xl flex items-center gap-3 px-4 transition-colors">
+                    <FaUserSlash size={14} /> Заблокировать
+                  </button>
+                </>
+              )}
               <button onClick={() => setMemberAction(null)}
                 className="w-full py-3 text-center text-sm text-gray-500 hover:bg-dark-surface rounded-xl mt-2 transition-colors">
                 Отмена
@@ -1127,7 +1147,7 @@ export default function GroupChatPage() {
                         className={`flex items-center gap-3 py-1 ${isAdmin && m.userId !== user.id && m.userId !== group.ownerId ? 'cursor-pointer hover:bg-dark-bg rounded-xl px-1 -mx-1 transition-colors' : ''}`}
                         onClick={() => {
                           if (isAdmin && m.userId !== user.id && m.userId !== group.ownerId) {
-                            setMemberAction({ userId: m.userId, username: m.user.displayName });
+                            setMemberAction({ userId: m.userId, username: m.user.displayName, isAdmin: m.isAdmin });
                           }
                         }}
                       >

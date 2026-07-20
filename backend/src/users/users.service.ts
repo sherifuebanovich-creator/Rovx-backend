@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 const VEHICLE_TYPES = {
   CAR: 'CAR',
@@ -39,6 +39,8 @@ export class UsersService {
     if (data.displayName !== undefined) updateData.displayName = data.displayName;
     if (data.bio !== undefined) updateData.bio = data.bio;
     if (data.avatar !== undefined) updateData.avatar = data.avatar;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.city !== undefined) updateData.city = data.city;
     if (data.homeAddress !== undefined) updateData.homeAddress = data.homeAddress;
     if (data.homeLat !== undefined) updateData.homeLat = data.homeLat;
     if (data.homeLng !== undefined) updateData.homeLng = data.homeLng;
@@ -69,6 +71,15 @@ export class UsersService {
         role: true,
         subscription: true,
         preferredLang: true,
+        preferredVehicle: true,
+        phone: true,
+        city: true,
+        homeAddress: true,
+        homeLat: true,
+        homeLng: true,
+        workAddress: true,
+        workLat: true,
+        workLng: true,
       },
     });
     return updated;
@@ -116,14 +127,11 @@ export class UsersService {
   }
 
   async addVehicle(userId: string, data: any) {
-    if (data.isDefault) {
-      await this.prisma.vehicle.updateMany({
-        where: { userId },
-        data: { isDefault: false },
-      });
+    if (!data.name || typeof data.name !== 'string') {
+      throw new BadRequestException('name is required');
     }
 
-    return this.prisma.vehicle.create({
+    const createVehicle = this.prisma.vehicle.create({
       data: {
         userId,
         type: data.type || VEHICLE_TYPES.CAR,
@@ -143,6 +151,19 @@ export class UsersService {
         isDefault: data.isDefault ?? false,
       },
     });
+
+    // Clearing the old default and creating the new vehicle must succeed or
+    // fail together — otherwise a create failure after the clear leaves the
+    // user with no default vehicle at all.
+    if (data.isDefault) {
+      const [, vehicle] = await this.prisma.$transaction([
+        this.prisma.vehicle.updateMany({ where: { userId }, data: { isDefault: false } }),
+        createVehicle,
+      ]);
+      return vehicle;
+    }
+
+    return createVehicle;
   }
 
   async getVehicles(userId: string) {
@@ -174,16 +195,29 @@ export class UsersService {
   }
 
   async getAchievements(userId: string) {
-    return this.prisma.userAchievement.findMany({
-      where: { userId },
-      include: { achievement: true },
-      orderBy: { earnedAt: 'desc' },
-    });
+    // Full catalog with per-user earned status, not just the earned rows —
+    // the achievements screen needs to show locked achievements too.
+    const [all, earned] = await Promise.all([
+      this.prisma.achievement.findMany({ orderBy: { points: 'asc' } }),
+      this.prisma.userAchievement.findMany({
+        where: { userId },
+        select: { achievementId: true, earnedAt: true },
+      }),
+    ]);
+    const earnedMap = new Map(earned.map((e) => [e.achievementId, e.earnedAt]));
+    return all.map((a) => ({
+      ...a,
+      earned: earnedMap.has(a.id),
+      earnedAt: earnedMap.get(a.id) || null,
+    }));
   }
 
   // --- Fuel Logs ---
 
   async addFuelLog(userId: string, data: any) {
+    if (typeof data.liters !== 'number' || !isFinite(data.liters)) {
+      throw new BadRequestException('liters is required and must be a number');
+    }
     if (data.vehicleId) {
       const vehicle = await this.prisma.vehicle.findFirst({
         where: { id: data.vehicleId, userId },
@@ -219,6 +253,12 @@ export class UsersService {
   // --- Emergency Contacts ---
 
   async addEmergencyContact(userId: string, data: any) {
+    if (!data.name || typeof data.name !== 'string') {
+      throw new BadRequestException('name is required');
+    }
+    if (!data.phone || typeof data.phone !== 'string') {
+      throw new BadRequestException('phone is required');
+    }
     return this.prisma.emergencyContact.create({
       data: {
         userId,
