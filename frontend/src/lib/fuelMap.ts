@@ -1,3 +1,5 @@
+import { HEAVY_TRUCK_BRANDS } from './vehicleMakes';
+
 export type FuelType = 'PETROL' | 'DIESEL' | 'ELECTRIC' | 'HYBRID' | 'LPG';
 
 const EV_BRANDS = new Set([
@@ -69,6 +71,11 @@ export function getFuelType(make: string, model: string): FuelType {
 
   if (makeUpper === 'uaz' || makeUpper === 'zaz' || makeUpper === 'lada') return 'PETROL';
   if (makeUpper === 'trabant' || makeUpper === 'wartburg') return 'PETROL';
+
+  // Heavy-duty truck manufacturers (TRUCK_MAKES in VehicleForm) — virtually
+  // every model these brands make is diesel, so this is more reliable than
+  // trying to match every model name individually.
+  if (HEAVY_TRUCK_BRANDS.has(makeUpper)) return 'DIESEL';
 
   return 'PETROL';
 }

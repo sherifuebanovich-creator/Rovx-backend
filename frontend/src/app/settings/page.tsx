@@ -5,10 +5,10 @@ import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n/i18n';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaShieldAlt, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase } from 'react-icons/fa';
+import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaShieldAlt, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase, FaHeadset } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { authApi, usersApi } from '@/lib/api';
+import { authApi, usersApi, supportApi } from '@/lib/api';
 import { LANGUAGES, getLanguageConfig } from '@/config/languages';
 import { useMapStore } from '@/store/map.store';
 import { VehicleForm } from '@/components/vehicles/VehicleForm';
@@ -27,6 +27,9 @@ export default function SettingsPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportText, setSupportText] = useState('');
+  const [supportSending, setSupportSending] = useState(false);
 
   useEffect(() => {
     if (preferences) {
@@ -86,6 +89,22 @@ export default function SettingsPage() {
     router.push('/');
   };
 
+  const handleSendSupport = async () => {
+    const text = supportText.trim();
+    if (!text) return;
+    setSupportSending(true);
+    try {
+      await supportApi.send(text);
+      toast.success(t('settings.supportSent'));
+      setSupportText('');
+      setShowSupportModal(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || t('settings.supportFailed'));
+    } finally {
+      setSupportSending(false);
+    }
+  };
+
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
     <button onClick={onChange} className="text-2xl">
       {value ? <FaToggleOn className="text-primary-400" /> : <FaToggleOff className="text-gray-600" />}
@@ -139,6 +158,7 @@ export default function SettingsPage() {
     {
       title: t('settings.account'),
       items: [
+        { icon: <FaHeadset size={16} className="text-accent-400" />, label: t('settings.support'), right: <FaChevronRight size={12} className="text-gray-600" />, onClick: () => setShowSupportModal(true) },
         { icon: <FaShieldAlt size={16} className="text-primary-400" />, label: t('settings.privacy'), right: <FaChevronRight size={12} className="text-gray-600" />, onClick: () => {} },
       ]
     },
@@ -368,6 +388,50 @@ export default function SettingsPage() {
               {filteredLangs.length === 0 && (
                 <p className="text-center text-sm text-gray-500 py-8">{t('settings.noLanguages')}</p>
               )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Support modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowSupportModal(false)}
+          />
+          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }}
+            className="relative bg-dark-card/98 backdrop-blur-2xl rounded-t-3xl md:rounded-3xl w-full max-w-md mx-0 md:mx-4 border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-dark-border">
+              <FaHeadset size={16} className="text-accent-400" />
+              <span className="font-display font-bold text-white text-lg">{t('settings.support')}</span>
+              <button onClick={() => setShowSupportModal(false)}
+                className="ml-auto w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+                <FaTimes size={14} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-gray-400 mb-3">{t('settings.supportHint')}</p>
+              <textarea
+                value={supportText}
+                onChange={(e) => setSupportText(e.target.value)}
+                placeholder={t('settings.supportPlaceholder')}
+                maxLength={2000}
+                rows={5}
+                className="w-full bg-dark-surface border border-dark-border rounded-xl p-3 text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500 transition-all resize-none"
+                autoFocus
+              />
+              <button
+                onClick={handleSendSupport}
+                disabled={!supportText.trim() || supportSending}
+                className="w-full mt-3 py-3 rounded-xl bg-primary-600 text-white font-bold text-sm hover:bg-primary-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {supportSending ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  t('settings.supportSend')
+                )}
+              </button>
             </div>
           </motion.div>
         </div>

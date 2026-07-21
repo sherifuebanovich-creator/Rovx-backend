@@ -211,7 +211,8 @@
     "sec": "sec",
     "wrongWay": "Wrong direction!",
     "turnAround": "Make a U-turn",
-    "wrongWayVoice": "Warning! You are going the wrong way. Make a U-turn!"
+    "wrongWayVoice": "Warning! You are going the wrong way. Make a U-turn!",
+    "trafficLightAhead": "Traffic light ahead in {{distance}} meters"
   },
   "objectDetailPanel": {
     "categories": {
@@ -425,6 +426,12 @@
     "language": "Language",
     "account": "Account",
     "privacy": "Privacy & Security",
+    "support": "Support",
+    "supportHint": "Describe your issue or question — it'll be sent straight to our team.",
+    "supportPlaceholder": "Write your message...",
+    "supportSend": "Send",
+    "supportSent": "Message sent! We'll get back to you as soon as possible.",
+    "supportFailed": "Couldn't send the message. Please try again later.",
     "back": "Back",
     "title": "Settings",
     "dangerZone": "Danger Zone",
@@ -623,6 +630,17 @@
     "offline": "Offline",
     "searchError": "Search failed"
   },
+  "vehicleForm": {
+    "truck": "Truck",
+    "car": "Car",
+    "make": "Make",
+    "makePlaceholder": "Start typing a make...",
+    "model": "Model",
+    "modelPlaceholder": "Start typing a model...",
+    "year": "Year",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
   "fuel": {
     "petrol95": "AI-95",
     "diesel": "Diesel",
@@ -742,7 +760,6 @@
       "weatherTraffic": "Weather and traffic along the route",
       "groups": "Up to 3 groups and City chats",
       "unlimitedAI": "Unlimited AI voice commands",
-      "_3dMaps": "3D maps with buildings (exclusive)",
       "convoys": "Create convoys and groups (up to 10)",
       "support247": "Priority 24/7 support"
     }

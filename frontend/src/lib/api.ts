@@ -338,6 +338,10 @@ export const premiumApi = {
   canCreateGroup: () => api.get('/premium/can-create-group'),
 };
 
+export const supportApi = {
+  send: (message: string) => api.post('/support', { message }),
+};
+
 // Friends endpoints
 export const friendsApi = {
   getFriends: () => api.get('/friends'),

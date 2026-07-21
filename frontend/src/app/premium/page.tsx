@@ -103,12 +103,7 @@ function PremiumPage() {
     }
   };
 
-  const getTierPrice = (tier: PremiumTier) => {
-    const lang = i18n.language;
-    if (lang === 'ru' && (tier as any).priceRub) return `${(tier as any).priceRub} ₽`;
-    if (lang === 'uz' && (tier as any).priceUzs) return `${(tier as any).priceUzs} сўм`;
-    return `$${tier.price}`;
-  };
+  const getTierPrice = (tier: PremiumTier) => `$${tier.price}`;
 
   return (
     <div className="min-h-dvh bg-dark-bg pb-safe-bottom relative overflow-hidden">
@@ -209,20 +204,19 @@ function PremiumPage() {
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.voiceNav')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.instantReports')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.noAds')} />
+                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.aiAssistant')} />
+                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.camerasOnline')} />
+                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.weatherTraffic')} />
                       </>
                     )}
                     {tier.tier >= 2 && (
                       <>
-                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.aiAssistant')} />
-                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.camerasOnline')} />
-                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.weatherTraffic')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.groups')} />
                       </>
                     )}
                     {tier.tier >= 3 && (
                       <>
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.unlimitedAI')} />
-                        <Feature icon={<FaCheck size={8} />} text={t('premium.features._3dMaps')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.convoys')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.support247')} />
                       </>

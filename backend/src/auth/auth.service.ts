@@ -340,7 +340,7 @@ export class AuthService {
 
     if (!user) {
       // Auto-register Google user
-      const username = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
+      const username = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 30) || 'user';
       let finalUsername = username;
       let counter = 1;
       while (await this.prisma.user.findUnique({ where: { username: finalUsername } })) {
@@ -365,7 +365,7 @@ export class AuthService {
         });
       } catch (err: any) {
         if (err?.code === 'P2002') {
-          const fallback = `${finalUsername}_${Date.now().toString(36)}`;
+          const fallback = `${finalUsername}${Date.now().toString(36)}`;
           user = await this.prisma.user.create({
             data: {
               email,

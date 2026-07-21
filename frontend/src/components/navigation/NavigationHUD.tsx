@@ -14,6 +14,7 @@ import {
   SpeedCamera, createSpeedCameraMonitor, buildCameraWarningMessage,
   buildCameraAlertText, SpeedCameraMonitor,
 } from '@/lib/speedCameraMonitor';
+import { TrafficSignal, createTrafficSignalMonitor, TrafficSignalMonitor } from '@/lib/trafficSignalMonitor';
 import { RouteResult } from '@/types';
 
 const NEAR_ANNOUNCE_METERS = 150;
@@ -40,6 +41,7 @@ export function NavigationHUD() {
   const wrongWayAnnouncedRef = useRef(false);
 
   const monitorRef = useRef<SpeedCameraMonitor | null>(null);
+  const trafficSignalMonitorRef = useRef<TrafficSignalMonitor | null>(null);
   const [cameraWarning, setCameraWarning] = useState<ReturnType<typeof buildCameraAlertText> | null>(null);
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const userLocationRef = useRef(userLocation);
@@ -269,6 +271,34 @@ export function NavigationHUD() {
       .catch(() => {});
   }, [userLocation?.lat, userLocation?.lng]);
 
+  // Traffic light proximity monitoring — the monitor itself already existed
+  // (lib/trafficSignalMonitor.ts) but was never instantiated or fed data
+  // anywhere, so users got zero "traffic light ahead" warnings even though
+  // the lights render fine as static map markers.
+  const lastSignalFetchRef = useRef(0);
+  useEffect(() => {
+    if (!userLocation) return;
+
+    const now = Date.now();
+    if (now - lastSignalFetchRef.current < 15000) return;
+    lastSignalFetchRef.current = now;
+
+    if (!trafficSignalMonitorRef.current) {
+      trafficSignalMonitorRef.current = createTrafficSignalMonitor();
+    }
+    const mon = trafficSignalMonitorRef.current;
+
+    mapApi.getObjects({ categories: 'TRAFFIC_LIGHT', limit: 50, minLat: userLocation.lat - 0.5, maxLat: userLocation.lat + 0.5, minLng: userLocation.lng - 0.5, maxLng: userLocation.lng + 0.5 })
+      .then(res => {
+        const objects: any[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+        const signals: TrafficSignal[] = objects.map((o: any) => ({
+          id: o.id, lat: o.lat, lng: o.lng, name: o.name || '',
+        }));
+        mon.setSignals(signals);
+      })
+      .catch(() => {});
+  }, [userLocation?.lat, userLocation?.lng]);
+
   useEffect(() => {
     const mon = monitorRef.current;
     if (!mon || !userLocation) return;
@@ -313,6 +343,16 @@ export function NavigationHUD() {
         warningTimeoutRef.current = setTimeout(() => {
           setCameraWarning(null);
         }, 8000);
+      }
+
+      const signalMon = trafficSignalMonitorRef.current;
+      if (signalMon) {
+        signalMon.updatePosition(loc.lat, loc.lng, heading);
+        const signalWarning = signalMon.checkProximity();
+        if (signalWarning) {
+          signalMon.markWarned(signalWarning.signal.id);
+          speak(t('navigationHud.trafficLightAhead', { distance: Math.round(signalWarning.distanceMeters) }), true);
+        }
       }
     }, 1000);
 
