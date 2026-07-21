@@ -228,16 +228,26 @@ export class MapService {
     });
     if (filters.length === 0) return [];
 
-    const cacheKey = `osm:poi:${bbox}:${categories.join(',')}`;
+    // Cache key is rounded to a coarse ~1km grid cell, not the exact bbox —
+    // getNearby() builds its bbox straight from the caller's raw lat/lng, so
+    // with 5-decimal precision almost every request was a unique cache miss
+    // even for two users standing on the same street. That meant nearly
+    // every "nearby" click actually hit Overpass, and its shared free public
+    // endpoints rate-limit (HTTP 429) a Render-hosted app's IP hard under
+    // that volume — every single request was silently coming back empty.
+    const cacheKey = `osm:poi:${minLat.toFixed(2)},${minLng.toFixed(2)},${maxLat.toFixed(2)},${maxLng.toFixed(2)}:${categories.join(',')}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
     const query = `[out:json];(${filters.join('')});out body 50;`;
 
-    // Two Overpass mirrors — the public overpass-api.de instance rate-limits
-    // and times out under load often enough that a single-endpoint call
-    // silently drops POIs (including speed cameras/traffic lights) from the
-    // map for the rest of the cache TTL.
+    // Two Overpass mirrors — the public instances individually rate-limit
+    // (HTTP 429) under load often enough that a single-endpoint call
+    // silently drops all POIs (including speed cameras/traffic lights)
+    // from the map for the rest of the cache TTL. The real fix for the
+    // rate-limiting itself is the coarser cache key + longer TTL above,
+    // which cuts actual Overpass call volume; this fallback just covers
+    // one mirror having a bad moment independent of that.
     const overpassUrls = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
     try {
@@ -281,10 +291,19 @@ export class MapService {
           data: JSON.stringify(t),
         };
       });
-      await this.redis.set(cacheKey, JSON.stringify(results), 600);
+      // POIs don't move; a longer TTL trades a bit of freshness for far
+      // fewer Overpass calls overall, which is what avoids tripping the
+      // rate limit in the first place.
+      await this.redis.set(cacheKey, JSON.stringify(results), 3600);
       return results;
     } catch (err) {
       this.logger.warn(`Overpass POI API error: ${(err as Error).message}`);
+      // Briefly cache the failure too — while both mirrors are 429'ing,
+      // every request for this cell would otherwise keep hammering Overpass
+      // again immediately (no backoff at all), which is exactly what stops
+      // a rate limit from ever clearing. A short negative cache still
+      // re-checks soon, but stops the stampede in the meantime.
+      await this.redis.set(cacheKey, JSON.stringify([]), 45).catch(() => {});
       return [];
     }
   }
