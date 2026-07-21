@@ -61,6 +61,11 @@ const OSM_TAG_MAP: Record<string, string[]> = {
   GAS_STATION: ['["amenity"="fuel"]'],
   EV_CHARGER: ['["amenity"="charging_station"]'],
   PARKING: ['["amenity"="parking"]'],
+  // Was missing entirely — the frontend's "Грузовая стоянка" quick-category
+  // button only ever queried the sparse internal MapObject table with no
+  // OSM fallback (unlike every other category here), so it reported
+  // "nothing nearby" even in areas with real truck parking mapped in OSM.
+  TRUCK_PARKING: ['["amenity"="parking"]["access"="hgv"]', '["amenity"="parking"]["hgv"="designated"]'],
   CAFE: ['["amenity"="cafe"]'],
   RESTAURANT: ['["amenity"="restaurant"]'],
   HOTEL: ['["tourism"="hotel"]'],

@@ -79,7 +79,16 @@ export default function MapView() {
 
     tileLayerRef.current = L.tileLayer(MAP_TILES[mapStyle], {
       maxZoom: 20,
-      maxNativeZoom: 19,
+      // Esri's free World_Imagery satellite tiles only have real high-res
+      // coverage up to ~z17 outside major cities — beyond that in rural or
+      // mountainous areas, the server doesn't 404, it returns an actual
+      // "Map data not yet available" placeholder image as valid tile
+      // content, which Leaflet then displays as-is. Capping the native
+      // zoom lower for satellite mode makes Leaflet upscale the last real
+      // tile instead of fetching that placeholder. The vector-rendered
+      // street/night/traffic tiles have full global coverage at z19, so
+      // they don't need this.
+      maxNativeZoom: mapStyle === 'satellite' ? 17 : 19,
       detectRetina: true,
       attribution: '© OpenStreetMap contributors',
     }).addTo(map);
@@ -119,6 +128,10 @@ export default function MapView() {
   useEffect(() => {
     if (!mapRef.current || !tileLayerRef.current) return;
     tileLayerRef.current.setUrl(MAP_TILES[mapStyle]);
+    // setUrl() only swaps the URL template — it doesn't touch layer options,
+    // so maxNativeZoom would otherwise stay stuck at whatever it was set to
+    // on first mount regardless of which style is now active.
+    (tileLayerRef.current.options as L.TileLayerOptions).maxNativeZoom = mapStyle === 'satellite' ? 17 : 19;
 
     if (buildingsLayerRef.current) {
       if (mapStyle === 'satellite') {
