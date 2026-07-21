@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MapService } from './map.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -158,24 +159,26 @@ export class MapController {
   @Get('search')
   @ApiOperation({ summary: 'Search map objects' })
   async search(
+    @Req() req: Request,
     @Query('q') query: string,
     @Query('lat') lat?: number,
     @Query('lng') lng?: number,
     @Query('radius') radius = 50,
   ) {
     if (!query || query.length > 200) throw new BadRequestException('Query must be 1-200 characters');
-    return this.mapService.searchObjects(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined, Math.min(+radius, 100));
+    return this.mapService.searchObjects(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined, Math.min(+radius, 100), req.ip);
   }
 
   @Get('suggest')
   @ApiOperation({ summary: 'Autocomplete suggestions' })
   async suggest(
+    @Req() req: Request,
     @Query('q') query: string,
     @Query('lat') lat?: number,
     @Query('lng') lng?: number,
   ) {
     if (!query || query.length > 200) throw new BadRequestException('Query must be 1-200 characters');
-    return this.mapService.getSuggestions(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined);
+    return this.mapService.getSuggestions(query.trim(), lat ? +lat : undefined, lng ? +lng : undefined, req.ip);
   }
 
   @Get('reverse-geocode')

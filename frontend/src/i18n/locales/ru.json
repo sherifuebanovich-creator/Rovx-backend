@@ -25,6 +25,15 @@
   "topbar": {
     "to": "Куда",
     "whereTo": "Куда поедем?",
+    "style2d": "2D",
+    "satellite": "Спутник",
+    "mapMode": "Режим карты",
+    "style3d": "3D",
+    "view": "Вид",
+    "view3dBuildings": "3D здания",
+    "myLocation": "Моё местоположение",
+    "lightTheme": "Светлая тема",
+    "darkTheme": "Тёмная тема",
     "traffic": "Пробки"
   },
   "bottombar": {

@@ -110,6 +110,40 @@ export class MapService {
     private governmentData: GovernmentDataService,
   ) {}
 
+  /**
+   * Best-effort coarse (city-level) location from the client's IP, used only
+   * to bias/sort text search when the frontend has no GPS fix yet (denied
+   * permission, still resolving, etc). Without any bias, "ресторан" or any
+   * other generic term returns Nominatim's globally-ranked matches — real
+   * results, but scattered across random countries and useless to the user.
+   * Cached in Redis per IP since the free lookup service is rate-limited.
+   */
+  private async getApproxLocationFromIp(ip?: string): Promise<{ lat: number; lng: number } | null> {
+    if (!ip) return null;
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    if (!cleanIp || cleanIp === '::1' || cleanIp === '127.0.0.1' || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(cleanIp)) {
+      return null;
+    }
+    const cacheKey = `ipgeo:${cleanIp}`;
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return cached === 'null' ? null : JSON.parse(cached);
+    } catch {}
+
+    let result: { lat: number; lng: number } | null = null;
+    try {
+      const res = await axios.get(`http://ip-api.com/json/${encodeURIComponent(cleanIp)}?fields=status,lat,lon`, { timeout: 1500 });
+      if (res.data?.status === 'success' && typeof res.data.lat === 'number' && typeof res.data.lon === 'number') {
+        result = { lat: res.data.lat, lng: res.data.lon };
+      }
+    } catch (e) {
+      this.logger.warn(`IP geolocation lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    this.redis.set(cacheKey, result ? JSON.stringify(result) : 'null', 24 * 60 * 60).catch(() => {});
+    return result;
+  }
+
   async getObjectsInBounds(query: BoundsQuery) {
     const { minLat, maxLat, minLng, maxLng, categories, limit = 200 } = query;
 
@@ -527,8 +561,13 @@ export class MapService {
     }
   }
 
-  async searchObjects(query: string, lat?: number, lng?: number, radiusKm = 50) {
+  async searchObjects(query: string, lat?: number, lng?: number, radiusKm = 50, clientIp?: string) {
     if (!query || query.length < 1) return [];
+
+    if (!lat || !lng) {
+      const approx = await this.getApproxLocationFromIp(clientIp);
+      if (approx) { lat = approx.lat; lng = approx.lng; }
+    }
 
     const where: any = {
       isActive: true,
@@ -568,8 +607,13 @@ export class MapService {
     return combined;
   }
 
-  async getSuggestions(query: string, lat?: number, lng?: number) {
+  async getSuggestions(query: string, lat?: number, lng?: number, clientIp?: string) {
     if (!query || query.length < 1) return [];
+
+    if (!lat || !lng) {
+      const approx = await this.getApproxLocationFromIp(clientIp);
+      if (approx) { lat = approx.lat; lng = approx.lng; }
+    }
 
     let localResults: any[] = [];
     try {
