@@ -119,9 +119,13 @@ export class MapService {
    * Cached in Redis per IP since the free lookup service is rate-limited.
    */
   private async getApproxLocationFromIp(ip?: string): Promise<{ lat: number; lng: number } | null> {
-    if (!ip) return null;
+    if (!ip) {
+      this.logger.debug('IP geolocation: no client IP provided');
+      return null;
+    }
     const cleanIp = ip.replace(/^::ffff:/, '');
     if (!cleanIp || cleanIp === '::1' || cleanIp === '127.0.0.1' || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(cleanIp)) {
+      this.logger.debug(`IP geolocation: skipping private/local IP "${cleanIp}" (raw: "${ip}")`);
       return null;
     }
     const cacheKey = `ipgeo:${cleanIp}`;
@@ -132,12 +136,14 @@ export class MapService {
 
     let result: { lat: number; lng: number } | null = null;
     try {
-      const res = await axios.get(`http://ip-api.com/json/${encodeURIComponent(cleanIp)}?fields=status,lat,lon`, { timeout: 1500 });
+      const res = await axios.get(`http://ip-api.com/json/${encodeURIComponent(cleanIp)}?fields=status,lat,lon,message`, { timeout: 1500 });
       if (res.data?.status === 'success' && typeof res.data.lat === 'number' && typeof res.data.lon === 'number') {
         result = { lat: res.data.lat, lng: res.data.lon };
+      } else {
+        this.logger.warn(`IP geolocation: ip-api.com returned non-success for "${cleanIp}": ${JSON.stringify(res.data)}`);
       }
     } catch (e) {
-      this.logger.warn(`IP geolocation lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.logger.warn(`IP geolocation lookup failed for "${cleanIp}": ${e instanceof Error ? e.message : String(e)}`);
     }
 
     this.redis.set(cacheKey, result ? JSON.stringify(result) : 'null', 24 * 60 * 60).catch(() => {});
