@@ -540,7 +540,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       if (!member || member.isBanned) return;
 
       const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
-      if (!msg) return;
+      if (!msg || msg.groupId !== data.groupId) return;
 
       let reactions: Record<string, string[]> = {};
       try { reactions = JSON.parse(msg.reactions || '{}'); } catch {}
@@ -577,7 +577,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     try {
       const member = await this.prisma.groupMember.findFirst({
-        where: { groupId: data.groupId, userId, isAdmin: true },
+        where: { groupId: data.groupId, userId, isAdmin: true, isBanned: false },
       });
       if (!member) return;
 
@@ -608,9 +608,37 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { tripId: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
+    if (!userId || !data.tripId) return;
+    const trip = await this.prisma.trip.findFirst({ where: { id: data.tripId, userId } });
+    if (!trip) return;
     client.join(`trip:${data.tripId}`);
     return { ok: true };
+  }
+
+  /** True if `userId` and `otherUserId` are accepted friends or share at least one (non-banned) group. */
+  private async areUsersConnected(userId: string, otherUserId: string): Promise<boolean> {
+    if (userId === otherUserId) return true;
+    const friend = await this.prisma.friend.findFirst({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { userId, friendId: otherUserId },
+          { userId: otherUserId, friendId: userId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (friend) return true;
+
+    const sharedGroup = await this.prisma.groupMember.findFirst({
+      where: {
+        userId,
+        isBanned: false,
+        group: { members: { some: { userId: otherUserId, isBanned: false } } },
+      },
+      select: { id: true },
+    });
+    return !!sharedGroup;
   }
 
   private async notifyFriendsOnlineStatus(userId: string, isOnline: boolean) {
@@ -640,6 +668,9 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.targetUserId) return;
+    // Without this, any authenticated user could ring/signal an arbitrary
+    // userId with no relationship to them — harassment vector.
+    if (!(await this.areUsersConnected(userId, data.targetUserId))) return;
 
     this.gatewayService.sendToUser(data.targetUserId, 'voice:call', {
       callerId: userId,
@@ -654,6 +685,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.targetUserId || !data.signal) return;
+    if (!(await this.areUsersConnected(userId, data.targetUserId))) return;
 
     this.gatewayService.sendToUser(data.targetUserId, 'voice:signal', {
       fromUserId: userId,

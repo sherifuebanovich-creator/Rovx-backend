@@ -296,13 +296,17 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Google ID token');
     }
     const payload = await res.json();
-    // TODO(security): GOOGLE_CLIENT_ID is not yet set on the Render deployment,
-    // so this is temporarily skip-if-unset instead of fail-closed to avoid
-    // breaking Google login in prod. Set GOOGLE_CLIENT_ID on Render (same
-    // value as Vercel's) and change this back to fail-closed (throw when
-    // expectedAud is missing) — see auth.controller.ts googleAuth history.
+    // Fail closed: without this, an ID token issued to ANY Google OAuth
+    // client (not just ours) with a verified email would be accepted here,
+    // letting an attacker log in as / take over any ROVX account by
+    // replaying a Google ID token obtained from an unrelated site's own
+    // "Sign in with Google" button.
     const expectedAud = this.configService.get<string>('GOOGLE_CLIENT_ID');
-    if (expectedAud && payload.aud !== expectedAud) {
+    if (!expectedAud) {
+      this.logger.error('GOOGLE_CLIENT_ID is not set — rejecting Google sign-in');
+      throw new UnauthorizedException('Google sign-in is not configured');
+    }
+    if (payload.aud !== expectedAud) {
       throw new UnauthorizedException('Google ID token audience mismatch');
     }
     if (payload.email_verified !== 'true' && payload.email_verified !== true) {

@@ -4,9 +4,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { writeFile } from 'fs/promises';
+import { ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { SocialService } from './social.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -16,7 +19,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 @Controller('social')
 export class SocialController {
-  constructor(private socialService: SocialService) {}
+  constructor(private socialService: SocialService, private prisma: PrismaService) {}
 
   // ── Follow ──
   @Post('follow/:userId')
@@ -68,17 +71,12 @@ export class SocialController {
   @Post('groups/:groupId/avatar')
   @UseInterceptors(
     FileInterceptor('avatar', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'avatars');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const uniqueName = `group-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
-          cb(null, uniqueName);
-        },
-      }),
+      // Buffered in memory, not written to disk, until the admin check below
+      // passes — a diskStorage destination writes the file as soon as the
+      // multipart body is parsed, before this handler (or updateGroup's own
+      // admin check) ever runs, letting any authenticated non-member spam
+      // arbitrary groupIds with disk writes.
+      storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)$/)) {
@@ -96,7 +94,18 @@ export class SocialController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
-    const avatarUrl = `/uploads/avatars/${file.filename}`;
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Only admin can edit group');
+
+    const dir = join(process.cwd(), 'uploads', 'avatars');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const uniqueName = `group-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+    await writeFile(join(dir, uniqueName), file.buffer);
+
+    const avatarUrl = `/uploads/avatars/${uniqueName}`;
     return this.socialService.updateGroup(userId, groupId, { avatar: avatarUrl });
   }
 
@@ -110,20 +119,15 @@ export class SocialController {
     return this.socialService.updateGroup(userId, groupId, data);
   }
 
+  // These three endpoints buffer in memory and only touch disk after
+  // assertMember() passes — a diskStorage destination writes the file
+  // during multipart parsing, before the handler body (and its membership
+  // check) ever runs, letting any authenticated non-member repeatedly
+  // write files to disk for an arbitrary groupId.
   @Post('groups/:groupId/messages/upload')
   @UseInterceptors(
     FilesInterceptor('files', 5, {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'messages');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
-          cb(null, uniqueName);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^(image\/|video\/)/)) {
@@ -142,24 +146,20 @@ export class SocialController {
   ) {
     await this.socialService.assertMember(groupId, userId);
     if (!files?.length) throw new BadRequestException('No files uploaded');
-    const urls = files.map(f => `/uploads/messages/${f.filename}`);
+    const dir = join(process.cwd(), 'uploads', 'messages');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const urls = await Promise.all(files.map(async (f) => {
+      const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(f.originalname)}`;
+      await writeFile(join(dir, uniqueName), f.buffer);
+      return `/uploads/messages/${uniqueName}`;
+    }));
     return { urls };
   }
 
   @Post('groups/:groupId/messages/upload-audio')
   @UseInterceptors(
     FileInterceptor('audio', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'audio');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const uniqueName = `voice-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
-          cb(null, uniqueName);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^audio\//)) {
@@ -178,24 +178,17 @@ export class SocialController {
   ) {
     await this.socialService.assertMember(groupId, userId);
     if (!file) throw new BadRequestException('No audio file uploaded');
-    const url = `/uploads/audio/${file.filename}`;
-    return { url };
+    const dir = join(process.cwd(), 'uploads', 'audio');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const uniqueName = `voice-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+    await writeFile(join(dir, uniqueName), file.buffer);
+    return { url: `/uploads/audio/${uniqueName}` };
   }
 
   @Post('groups/:groupId/messages/upload-video-msg')
   @UseInterceptors(
     FileInterceptor('video', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'video-messages');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const uniqueName = `videomsg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
-          cb(null, uniqueName);
-        },
-      }),
+      storage: memoryStorage(),
       // Recording is capped at 60s client-side (VideoMessageRecorder.tsx);
       // a 60s webm/vp8+opus clip can plausibly exceed 10MB, so the limit
       // needs enough headroom to not reject legitimate full-length clips.
@@ -224,8 +217,11 @@ export class SocialController {
   ) {
     await this.socialService.assertMember(groupId, userId);
     if (!file) throw new BadRequestException('No video file uploaded');
-    const url = `/uploads/video-messages/${file.filename}`;
-    return { url };
+    const dir = join(process.cwd(), 'uploads', 'video-messages');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const uniqueName = `videomsg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+    await writeFile(join(dir, uniqueName), file.buffer);
+    return { url: `/uploads/video-messages/${uniqueName}` };
   }
 
   @Delete('groups/:groupId')

@@ -232,9 +232,12 @@ export class PremiumService {
         const months = parseInt(customParams.months, 10) || 1;
         if (!tierName) {
           const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
-          const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
+          // Checkout charges tier.price * months (see createCheckoutSession above), so
+          // matching against the per-month tier price requires dividing back out first —
+          // otherwise a multi-month purchase gets guessed into a too-high tier.
+          const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount / months);
           tierName = matchedTier?.name || 'PREMIUM_BASIC';
-          this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
+          this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount} / ${months}mo`);
         }
         const tier = this.getTierInfo(tierName);
         const endDate = new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000);
@@ -362,8 +365,13 @@ export class PremiumService {
       // have overwritten before this order was paid.
       let tierName: string | undefined = PREMIUM_TIERS.find(t => t.name === customData.tier_name)?.name;
       if (!tierName) {
-        this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, falling back to pending subscription`);
-        tierName = existingSub?.levelName || 'PREMIUM_BASIC';
+        // Same rule as Xsolla above — guess from the paid amount (Lemon Squeezy `total`
+        // is in cents), never from `existingSub.levelName`, which a second checkout for
+        // a different tier can overwrite before this order is confirmed paid.
+        const paidAmount = (orderData?.total || 0) / 100;
+        const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
+        tierName = matchedTier?.name || 'PREMIUM_BASIC';
+        this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
       }
       const tier = this.getTierInfo(tierName);
       const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -763,7 +771,13 @@ export class PremiumService {
       maxGroups: tierInfo.maxGroups,
       canCreateGroups: tierInfo.canCreateGroups,
       canReceiveReports: tierInfo.canReceiveReports,
-      active: sub?.status === 'active' && (!user?.subscriptionEnd || user.subscriptionEnd > new Date()),
+      // `sub.status` flips to 'pending' the instant the user starts (even an
+      // abandoned) checkout — including while they already have an active
+      // paid subscription — since it's one row per userId shared with the
+      // in-progress checkout. `user.subscriptionEnd`/`subscription` are only
+      // ever written by a confirmed webhook or cancellation, so they're the
+      // reliable signal for current entitlement.
+      active: !!user?.subscriptionEnd && user.subscriptionEnd > new Date(),
       paymentId: sub?.paymentId,
     };
   }

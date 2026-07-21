@@ -116,7 +116,14 @@ export function RoutePanel() {
 
       const valid = results.filter(Boolean) as RouteResult[];
       setCalculatedRoutes(valid);
-      if (valid.length > 0) setSelectedRoute(valid[0]);
+      if (valid.length > 0) {
+        setSelectedRoute(valid[0]);
+      } else {
+        // Every per-type request is individually caught above so Promise.all
+        // never rejects — without this, a total backend outage just leaves
+        // the panel empty with no explanation.
+        toast.error(t('routePanel.routeCalcFailed'));
+      }
 
       // Departure weather prefers live geolocation (kept fresh by the effect
       // above); only fall back to the route's origin point if we don't have

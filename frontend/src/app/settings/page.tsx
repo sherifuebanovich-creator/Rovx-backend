@@ -61,7 +61,7 @@ export default function SettingsPage() {
     i18n.changeLanguage(code);
     if (user) {
       setUser({ ...user, preferredLang: code });
-      usersApi.updateProfile({ preferredLang: code }).catch(() => {});
+      usersApi.updateProfile({ preferredLang: code }).catch(() => toast.error(t('settings.saveFailed')));
     } else {
       localStorage.setItem('preferred_lang', code);
     }
@@ -72,7 +72,7 @@ export default function SettingsPage() {
     const updated = { ...(preferences ?? {}), [key]: value } as any;
     setPreferences(updated);
     if (user) {
-      usersApi.updatePreferences({ [key]: value }).catch(() => {});
+      usersApi.updatePreferences({ [key]: value }).catch(() => toast.error(t('settings.saveFailed')));
     } else {
       localStorage.setItem('preferences', JSON.stringify(updated));
     }
@@ -187,7 +187,7 @@ export default function SettingsPage() {
                         setUser({ ...user, homeAddress: val });
                       }}
                       onBlur={(e) => {
-                        usersApi.updateProfile({ homeAddress: e.target.value }).catch(() => {});
+                        usersApi.updateProfile({ homeAddress: e.target.value }).catch(() => toast.error(t('settings.saveFailed')));
                       }}
                       className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.homePlaceholder')}
@@ -214,7 +214,7 @@ export default function SettingsPage() {
                         setUser({ ...user, workAddress: val });
                       }}
                       onBlur={(e) => {
-                        usersApi.updateProfile({ workAddress: e.target.value }).catch(() => {});
+                        usersApi.updateProfile({ workAddress: e.target.value }).catch(() => toast.error(t('settings.saveFailed')));
                       }}
                       className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.workPlaceholder')}

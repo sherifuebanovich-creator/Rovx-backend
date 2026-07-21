@@ -206,6 +206,7 @@
     "kmh": "km/h",
     "recalculating": "Recalculating route...",
     "rerouted": "Route recalculated",
+    "rerouteFailed": "Couldn't recalculate the route",
     "endTrip": "End trip",
     "sec": "sec",
     "wrongWay": "Wrong direction!",
@@ -336,6 +337,9 @@
     "sec": "s"
   },
   "auth": {
+    "errors": {
+      "backendSyncFailed": "Couldn't finish signing you in. Please try Google sign-in again."
+    },
     "login": {
       "failed": "Login failed",
       "googleFailed": "Google sign-in failed",
@@ -413,6 +417,7 @@
   },
   "settings": {
     "loggedOut": "Logged out",
+    "saveFailed": "Couldn't save. Please try again",
     "preferences": "Preferences",
     "notifications": "Notifications",
     "sound": "Sound",

@@ -15,6 +15,24 @@ export class TasksService {
     private config: ConfigService,
   ) {}
 
+  // Render's free plan spins the service down after ~15min of no inbound
+  // traffic through its proxy; a request to our own localhost doesn't count
+  // and won't stop that. Ping the public BACKEND_URL instead so the process
+  // never idles long enough to sleep. This is what was causing Google login
+  // to silently fail: NextAuth's backend token-exchange call would hit a
+  // cold start, time out, and the frontend fell back to an unauthenticated
+  // session on the map.
+  @Cron('*/10 * * * *')
+  async selfPing() {
+    const backendUrl = this.config.get<string>('BACKEND_URL');
+    if (!backendUrl) return;
+    try {
+      await fetch(`${backendUrl}/api/v1/health`);
+    } catch (error) {
+      this.logger.warn('Self-ping failed', error instanceof Error ? error.message : String(error));
+    }
+  }
+
   @Cron('0 * * * *', { timeZone: 'Asia/Tashkent' })
   async sendHourlyReport() {
     const chatId = this.config.get('TELEGRAM_CHAT_ID');

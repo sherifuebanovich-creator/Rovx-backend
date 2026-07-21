@@ -164,7 +164,11 @@ export function useGeolocation() {
     const onVisibilityChange = () => {
       if (document.hidden) {
         isActiveRef.current = false;
-        stopWatching();
+        // Don't stop tracking mid-drive — locking the phone or switching
+        // apps during active turn-by-turn navigation would otherwise kill
+        // position updates, off-route detection, and voice guidance until
+        // the user unlocks and reopens the app.
+        if (!navRef.current.isNavigating) stopWatching();
       } else {
         isActiveRef.current = true;
         startWatching();

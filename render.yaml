@@ -42,6 +42,8 @@ services:
         value: "50"
       - key: THROTTLE_LONG_LIMIT
         value: "200"
+      - key: GOOGLE_CLIENT_ID
+        value: 656406720554-i8vpge5euh55asjddhu9280c41hdlfjb.apps.googleusercontent.com
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_DIRECT

@@ -180,7 +180,13 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
             }} className="px-3 py-1 rounded-lg bg-green-600 text-white text-xs">
               Принять
             </button>
-            <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs">
+            <button onClick={() => {
+              toast.dismiss(t.id);
+              // Without this the caller's own UI stays stuck on "calling…"
+              // with a running timer until they manually hang up — nothing
+              // else tells them the call was declined.
+              getSocket()?.emit('voice:end', { targetUserId: data.callerId });
+            }} className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs">
               Отклонить
             </button>
           </div>
@@ -314,9 +320,11 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     };
   }, []);
 
-  // Don't render if no target
-  if (!targetUserId && !groupId) return null;
-
+  // Always render the <audio> element so incoming calls have somewhere to
+  // attach their remote track (see pc.ontrack above) — this component is
+  // mounted globally with no props on the map page specifically to receive
+  // calls, so bailing out here left remoteAudioRef permanently null and
+  // every accepted call silent.
   return (
     <>
       <audio ref={remoteAudioRef} autoPlay playsInline />

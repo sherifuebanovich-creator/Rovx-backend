@@ -108,11 +108,15 @@ export default function GroupChatPage() {
     const ws = getSocket();
     if (!ws) return;
     if (!ws.connected) {
-      ws.once('connect', () => {
+      const onConnect = () => {
         ws.emit('join:group', { groupId });
         joinedRef.current = true;
-      });
-      return;
+      };
+      ws.once('connect', onConnect);
+      // If groupId/socketReady changes again before 'connect' fires (e.g. a
+      // brief reconnect), this removes the pending listener for the stale
+      // groupId instead of letting it stack and double-join later.
+      return () => { ws.off('connect', onConnect); };
     }
     ws.emit('join:group', { groupId });
     joinedRef.current = true;
@@ -402,8 +406,11 @@ export default function GroupChatPage() {
     ws.emit('group:message', { groupId, content: trimmed, images }, (ack: any) => {
       if (ack?.error) {
         toast.error('Не удалось отправить сообщение');
-        setInput(trimmed);
-        setPendingImages(images || []);
+        // Only restore the failed text/images if the box is still empty —
+        // if the user already typed something new while the ack was
+        // in flight, don't clobber it with the stale failed draft.
+        setInput(prev => prev || trimmed);
+        setPendingImages(prev => prev.length > 0 ? prev : (images || []));
       }
     });
   }, [input, pendingImages, groupId, t]);

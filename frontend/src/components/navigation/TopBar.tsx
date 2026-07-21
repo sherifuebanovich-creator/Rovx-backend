@@ -46,13 +46,30 @@ export function TopBar() {
 
   useEffect(() => {
     if (!user) return;
-    const socket = getSocket();
-    if (!socket) return;
     const onNotification = () => {
       checkUnread();
     };
-    socket.on('notification:new', onNotification);
-    return () => { socket.off('notification:new', onNotification); };
+    // The global socket may not exist yet at mount (its creation is driven
+    // by a separate auth-state effect elsewhere) — poll briefly instead of
+    // giving up, otherwise the unread badge never receives live updates
+    // for this mount's lifetime.
+    let socket = getSocket();
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (socket) {
+      socket.on('notification:new', onNotification);
+    } else {
+      interval = setInterval(() => {
+        socket = getSocket();
+        if (socket) {
+          socket.on('notification:new', onNotification);
+          if (interval) clearInterval(interval);
+        }
+      }, 500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+      socket?.off('notification:new', onNotification);
+    };
   }, [user, checkUnread]);
 
   const mapModes = [

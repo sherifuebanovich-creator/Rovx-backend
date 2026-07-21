@@ -37,13 +37,28 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!user) return;
-    const socket = getSocket();
-    if (!socket) return;
     const onNewNotification = () => {
       fetchNotifs();
     };
-    socket.on('notification:new', onNewNotification);
-    return () => { socket.off('notification:new', onNewNotification); };
+    // The global socket may not exist yet at mount — poll briefly instead
+    // of giving up, otherwise this page never receives live updates.
+    let socket = getSocket();
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (socket) {
+      socket.on('notification:new', onNewNotification);
+    } else {
+      interval = setInterval(() => {
+        socket = getSocket();
+        if (socket) {
+          socket.on('notification:new', onNewNotification);
+          if (interval) clearInterval(interval);
+        }
+      }, 500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+      socket?.off('notification:new', onNewNotification);
+    };
   }, [user, fetchNotifs]);
 
   const unread = notifs.filter(n => !n.isRead).length;

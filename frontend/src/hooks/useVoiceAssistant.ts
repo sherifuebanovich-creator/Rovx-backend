@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, type MutableRefObject } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { getLanguageConfig } from '@/config/languages';
 
@@ -860,12 +860,26 @@ function pickBestVoice(voices: SpeechSynthesisVoice[], targetLang: string): Spee
   return candidates[0] || null;
 }
 
-async function playAudioBlob(audioBlob: Blob): Promise<void> {
+/** Pauses and fully releases a blob-URL-backed audio element started by playAudioBlob. */
+function stopBlobAudio(audio: HTMLAudioElement) {
+  audio.pause();
+  const url = (audio as HTMLAudioElement & { _blobUrl?: string })._blobUrl;
+  if (url) URL.revokeObjectURL(url);
+}
+
+function playAudioBlob(audioBlob: Blob, currentAudioRef: MutableRefObject<HTMLAudioElement | null>): Promise<void> {
   const url = URL.createObjectURL(audioBlob);
-  const audio = new Audio(url);
+  const audio = new Audio(url) as HTMLAudioElement & { _blobUrl?: string };
+  audio._blobUrl = url;
+  currentAudioRef.current = audio;
   return new Promise((resolve) => {
-    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      if (currentAudioRef.current === audio) currentAudioRef.current = null;
+      resolve();
+    };
+    audio.onended = cleanup;
+    audio.onerror = cleanup;
     audio.play();
   });
 }
@@ -876,6 +890,7 @@ export function useVoiceAssistant() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastInstructionRef = useRef('');
   const voicesLoadedRef = useRef(false);
   const lang = user?.preferredLang || 'ru';
@@ -904,11 +919,18 @@ export function useVoiceAssistant() {
     if (!useAuthStore.getState().preferences?.voiceEnabled) return;
     // Low-priority announcements (e.g. reading a search result) shouldn't cut
     // off a higher-priority one (arrival, reroute, wrong-way) already playing.
-    if (!priority && window.speechSynthesis.speaking) return;
+    // The primary playback path is a fetched TTS <audio> blob, not the Web
+    // Speech API, so "already speaking" has to check both.
+    const audioBusy = !!currentAudioRef.current && !currentAudioRef.current.paused;
+    if (!priority && (window.speechSynthesis.speaking || audioBusy)) return;
 
     const normalizedText = lang === 'ru' ? normalizeRussianText(text) : text;
 
     window.speechSynthesis.cancel();
+    if (currentAudioRef.current) {
+      stopBlobAudio(currentAudioRef.current);
+      currentAudioRef.current = null;
+    }
     setIsSpeaking(true);
 
     try {
@@ -919,7 +941,7 @@ export function useVoiceAssistant() {
       });
       if (!response.ok) throw new Error('TTS API error');
       const audioBlob = await response.blob();
-      await playAudioBlob(audioBlob);
+      await playAudioBlob(audioBlob, currentAudioRef);
       setIsSpeaking(false);
     } catch {
       const utterance = new SpeechSynthesisUtterance(normalizedText);

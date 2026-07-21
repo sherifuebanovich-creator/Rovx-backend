@@ -127,9 +127,11 @@ export function NavigationHUD() {
         speak(t('navigationHud.rerouted'), true);
       } else {
         setNavigation({ isRerouting: false });
+        speak(t('navigationHud.rerouteFailed'), true);
       }
     } catch {
       setNavigation({ isRerouting: false });
+      speak(t('navigationHud.rerouteFailed'), true);
     }
   }, [userLocation, destination, setNavigation, setSelectedRoute, speak, t]);
 

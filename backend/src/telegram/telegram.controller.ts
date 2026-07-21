@@ -212,7 +212,9 @@ export class TelegramController implements OnModuleInit {
             return { ok: true };
           }
 
-          if (text === botPassword) {
+          const a = Buffer.from(text);
+          const b = Buffer.from(botPassword);
+          if (a.length === b.length && require('crypto').timingSafeEqual(a, b)) {
             await this.redis.del(attemptsKey);
             await this.authorizeChat(chatId);
             await this.telegram.sendMessageToChat(chatId, '✅ <b>Добро пожаловать!</b>');
