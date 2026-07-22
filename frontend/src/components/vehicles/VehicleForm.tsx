@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FaCar, FaTruck, FaChevronDown } from 'react-icons/fa';
 import { getFuelType } from '@/lib/fuelMap';
-import { CAR_MAKES, TRUCK_MAKES } from '@/lib/vehicleMakes';
+import { CAR_MAKES, TRUCK_MAKES, getYearsForMake } from '@/lib/vehicleMakes';
 import { VehicleType } from '@/types';
 
 interface VehicleFormProps {
@@ -25,10 +25,10 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
   const [modelSearch, setModelSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const currentYear = useMemo(() => new Date().getFullYear(), []);
-  // 65 years back covers pretty much any vehicle still legitimately in
-  // service (Soviet-era KAMAZ/MAZ/UAZ trucks and classic cars are common
-  // in the CIS fleet this app targets), not just recent models.
-  const years = useMemo(() => Array.from({ length: 65 }, (_, i) => currentYear - i), [currentYear]);
+  // Clamped to the selected make's real production span (discontinued
+  // brands stop at their last model year; newer brands start where they
+  // were actually founded) instead of a blanket range for every brand.
+  const years = useMemo(() => getYearsForMake(selectedMake, currentYear), [selectedMake, currentYear]);
   const [year, setYear] = useState(currentYear);
   const [showMakeDropdown, setShowMakeDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);

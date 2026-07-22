@@ -1,7 +1,7 @@
 'use client';
 import { motion } from 'framer-motion';
 import { FaTimes, FaUser, FaRoute, FaBookmark, FaTrophy, FaCog, FaSignOutAlt,
-         FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers, FaGasPump } from 'react-icons/fa';
+         FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -38,7 +38,6 @@ export function Sidebar() {
     { icon: <FaPremium size={16} />, label: t('sidebar.premium') || 'Premium', href: '/premium' },
     { icon: <FaUsers size={16} />, label: t('sidebar.friends') || 'Friends', href: '/friends' },
     { icon: <FaUsers size={16} />, label: t('sidebar.groups') || 'Groups', href: '/groups' },
-    { icon: <FaGasPump size={16} />, label: t('sidebar.fuel') || 'Fuel Calculator', href: '/fuel' },
     { icon: <FaTrophy size={16} />, label: t('sidebar.achievements'), href: '/achievements' },
     { icon: <FaBell size={16} />, label: t('sidebar.notifications'), href: '/notifications' },
     { icon: <FaCog size={16} />, label: t('sidebar.settings'), href: '/settings' },

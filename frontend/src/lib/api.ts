@@ -363,12 +363,4 @@ export const chatApi = {
     api.post(`/social/chat/city/${encodeURIComponent(city)}`, { content }),
 };
 
-// Fuel endpoints
-export const fuelApi = {
-  calculate: (data: any) => api.post('/fuel/calculate', data),
-  estimate: (data: any) => api.post('/fuel/estimate', data),
-  getHistory: () => api.get('/fuel/history'),
-  getPrices: () => api.get('/fuel/prices'),
-};
-
 export default api;

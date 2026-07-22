@@ -11,7 +11,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { authApi, usersApi } from '@/lib/api';
 import LanguagePicker from '@/components/auth/LanguagePicker';
 import { getFuelType } from '@/lib/fuelMap';
-import { CAR_MAKES, TRUCK_MAKES } from '@/lib/vehicleMakes';
+import { CAR_MAKES, TRUCK_MAKES, getYearsForMake } from '@/lib/vehicleMakes';
 import { VehicleType } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -22,7 +22,6 @@ export default function RegisterPage() {
   const { t, i18n } = useTranslation();
   const { setUser, setTokens } = useAuthStore();
   const currentYear = useMemo(() => new Date().getFullYear(), []);
-  const years = useMemo(() => Array.from({ length: currentYear - 1969 + 1 }, (_, i) => currentYear - i), [currentYear]);
   const [form, setForm] = useState({
     email: '', username: '', displayName: '', password: '', lang: 'ru',
     vehicleType: 'CAR' as VehicleType,
@@ -44,6 +43,13 @@ export default function RegisterPage() {
 
   const makesForType = form.vehicleType === 'TRUCK' ? TRUCK_MAKES : CAR_MAKES;
   const allTruckMakes = useMemo(() => Object.keys(TRUCK_MAKES).sort((a, b) => a.localeCompare(b)), []);
+  const years = useMemo(() => getYearsForMake(form.vehicleMake, currentYear), [form.vehicleMake, currentYear]);
+
+  useEffect(() => {
+    if (years.length && !years.includes(form.vehicleYear)) {
+      setForm((prev) => ({ ...prev, vehicleYear: years[0] }));
+    }
+  }, [years]);
 
   const filteredMakes = useMemo(() => {
     const available = form.vehicleType === 'TRUCK' ? allTruckMakes : ALL_MAKES;
@@ -77,7 +83,6 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password.length < 8) { toast.error(t('auth.register.passwordTooShort')); return; }
-    if (!/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { toast.error(t('auth.register.passwordWeak') || 'Password must contain uppercase, lowercase, and numbers'); return; }
     setIsLoading(true);
     try {
       const payload = {

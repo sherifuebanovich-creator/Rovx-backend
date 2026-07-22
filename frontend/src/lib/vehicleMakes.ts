@@ -155,3 +155,62 @@ export const TRUCK_MAKES: Record<string, string[]> = {
 
 /** Lowercased TRUCK_MAKES keys, for fuel-type heuristics etc. */
 export const HEAVY_TRUCK_BRANDS = new Set(Object.keys(TRUCK_MAKES).map((m) => m.toLowerCase()));
+
+// Production year range per brand: [firstYear, lastYear] — lastYear is
+// `null` for brands still in production. Only brands whose real range
+// differs meaningfully from "recent decades" are listed here (discontinued
+// marques, and newer marques that didn't exist before a certain year) —
+// everything else falls back to the generic wide range in getYearsForMake,
+// since guessing an exact founding year for every one of ~165 brands isn't
+// something to get precise without a source, and the generic range is a
+// safe default (never wrong in the "can't select this year" sense).
+const BRAND_YEAR_RANGES: Record<string, [number, number | null]> = {
+  // Discontinued car brands
+  'Trabant': [1957, 1991],
+  'Wartburg': [1956, 1991],
+  'Zaporozhets': [1958, 1994],
+  'Saab': [1949, 2012],
+  'Pontiac': [1926, 2010],
+  'Oldsmobile': [1897, 2004],
+  'Mercury': [1938, 2011],
+  'Plymouth': [1928, 2001],
+  'Scion': [2003, 2016],
+  'Saturn': [1985, 2010],
+  'Daewoo': [1967, 2011],
+  'Ravon': [2015, 2020],
+  'TagAZ': [1998, 2014],
+  'Rover': [1904, 2005],
+  'Vauxhall': [1903, null],
+  'Hummer': [1992, null], // H1-H3 ended 2010, revived as Hummer EV 2020
+  // Brands that didn't exist before a certain year
+  'Tesla': [2008, null],
+  'Lucid': [2021, null],
+  'Rivian': [2021, null],
+  'NIO': [2018, null],
+  'Polestar': [2017, null],
+  'Zeekr': [2021, null],
+  'VinFast': [2019, null],
+  'XPeng': [2018, null],
+  'Voyah': [2020, null],
+  'Xiaomi': [2024, null],
+  'Rimac': [2018, null],
+  'Cupra': [2018, null],
+  'DS': [2014, null],
+  'Genesis': [2015, null],
+  'Ora': [2018, null],
+  'Lynk': [2017, null],
+  // Discontinued heavy-truck brands
+  'ZIL': [1924, 2014],
+};
+
+/** Descending year list for the given make, newest first — clamped to
+ * that brand's actual production span instead of a one-size-fits-all range. */
+export function getYearsForMake(make: string, currentYear: number): number[] {
+  const range = BRAND_YEAR_RANGES[make];
+  const earliest = currentYear - 64;
+  const start = range ? Math.min(range[1] ?? currentYear, currentYear) : currentYear;
+  const end = range ? Math.max(range[0], earliest) : earliest;
+  const years: number[] = [];
+  for (let y = start; y >= end; y--) years.push(y);
+  return years;
+}
