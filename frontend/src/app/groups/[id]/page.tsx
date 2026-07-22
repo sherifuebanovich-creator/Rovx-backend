@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi } from '@/lib/api';
+import { mediaUrl } from '@/lib/media';
 import { useSocket, getSocket } from '@/hooks/useSocket';
 import { Group, GroupMessage, GroupMember, GroupRequest } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -581,7 +582,7 @@ export default function GroupChatPage() {
         </Link>
         <button onClick={() => setShowInfo(true)} className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0">
-            {group.avatar ? <img src={group.avatar} alt="" className="w-full h-full object-cover" /> : <FaUsers size={16} />}
+            {group.avatar ? <img src={mediaUrl(group.avatar)} alt="" className="w-full h-full object-cover" /> : <FaUsers size={16} />}
           </div>
           <div className="flex-1 min-w-0 text-left">
             <p className="text-dark-text font-semibold truncate">{group.name}</p>
@@ -628,7 +629,7 @@ export default function GroupChatPage() {
               {group.members?.map(m => (
                 <div key={m.id} className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
-                    {m.user?.avatar ? <img src={m.user.avatar} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
+                    {m.user?.avatar ? <img src={mediaUrl(m.user.avatar)} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                   </div>
                   <span className="text-sm text-dark-text">{m.user.displayName}</span>
                   {m.isAdmin && <span className="text-[10px] text-primary-400 bg-primary-600/20 px-1.5 py-0.5 rounded">{t('groupDetails.admin')}</span>}
@@ -673,7 +674,7 @@ export default function GroupChatPage() {
       {!isMember ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
           <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
-            {group.avatar ? <img src={group.avatar} alt="" className="w-full h-full object-cover" /> : group.name[0]?.toUpperCase()}
+            {group.avatar ? <img src={mediaUrl(group.avatar)} alt="" className="w-full h-full object-cover" /> : group.name[0]?.toUpperCase()}
           </div>
           <div className="text-center">
             <h2 className="text-xl font-bold text-dark-text mb-1">{group.name}</h2>
@@ -1009,7 +1010,7 @@ export default function GroupChatPage() {
             <div className="flex-1 overflow-y-auto">
               <div className="flex flex-col items-center py-8 px-4">
                 <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white text-3xl font-bold mb-4 overflow-hidden">
-                  {group.avatar ? <img src={group.avatar} alt="" className="w-full h-full object-cover" /> : group.name[0]?.toUpperCase()}
+                  {group.avatar ? <img src={mediaUrl(group.avatar)} alt="" className="w-full h-full object-cover" /> : group.name[0]?.toUpperCase()}
                 </div>
                 <h3 className="text-xl font-bold text-dark-text text-center">{group.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
@@ -1121,7 +1122,7 @@ export default function GroupChatPage() {
                       {pendingRequests.map(req => (
                         <div key={req.id} className="flex items-center gap-3 py-2">
                           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
-                            {req.user?.avatar ? <img src={req.user.avatar} alt="" className="w-full h-full object-cover" /> : req.user?.displayName?.[0]?.toUpperCase() ?? '?'}
+                            {req.user?.avatar ? <img src={mediaUrl(req.user.avatar)} alt="" className="w-full h-full object-cover" /> : req.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-dark-text font-medium truncate">{req.user.displayName}</p>
@@ -1159,7 +1160,7 @@ export default function GroupChatPage() {
                         }}
                       >
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
-                          {m.user?.avatar ? <img src={m.user.avatar} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
+                          {m.user?.avatar ? <img src={mediaUrl(m.user.avatar)} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-dark-text font-medium truncate">{m.user.displayName}</p>

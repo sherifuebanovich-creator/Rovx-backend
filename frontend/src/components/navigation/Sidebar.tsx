@@ -1,11 +1,12 @@
 'use client';
 import { motion } from 'framer-motion';
 import { FaTimes, FaUser, FaRoute, FaBookmark, FaTrophy, FaCog, FaSignOutAlt,
-         FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers } from 'react-icons/fa';
+         FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers, FaHeadset } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { authApi } from '@/lib/api';
+import { mediaUrl } from '@/lib/media';
 import Image from 'next/image';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -40,6 +41,7 @@ export function Sidebar() {
     { icon: <FaUsers size={16} />, label: t('sidebar.groups') || 'Groups', href: '/groups' },
     { icon: <FaTrophy size={16} />, label: t('sidebar.achievements'), href: '/achievements' },
     { icon: <FaBell size={16} />, label: t('sidebar.notifications'), href: '/notifications' },
+    { icon: <FaHeadset size={16} />, label: t('sidebar.support') || 'Support', href: '/support' },
     { icon: <FaCog size={16} />, label: t('sidebar.settings'), href: '/settings' },
   ];
 
@@ -80,7 +82,7 @@ export function Sidebar() {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-xl font-bold text-white flex-shrink-0">
                 {user.avatar
-                  ? <Image src={user.avatar} alt={user.displayName} width={48} height={48} className="rounded-2xl object-cover" />
+                  ? <Image src={mediaUrl(user.avatar)!} alt={user.displayName} width={48} height={48} className="rounded-2xl object-cover" />
                   : (user.displayName?.[0] || '?').toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">

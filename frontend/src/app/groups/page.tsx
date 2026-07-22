@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi, premiumApi } from '@/lib/api';
+import { mediaUrl } from '@/lib/media';
 import { Group } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -180,7 +181,7 @@ export default function GroupsPage() {
                   className="card p-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-all"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white font-bold overflow-hidden">
-                    {group.avatar ? <img src={group.avatar} className="w-full h-full object-cover rounded-2xl" /> : <FaUsers size={18} />}
+                    {group.avatar ? <img src={mediaUrl(group.avatar)} className="w-full h-full object-cover rounded-2xl" /> : <FaUsers size={18} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

@@ -43,6 +43,24 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as any;
 
+    // Render's free tier spins the backend down after idle and takes 30-60s+
+    // to wake back up, so the very first request after a while either times
+    // out with no response at all or bounces off the gateway with a 502/503/504
+    // before the app has finished booting. That's exactly what surfaced as
+    // "Не удалось загрузить ТС" / "Не удалось отправить сообщение" — a plain
+    // timeout, not a real backend error. Retry once after a short delay
+    // instead of failing immediately, mirroring the same tolerance already
+    // applied to the /auth/refresh call below.
+    if (
+      originalRequest &&
+      !originalRequest._coldStartRetry &&
+      (!error.response || [502, 503, 504].includes(error.response.status))
+    ) {
+      originalRequest._coldStartRetry = true;
+      await new Promise((r) => setTimeout(r, 3000));
+      return api(originalRequest);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (originalRequest._skipAuthRedirect) {
         return Promise.reject(error);
