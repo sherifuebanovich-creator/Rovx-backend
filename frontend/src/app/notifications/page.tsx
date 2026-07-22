@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaBell, FaRoute, FaExclamationTriangle } from 'react-icons/fa';
+import { FaArrowLeft, FaBell, FaRoute, FaExclamationTriangle, FaHeadset } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import { socialApi } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -67,6 +67,7 @@ export default function NotificationsPage() {
     switch (type) {
       case 'report': return <FaExclamationTriangle size={14} />;
       case 'route': return <FaRoute size={14} />;
+      case 'support_reply': return <FaHeadset size={14} />;
       default: return <FaBell size={14} />;
     }
   };
@@ -74,6 +75,7 @@ export default function NotificationsPage() {
   const colorMap: Record<string, string> = {
     report: 'text-orange-400 bg-orange-600/20',
     route: 'text-primary-400 bg-primary-600/20',
+    support_reply: 'text-accent-400 bg-accent-600/20',
     info: 'text-gray-400 bg-white/10',
   };
 

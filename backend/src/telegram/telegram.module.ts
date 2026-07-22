@@ -7,9 +7,10 @@ import { PremiumModule } from '../premium/premium.module';
 import { RedisModule } from '../redis/redis.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiModule } from '../ai/ai.module';
+import { WebsocketModule } from '../websocket/websocket.module';
 
 @Module({
-  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule, PrismaModule, AiModule],
+  imports: [AdminModule, forwardRef(() => ReportsModule), forwardRef(() => PremiumModule), RedisModule, PrismaModule, AiModule, WebsocketModule],
   controllers: [TelegramController],
   providers: [TelegramService],
   exports: [TelegramService],

@@ -203,7 +203,6 @@ function PremiumPage() {
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.allRouteTypes')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.voiceNav')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.instantReports')} />
-                        <Feature icon={<FaCheck size={8} />} text={t('premium.features.noAds')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.aiAssistant')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.camerasOnline')} />
                         <Feature icon={<FaCheck size={8} />} text={t('premium.features.weatherTraffic')} />

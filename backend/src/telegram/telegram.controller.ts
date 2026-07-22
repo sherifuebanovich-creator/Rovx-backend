@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { GatewayService } from '../websocket/gateway.service';
 import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 const COUNTRIES: Record<string, string[]> = {
@@ -51,6 +52,7 @@ export class TelegramController implements OnModuleInit {
     private redis: RedisService,
     private prisma: PrismaService,
     private ai: AiService,
+    private gateway: GatewayService,
   ) {}
 
   async onModuleInit() {
@@ -179,6 +181,10 @@ export class TelegramController implements OnModuleInit {
             '💎 /grant <id> <уровень> [дней] — выдать премиум\n' +
             '   Уровни: PREMIUM_BASIC, PREMIUM_STANDARD, PREMIUM_MAX\n' +
             '   Пример: <code>/grant userId PREMIUM_MAX 30</code>\n\n' +
+            '━━ <b>ПОДДЕРЖКА</b> ━━\n' +
+            '💬 /answer <userId> <текст> — ответить на обращение в поддержку\n' +
+            '   Ответ придёт пользователю прямо в приложение.\n' +
+            '   Пример: <code>/answer userId Здравствуйте! ...</code>\n\n' +
             '━━ <b>АДМИН</b> ━━\n' +
             '🚫 /ban <id> [причина] — забанить\n' +
             '✅ /unban <id> — разбанить\n' +
@@ -491,6 +497,21 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
+        if (cmd === '/answer') {
+          const parts = args;
+          if (parts.length < 2) {
+            await this.telegram.sendMessageToChat(chatId,
+              '💬 <b>Ответить в поддержку</b>\n\n' +
+              'Пример: <code>/answer userId Привет! Чем могу помочь?</code>\n\n' +
+              'userId берите из карточки обращения в поддержку — ответ придёт пользователю в приложение.');
+            return { ok: true };
+          }
+          const targetUserId = parts[0];
+          const replyText = parts.slice(1).join(' ');
+          await this.sendSupportReply(chatId, targetUserId, replyText);
+          return { ok: true };
+        }
+
         if (cmd === '/reply') {
           const parts = args;
           if (parts.length < 2) {
@@ -674,6 +695,31 @@ export class TelegramController implements OnModuleInit {
       } else {
         await this.telegram.sendMessageToChat(chatId, `❌ Не удалось выдать премиум`);
       }
+    } catch (error) {
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async sendSupportReply(chatId: number, userId: string, replyText: string) {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!user) {
+        await this.telegram.sendMessageToChat(chatId, `❌ Пользователь с ID <code>${userId}</code> не найден`);
+        return;
+      }
+      const notification = await this.prisma.notification.create({
+        data: {
+          userId,
+          type: 'support_reply',
+          title: 'Ответ от поддержки ROVX',
+          body: replyText,
+        },
+      });
+      await this.gateway.sendToUser(userId, 'notification:new', notification);
+      await this.telegram.sendMessageToChat(chatId,
+        `✅ <b>Ответ отправлен пользователю</b>\n\n` +
+        `🆔 <code>${userId}</code>\n` +
+        `💬 ${escapeTelegramHtml(replyText)}`);
     } catch (error) {
       await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
     }

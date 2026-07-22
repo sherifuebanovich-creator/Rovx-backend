@@ -42,8 +42,10 @@ export class SupportService {
       '🆘 <b>Обращение в поддержку</b>\n' +
         `От: ${escapeTelegramHtml(user.displayName || user.username)} (@${escapeTelegramHtml(user.username)})\n` +
         `Email: ${escapeTelegramHtml(user.email)}\n` +
-        `Тариф: ${user.subscription}\n\n` +
-        escapeTelegramHtml(message),
+        `Тариф: ${user.subscription}\n` +
+        `ID: <code>${userId}</code>\n\n` +
+        escapeTelegramHtml(message) +
+        `\n\n↩️ Ответить: <code>/answer ${userId} ваш текст</code>`,
     );
 
     return { success: true, remaining: Math.max(0, limit - count) };
