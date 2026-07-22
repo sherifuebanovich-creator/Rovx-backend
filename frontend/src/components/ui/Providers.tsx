@@ -77,9 +77,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(() => queryClient);
 
   useEffect(() => {
+    // A service worker (public/sw.js, now deleted from the build) shipped
+    // with the very first commit and was never wired up again after — but
+    // any browser that installed it while it was live keeps intercepting
+    // requests indefinitely and serving its frozen precache, since SW
+    // installs persist across sessions until explicitly removed. That
+    // silently pins affected browsers to a stale build (old JS, old
+    // strings, missing bug fixes) with zero visible error. Unregistering
+    // alone stops NEW installs but leaves the already-cached responses in
+    // Cache Storage; clear those too so an affected browser fully recovers
+    // on its next load instead of continuing to read from the old cache.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => {
         regs.forEach(r => r.unregister());
+      }).catch(() => {});
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => {
+        keys.forEach(key => caches.delete(key));
       }).catch(() => {});
     }
   }, []);
