@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { socialApi } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import { getSocket } from '@/hooks/useSocket';
+import toast from 'react-hot-toast';
 
 
 export function TopBar() {
@@ -23,12 +24,45 @@ export function TopBar() {
   const userLocation = useMapStore(s => s.userLocation);
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setFollowUser = useMapStore(s => s.setFollowUser);
+  const setUserLocation = useMapStore(s => s.setUserLocation);
   const show3D = useMapStore(s => s.show3D);
   const { user } = useAuthStore();
   const router = useRouter();
   const hasRoute = origin && destination;
   const [hasUnread, setHasUnread] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  const handleLocateMe = useCallback(() => {
+    if (userLocation) {
+      setMapCenter({ lat: userLocation.lat, lng: userLocation.lng }, 16);
+      setFollowUser(true);
+      return;
+    }
+    // useGeolocation's watchPosition hasn't produced a fix yet (permission
+    // still pending, first fix slow, or silently denied) — the button used
+    // to just do nothing in that case. Actively request one so the button
+    // always does *something* visible, including a clear error if denied.
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      toast.error(t('topbar.locationUnavailable'));
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+        setUserLocation({ lat: latitude, lng: longitude }, heading ?? 0, speed ?? 0, accuracy ?? 0, pos.timestamp);
+        setMapCenter({ lat: latitude, lng: longitude }, 16);
+        setFollowUser(true);
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        toast.error(err.code === err.PERMISSION_DENIED ? t('topbar.locationPermissionDenied') : t('topbar.locationUnavailable'));
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }, [userLocation, setMapCenter, setFollowUser, setUserLocation, t]);
 
   const checkUnread = useCallback(() => {
     if (!user) return;
@@ -149,16 +183,16 @@ export function TopBar() {
 
           {/* My location */}
           <button
-            onClick={() => {
-              if (userLocation) {
-                setMapCenter({ lat: userLocation.lat, lng: userLocation.lng }, 16);
-                setFollowUser(true);
-              }
-            }}
-            className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all ${userLocation ? 'text-primary-400' : 'text-gray-600'}`}
+            onClick={handleLocateMe}
+            disabled={locating}
+            className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all disabled:opacity-60 ${userLocation ? 'text-primary-400' : 'text-gray-600'}`}
             title={t('topbar.myLocation')}
           >
-            <FaCrosshairs size={13} />
+            {locating ? (
+              <div className="w-3.5 h-3.5 border-2 border-primary-400/30 border-t-primary-400 rounded-full animate-spin" />
+            ) : (
+              <FaCrosshairs size={13} />
+            )}
           </button>
 
           {/* Theme toggle */}

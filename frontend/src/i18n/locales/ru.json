@@ -34,7 +34,9 @@
     "myLocation": "Моё местоположение",
     "lightTheme": "Светлая тема",
     "darkTheme": "Тёмная тема",
-    "traffic": "Пробки"
+    "traffic": "Пробки",
+    "locationUnavailable": "Не удалось определить местоположение",
+    "locationPermissionDenied": "Доступ к геолокации запрещён. Разрешите в настройках браузера."
   },
   "bottombar": {
     "map": "Карта",

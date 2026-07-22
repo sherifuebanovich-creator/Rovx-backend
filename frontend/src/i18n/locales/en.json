@@ -34,7 +34,9 @@
     "myLocation": "My location",
     "lightTheme": "Light theme",
     "darkTheme": "Dark theme",
-    "traffic": "Traffic"
+    "traffic": "Traffic",
+    "locationUnavailable": "Couldn't get your location",
+    "locationPermissionDenied": "Location access denied. Enable it in your browser settings."
   },
   "bottombar": {
     "map": "Map",
