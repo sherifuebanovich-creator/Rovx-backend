@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
 import { StripeService } from './stripe.service';
+import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 export const PREMIUM_TIERS = [
   {
@@ -536,6 +537,9 @@ export class PremiumService {
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
     }
+    if (!/^\d{4}$/.test(proof)) {
+      throw new BadRequestException('proof must be exactly 4 digits');
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -576,7 +580,7 @@ export class PremiumService {
       const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
       if (adminChat && botToken) {
         const msg = `💰 <b>НОВАЯ ОПЛАТА</b>\n\n` +
-          `👤 Пользователь: <b>${user.displayName || user.email || userId}</b>\n` +
+          `👤 Пользователь: <b>${escapeTelegramHtml(user.displayName || user.email || userId)}</b>\n` +
           `💎 Тариф: <b>${tier.label_ru}</b>\n` +
           `💵 Сумма: <b>${(tier as any).priceRub || '$' + tier.price}</b>\n` +
           `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +

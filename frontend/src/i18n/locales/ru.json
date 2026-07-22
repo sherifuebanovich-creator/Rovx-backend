@@ -462,6 +462,8 @@
     "vehicleAddFailed": "Не удалось добавить ТС",
     "vehicleRemoved": "ТС удалено",
     "vehicleRemoveFailed": "Не удалось удалить ТС",
+    "vehiclesLoadFailed": "Не удалось загрузить ТС. Попробуйте обновить страницу.",
+    "addressNotFound": "Адрес не найден на карте. Уточните адрес.",
     "mapMode": "Режим карты",
     "streets": "Обычная (2D)",
     "satellite": "Спутник",

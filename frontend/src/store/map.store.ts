@@ -115,6 +115,7 @@ interface MapState {
   setShow3D: (show: boolean) => void;
   toggle3D: () => void;
   clearRoute: () => void;
+  resetSession: () => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -299,6 +300,47 @@ export const useMapStore = create<MapState>((set) => ({
   setShow3D: (show3D) => set({ show3D }),
 
   toggle3D: () => set((s) => ({ show3D: !s.show3D })),
+
+  // Clears everything tied to the signed-in user's identity/session so it
+  // can't leak to whoever signs into this browser tab next (trip state,
+  // route, friend markers, search history). Deliberately leaves pure
+  // display prefs (mapStyle, zoom, darkMode, activeCategories) untouched.
+  resetSession: () =>
+    set({
+      activeTrip: null,
+      origin: null,
+      destination: null,
+      waypoints: [],
+      selectedRoute: null,
+      calculatedRoutes: [],
+      navigation: {
+        isNavigating: false,
+        currentLeg: 0,
+        routeProgress: 0,
+        distanceToManeuver: 0,
+        bearingToManeuver: 0,
+        isArrived: false,
+        isOffRoute: false,
+        isRerouting: false,
+        isWrongWay: false,
+        forwardIndex: 0,
+      },
+      friendLocations: [],
+      reports: [],
+      selectedReport: null,
+      visibleObjects: [],
+      selectedObject: null,
+      searchQuery: '',
+      searchSuggestions: [],
+      searchHistory: [],
+      selectedSearchResult: null,
+      isSearchOpen: false,
+      isRoutesPanelOpen: false,
+      isObjectsPanelOpen: false,
+      isReportPanelOpen: false,
+      isSidebarOpen: false,
+      selectedVehicle: null,
+    }),
 
   clearRoute: () =>
     set({

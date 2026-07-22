@@ -13,11 +13,11 @@ export interface User {
   reputation: number;
   totalTrips: number;
   totalDistance: number;
-  homeLat?: number;
-  homeLng?: number;
+  homeLat?: number | null;
+  homeLng?: number | null;
   homeAddress?: string;
-  workLat?: number;
-  workLng?: number;
+  workLat?: number | null;
+  workLng?: number | null;
   workAddress?: string;
   phone?: string;
   city?: string;

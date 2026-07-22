@@ -462,6 +462,8 @@
     "vehicleAddFailed": "Failed to add vehicle",
     "vehicleRemoved": "Vehicle removed",
     "vehicleRemoveFailed": "Failed to remove vehicle",
+    "vehiclesLoadFailed": "Couldn't load vehicles. Try refreshing the page.",
+    "addressNotFound": "Address not found on the map. Please refine it.",
     "mapMode": "Map Mode",
     "streets": "Normal (2D)",
     "satellite": "Satellite",

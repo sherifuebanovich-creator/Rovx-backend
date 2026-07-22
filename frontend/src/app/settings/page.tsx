@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaShieldAlt, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase, FaHeadset } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { authApi, usersApi, supportApi } from '@/lib/api';
+import { authApi, usersApi, supportApi, mapApi } from '@/lib/api';
 import { LANGUAGES, getLanguageConfig } from '@/config/languages';
 import { useMapStore } from '@/store/map.store';
 import { VehicleForm } from '@/components/vehicles/VehicleForm';
@@ -26,6 +26,7 @@ export default function SettingsPage() {
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesError, setVehiclesError] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [supportText, setSupportText] = useState('');
@@ -52,10 +53,54 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return;
     setVehiclesLoading(true);
+    setVehiclesError(false);
     usersApi.getVehicles().then(res => {
       setVehicles(res.data.data || res.data || []);
-    }).catch(() => {}).finally(() => setVehiclesLoading(false));
+    }).catch(() => {
+      setVehiclesError(true);
+      toast.error(t('settings.vehiclesLoadFailed'));
+    }).finally(() => setVehiclesLoading(false));
   }, [user]);
+
+  // Free-text home/work addresses were saving text without geocoding it,
+  // so an edited address kept the OLD lat/lng — SearchPanel's quick-
+  // destination buttons would then route to a stale location under the
+  // new label. Geocode on blur and keep coords in lockstep with the text;
+  // clear them (rather than leave stale) if geocoding finds nothing.
+  const handleAddressBlur = async (field: 'home' | 'work', rawValue: string) => {
+    if (!user) return;
+    const value = rawValue.trim();
+    const addressKey = field === 'home' ? 'homeAddress' : 'workAddress';
+    const latKey = field === 'home' ? 'homeLat' : 'workLat';
+    const lngKey = field === 'home' ? 'homeLng' : 'workLng';
+
+    if (!value) {
+      const patch = { [addressKey]: '', [latKey]: null, [lngKey]: null };
+      try {
+        await usersApi.updateProfile(patch);
+        setUser({ ...user, ...patch });
+      } catch {
+        toast.error(t('settings.saveFailed'));
+      }
+      return;
+    }
+
+    try {
+      const res = await mapApi.search(value, undefined, undefined, 20);
+      const results = res.data?.data || res.data || [];
+      const match = results[0];
+      const patch = {
+        [addressKey]: value,
+        [latKey]: match?.lat ?? null,
+        [lngKey]: match?.lng ?? null,
+      };
+      await usersApi.updateProfile(patch);
+      setUser({ ...user, ...patch });
+      if (!match) toast.error(t('settings.addressNotFound'));
+    } catch {
+      toast.error(t('settings.saveFailed'));
+    }
+  };
 
   const handleLanguageChange = (code: string) => {
     setLang(code);
@@ -206,9 +251,7 @@ export default function SettingsPage() {
                         const val = e.target.value;
                         setUser({ ...user, homeAddress: val });
                       }}
-                      onBlur={(e) => {
-                        usersApi.updateProfile({ homeAddress: e.target.value }).catch(() => toast.error(t('settings.saveFailed')));
-                      }}
+                      onBlur={(e) => handleAddressBlur('home', e.target.value)}
                       className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.homePlaceholder')}
                     />
@@ -233,9 +276,7 @@ export default function SettingsPage() {
                         const val = e.target.value;
                         setUser({ ...user, workAddress: val });
                       }}
-                      onBlur={(e) => {
-                        usersApi.updateProfile({ workAddress: e.target.value }).catch(() => toast.error(t('settings.saveFailed')));
-                      }}
+                      onBlur={(e) => handleAddressBlur('work', e.target.value)}
                       className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.workPlaceholder')}
                     />
@@ -255,6 +296,10 @@ export default function SettingsPage() {
                 {vehiclesLoading ? (
                   <div className="px-4 py-6 text-center">
                     <div className="w-5 h-5 border-2 border-primary-400/30 border-t-primary-400 rounded-full animate-spin mx-auto" />
+                  </div>
+                ) : vehiclesError ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-red-400">{t('settings.vehiclesLoadFailed')}</p>
                   </div>
                 ) : vehicles.length === 0 && !showAddVehicle && (
                   <div className="px-4 py-6 text-center">

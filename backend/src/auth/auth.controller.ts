@@ -24,7 +24,9 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import { timingSafeEqual } from 'crypto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -32,6 +34,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private prisma: PrismaService,
+    private config: ConfigService,
   ) {}
 
   @Post('register')
@@ -192,7 +195,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ short: { limit: 1, ttl: 300000 } })
   @ApiOperation({ summary: 'Create first admin (only works when zero admins exist)' })
-  async bootstrapAdmin(@Body() body: { email: string; password: string }) {
+  async bootstrapAdmin(@Body() body: { email: string; password: string; secret: string }) {
+    // Gated behind a server-only secret so this can't be triggered by anyone
+    // who merely discovers the route — only whoever has Render env access.
+    // Also fails closed (never bootstrap-able) if the secret was never set.
+    const expectedSecret = this.config.get('ADMIN_BOOTSTRAP_SECRET') || '';
+    const providedSecret = body.secret || '';
+    const a = Buffer.from(providedSecret);
+    const b = Buffer.from(expectedSecret);
+    if (!expectedSecret || a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new BadRequestException('Not available');
+    }
+
     if (!body.email || !body.password) {
       throw new BadRequestException('email and password required');
     }

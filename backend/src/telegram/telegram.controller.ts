@@ -9,11 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
-
-/** Escapes text interpolated into a Telegram `parse_mode: 'HTML'` message body. */
-function escapeTelegramHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 const COUNTRIES: Record<string, string[]> = {
   'Россия': ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Краснодар', 'Сочи', 'Ростов-на-Дону', 'Уфа', 'Красноярск', 'Воронеж', 'Пермь', 'Волгоград', 'Самара', 'Нижний Новгород', 'Челябинск', 'Омск', 'Тюмень', 'Иркутск', 'Хабаровск'],
@@ -309,7 +305,7 @@ export class TelegramController implements OnModuleInit {
               const sev = r.severity >= 4 ? '🔴' : r.severity >= 3 ? '🟡' : '🟢';
               const time = r.createdAt ? new Date(r.createdAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '';
               const photo = r.images && r.images.length > 0 ? '📷' : '';
-              return `${i+1}. ${sev} <b>${r.type}</b> ${photo}\n   📍 ${r.address || 'нет адреса'}\n   🕐 ${time}\n   ⚠️ Серьёзность: ${r.severity}/5`;
+              return `${i+1}. ${sev} <b>${r.type}</b> ${photo}\n   📍 ${r.address ? escapeTelegramHtml(r.address) : 'нет адреса'}\n   🕐 ${time}\n   ⚠️ Серьёзность: ${r.severity}/5`;
             });
             const header = `🔍 <b>Репорты в ${query}</b> (${result.total} шт.):\n━━━━━━━━━━━━━━━`;
             const msg = [header, ...lines].join('\n\n');
@@ -783,8 +779,8 @@ export class TelegramController implements OnModuleInit {
       const photoStatus = group.avatar ? `📷 <a href="${group.avatar}">Фото</a>` : '📷 Нет фото';
 
       let msg = `📋 <b>ГРУППА</b>\n━━━━━━━━━━━━━━━\n` +
-        `📛 <b>${group.name}</b>\n` +
-        `📝 ${group.description || 'Без описания'}\n` +
+        `📛 <b>${escapeTelegramHtml(group.name)}</b>\n` +
+        `📝 ${group.description ? escapeTelegramHtml(group.description) : 'Без описания'}\n` +
         `📊 Тип: ${type}\n` +
         `🖼 Фото: ${photoStatus}\n` +
         `👥 Участников: ${group._count.members}\n` +
@@ -863,8 +859,8 @@ export class TelegramController implements OnModuleInit {
         caption += `⚠️ <b>Серьёзность:</b> ${severityBar} (${r.severity}/5)\n`;
         caption += `📍 <b>Координаты:</b> ${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}\n`;
         caption += `🗺 <a href="${mapLink}">Открыть на карте</a>\n`;
-        if (r.address) caption += `📮 <b>Адрес:</b> ${r.address}\n`;
-        if (r.description) caption += `📝 <b>Описание:</b> ${r.description}\n`;
+        if (r.address) caption += `📮 <b>Адрес:</b> ${escapeTelegramHtml(r.address)}\n`;
+        if (r.description) caption += `📝 <b>Описание:</b> ${escapeTelegramHtml(r.description)}\n`;
         caption += `━━━━━━━━━━━━━━━\n`;
         caption += `👤 <b>Автор:</b> ${name}`;
 

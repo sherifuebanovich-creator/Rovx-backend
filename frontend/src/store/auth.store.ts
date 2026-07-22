@@ -53,6 +53,11 @@ export const useAuthStore = create<AuthState>()(
         Cookies.remove('access_token', { path: '/' });
         try { localStorage.removeItem('rovx-auth'); } catch {}
         set({ user: null, isAuthenticated: false, preferences: null, accessToken: null, refreshToken: null });
+        // Trip/route/friend-marker state must not survive into the next
+        // signed-in session on this device — otherwise it can leak between
+        // users sharing a browser (stale trip id used with the new user's
+        // token, previous user's friend locations shown, etc.).
+        import('./map.store').then(({ useMapStore }) => useMapStore.getState().resetSession());
       },
 
       setLoading: (isLoading) => set({ isLoading }),

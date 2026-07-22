@@ -3,10 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { PREMIUM_TIERS } from '../premium/premium.service';
-
-function escapeTelegramHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 @Injectable()
 export class SupportService {

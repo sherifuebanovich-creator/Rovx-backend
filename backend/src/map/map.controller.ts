@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { MapService } from './map.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -157,6 +158,7 @@ export class MapController {
   }
 
   @Get('search')
+  @Throttle({ short: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Search map objects' })
   async search(
     @Req() req: Request,
@@ -170,6 +172,7 @@ export class MapController {
   }
 
   @Get('suggest')
+  @Throttle({ short: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Autocomplete suggestions' })
   async suggest(
     @Req() req: Request,
@@ -182,6 +185,7 @@ export class MapController {
   }
 
   @Get('reverse-geocode')
+  @Throttle({ short: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Reverse geocode coordinates to address' })
   async reverseGeocode(
     @Query('lat') lat: number,
