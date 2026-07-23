@@ -65,17 +65,64 @@ export const useAuthStore = create<AuthState>()(
       initAuth: async () => {
         const state = get();
         const cookieToken = Cookies.get('access_token');
-        if (!state.accessToken && !cookieToken) {
-          set({ isInitDone: true, isLoading: false });
-          return;
-        }
-        const token = state.accessToken || cookieToken;
-        if (!token) {
-          set({ isInitDone: true, isLoading: false });
-          return;
-        }
-        set({ isLoading: true });
-        try {
+        // Re-read from localStorage on every attempt (not just once, and not
+        // only from the Zustand store — api.ts's own refresh path writes
+        // straight to localStorage without going through this store). If a
+        // concurrent refresh from that other path wins and rotates the token
+        // first, this picks up the new value instead of a stale one.
+        const readStoredRefresh = () => {
+          try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken || null; } catch { return null; }
+        };
+
+        // 'ok' — session restored; 'invalid' — server rejected the refresh
+        // token (real logout); 'network' — backend unreachable (Render cold
+        // start etc.), keep the persisted session and try again later.
+        const doRefresh = async (): Promise<'ok' | 'invalid' | 'network'> => {
+          try {
+            const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+            const axiosMod = (await import('axios')).default;
+            const getRefreshHeaders = () => {
+              const storedRefresh = readStoredRefresh() || get().refreshToken;
+              return {
+                'Content-Type': 'application/json',
+                ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
+              };
+            };
+            let res;
+            try {
+              res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
+                withCredentials: true,
+                headers: getRefreshHeaders(),
+              });
+            } catch (firstErr: any) {
+              // 409 = another in-flight request is already rotating this
+              // token (backend redis lock) — the session is fine, just
+              // retry shortly instead of treating it as an invalid token.
+              if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
+                await new Promise(r => setTimeout(r, 1500));
+                res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
+                  withCredentials: true,
+                  headers: getRefreshHeaders(),
+                });
+              } else {
+                throw firstErr;
+              }
+            }
+            const raw = res.data;
+            const payload = raw?.data ?? raw;
+            const inner = payload?.data ?? payload;
+            const newAccess = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
+            if (!newAccess) return 'invalid';
+            get().setTokens(newAccess, payload?.refreshToken || inner?.refreshToken || '');
+            return 'ok';
+          } catch (e: any) {
+            const st = e?.response?.status;
+            if (st === 400 || st === 401 || st === 403) return 'invalid';
+            return 'network';
+          }
+        };
+
+        const fetchMe = async (): Promise<void> => {
           const api = (await import('@/lib/api')).default;
           const res = await api.get('/auth/me', { _skipAuthRedirect: true } as any);
           const raw = res.data;
@@ -83,15 +130,15 @@ export const useAuthStore = create<AuthState>()(
           const inner = payload?.data ?? payload;
           const userData = inner?.user || payload?.user || inner;
           if (userData?.id) {
-            set({ user: userData, isAuthenticated: true, isLoading: false, isInitDone: true });
+            set({ user: userData, isAuthenticated: true });
             // Apply pending language preference from registration/Google login
             const pendingLang = typeof window !== 'undefined' ? localStorage.getItem('pending_lang') : null;
             if (pendingLang && pendingLang !== (userData.preferredLang || 'ru')) {
               try {
                 const usersApiMod = (await import('@/lib/api')).usersApi;
                 await usersApiMod.updateProfile({ preferredLang: pendingLang });
-                set((state) => ({
-                  user: state.user ? { ...state.user, preferredLang: pendingLang } : null,
+                set((s) => ({
+                  user: s.user ? { ...s.user, preferredLang: pendingLang } : null,
                 }));
               } catch {} finally {
                 localStorage.removeItem('pending_lang');
@@ -99,59 +146,49 @@ export const useAuthStore = create<AuthState>()(
             } else if (pendingLang) {
               localStorage.removeItem('pending_lang');
             }
-          } else {
-            set({ isInitDone: true, isLoading: false });
           }
+        };
+
+        const token = state.accessToken || cookieToken;
+        const hasRefresh = !!(state.refreshToken || readStoredRefresh());
+
+        if (!token && !hasRefresh) {
+          set({ isInitDone: true, isLoading: false });
+          return;
+        }
+
+        set({ isLoading: true });
+
+        // Cold start after the browser was closed: the short-lived access
+        // token is gone but the long-lived refresh token survived in
+        // localStorage — restore the session silently so the user stays
+        // signed in across visits on this device.
+        if (!token) {
+          const r = await doRefresh();
+          if (r === 'ok') {
+            try { await fetchMe(); } catch {}
+          } else if (r === 'invalid') {
+            get().logout();
+          }
+          set({ isInitDone: true, isLoading: false });
+          return;
+        }
+
+        try {
+          await fetchMe();
+          set({ isInitDone: true, isLoading: false });
         } catch (err: any) {
           const status = err?.response?.status;
           if (status === 401) {
-            try {
-              const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-              const axiosMod = (await import('axios')).default;
-              // Re-read from localStorage on every attempt (not just once,
-              // and not from the Zustand store — api.ts's own refresh path
-              // writes straight to localStorage without going through this
-              // store). If a concurrent refresh from that other path wins
-              // and rotates the token first, this picks up the new value
-              // instead of retrying with an already-stale one.
-              const getRefreshHeaders = () => {
-                const storedRefresh = (() => { try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return null; } })();
-                return {
-                  'Content-Type': 'application/json',
-                  ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
-                };
-              };
-              let res;
-              try {
-                res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
-                  withCredentials: true,
-                  headers: getRefreshHeaders(),
-                });
-              } catch (firstErr: any) {
-                // 409 = another in-flight request is already rotating this
-                // token (backend redis lock) — the session is fine, just
-                // retry shortly instead of treating it as an invalid token.
-                if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
-                  await new Promise(r => setTimeout(r, 1500));
-                  res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
-                    withCredentials: true,
-                    headers: getRefreshHeaders(),
-                  });
-                } else {
-                  throw firstErr;
-                }
-              }
-              const raw = res.data;
-              const payload = raw?.data ?? raw;
-              const inner = payload?.data ?? payload;
-              const newAccess = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
-              if (newAccess) {
-                get().setTokens(newAccess, payload?.refreshToken || inner?.refreshToken || '');
-                set({ isInitDone: true, isLoading: false });
-                return;
-              }
-            } catch {}
-            get().logout();
+            const r = await doRefresh();
+            if (r === 'ok') {
+              try { await fetchMe(); } catch {}
+              set({ isInitDone: true, isLoading: false });
+              return;
+            }
+            if (r === 'invalid') {
+              get().logout();
+            }
           }
           set({ isInitDone: true, isLoading: false });
         }
