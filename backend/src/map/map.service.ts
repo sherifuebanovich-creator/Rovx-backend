@@ -241,14 +241,22 @@ export class MapService {
 
     const query = `[out:json];(${filters.join('')});out body 50;`;
 
-    // Two Overpass mirrors — the public instances individually rate-limit
-    // (HTTP 429) under load often enough that a single-endpoint call
-    // silently drops all POIs (including speed cameras/traffic lights)
-    // from the map for the rest of the cache TTL. The real fix for the
-    // rate-limiting itself is the coarser cache key + longer TTL above,
-    // which cuts actual Overpass call volume; this fallback just covers
-    // one mirror having a bad moment independent of that.
-    const overpassUrls = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+    // Multiple Overpass mirrors — the public instances individually
+    // rate-limit (HTTP 429) or outright block (HTTP 406) under load often
+    // enough that a single-endpoint call silently drops all POIs (including
+    // speed cameras/traffic lights) from the map for the rest of the cache
+    // TTL. The real fix for the rate-limiting itself is the coarser cache
+    // key + longer TTL above, which cuts actual Overpass call volume; this
+    // fallback just covers one mirror having a bad moment independent of
+    // that. Verified live: overpass-api.de currently 406s every request and
+    // overpass.kumi.systems times out — both were the only two configured,
+    // so every "nearby" search was silently coming back empty. maps.mail.ru
+    // mirrors the same Overpass API and responded with real results.
+    const overpassUrls = [
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+    ];
 
     try {
       let res: any = null;
