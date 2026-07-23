@@ -50,7 +50,8 @@ export default function CreateGroupPage() {
       const group = res.data?.data || res.data;
       if (avatarFile && group.id) {
         try {
-          await socialApi.uploadGroupAvatar(group.id, avatarFile);
+          const { downscaleImage } = await import('@/lib/image');
+          await socialApi.uploadGroupAvatar(group.id, await downscaleImage(avatarFile));
         } catch {
           // Avatar upload failed, group still created
         }

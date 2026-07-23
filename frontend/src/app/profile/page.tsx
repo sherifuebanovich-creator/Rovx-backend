@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaArrowLeft, FaRoute, FaMap, FaStar, FaTrophy, FaEdit, FaCrown, FaUser, FaCar, FaTruck, FaTrash, FaPlus, FaCheck, FaTimes, FaPhone, FaHome, FaBriefcase, FaMapMarkerAlt, FaCamera } from 'react-icons/fa';
@@ -94,7 +93,9 @@ export default function ProfilePage() {
     try {
       let avatarUrl = user?.avatar;
       if (avatarFile) {
-        const avatarRes = await usersApi.uploadAvatar(avatarFile);
+        const { downscaleImage } = await import('@/lib/image');
+        const compact = await downscaleImage(avatarFile);
+        const avatarRes = await usersApi.uploadAvatar(compact);
         const avatarData = avatarRes.data.data || avatarRes.data;
         avatarUrl = avatarData.avatar;
       }
@@ -203,7 +204,7 @@ export default function ProfilePage() {
                   {avatarPreview ? (
                     <img src={avatarPreview} className="w-full h-full object-cover" />
                   ) : user.avatar ? (
-                    <Image src={mediaUrl(user.avatar)!} alt={user.displayName} width={96} height={96} className="object-cover" />
+                    <img src={mediaUrl(user.avatar)} alt={user.displayName} width={96} height={96} className="w-24 h-24 object-cover" />
                   ) : (
                     <span>{(user.displayName?.[0] || '?').toUpperCase()}</span>
                   )}
@@ -215,7 +216,7 @@ export default function ProfilePage() {
               </>
             ) : (
               <>
-                {user.avatar ? <Image src={mediaUrl(user.avatar)!} alt={user.displayName} width={96} height={96} className="object-cover" /> : (user.displayName?.[0] || '?').toUpperCase()}
+                {user.avatar ? <img src={mediaUrl(user.avatar)} alt={user.displayName} width={96} height={96} className="w-24 h-24 object-cover" /> : (user.displayName?.[0] || '?').toUpperCase()}
               </>
             )}
             <button onClick={startEditing} className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center border-2 border-dark-bg">

@@ -100,12 +100,11 @@ export class SocialController {
     });
     if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Only admin can edit group');
 
-    const dir = join(process.cwd(), 'uploads', 'avatars');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const uniqueName = `group-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
-    await writeFile(join(dir, uniqueName), file.buffer);
-
-    const avatarUrl = `/uploads/avatars/${uniqueName}`;
+    // Stored inline in the DB as a data URI, not on disk: Render's free-tier
+    // filesystem is ephemeral, so files written to uploads/ vanish on every
+    // deploy/restart and avatars silently break. The frontend downsizes the
+    // image before upload, so the payload stays small.
+    const avatarUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
     return this.socialService.updateGroup(userId, groupId, { avatar: avatarUrl });
   }
 

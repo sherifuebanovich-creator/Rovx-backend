@@ -85,7 +85,7 @@ export function Sidebar() {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-xl font-bold text-white flex-shrink-0">
                 {user.avatar
-                  ? <Image src={mediaUrl(user.avatar)!} alt={user.displayName} width={48} height={48} className="rounded-2xl object-cover" />
+                  ? <img src={mediaUrl(user.avatar)} alt={user.displayName} width={48} height={48} className="w-12 h-12 rounded-2xl object-cover" />
                   : (user.displayName?.[0] || '?').toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">

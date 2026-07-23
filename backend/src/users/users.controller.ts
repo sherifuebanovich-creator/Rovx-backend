@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { join } from 'path';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { UsersService } from './users.service';
@@ -57,24 +57,11 @@ export class UsersController {
   @ApiBearerAuth()
   @UseInterceptors(
     FileInterceptor('avatar', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'avatars');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const extByMimeType: Record<string, string> = {
-            'image/jpeg': '.jpg',
-            'image/png': '.png',
-            'image/webp': '.webp',
-            'image/gif': '.gif',
-          };
-          const ext = extByMimeType[file.mimetype] || '.jpg';
-          const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-          cb(null, uniqueName);
-        },
-      }),
+      // Kept in memory and stored inline in the DB as a data URI: Render's
+      // free-tier filesystem is ephemeral, so anything written to uploads/
+      // disappears on every deploy/restart and avatars silently break.
+      // The frontend downsizes images before upload, so payloads stay small.
+      storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)$/)) {
@@ -97,7 +84,7 @@ export class UsersController {
       this.deleteOldAvatar(currentProfile.avatar);
     }
 
-    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    const avatarUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
     return this.usersService.updateProfile(userId, { avatar: avatarUrl });
   }
 
