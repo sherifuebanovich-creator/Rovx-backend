@@ -432,9 +432,16 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
 
   const navigateToSaved = async (item: SearchSuggestion) => {
     if (isGoing) return;
+    const loc = origin || userLocation;
+    if (!loc) {
+      // Without a fix, this silently did nothing — no route, no toast,
+      // the search panel just closed as if it had worked. Match the
+      // feedback every other "navigate" entry point already gives.
+      toast(t('searchPanel.enableGeolocation'), { icon: '📍' });
+      return;
+    }
     setIsGoing(true);
     setDestination({ lat: item.lat, lng: item.lng, name: item.name });
-    const loc = origin || userLocation;
     if (loc) {
       if (!origin) {
         const newOrigin = { ...loc, name: t('searchPanel.myLocation') };
