@@ -546,7 +546,13 @@ export class MapService {
   }
 
   private async fetchExternalResults(query: string, limit: number, lat?: number, lng?: number) {
-    const params = `q=${encodeURIComponent(query)}&limit=${limit}&lang=ru${
+    // Photon only accepts lang=default|de|en|fr — "ru" is rejected with a 400
+    // on every single call, silently forcing every search through the
+    // Nominatim fallback (1 req/sec, weaker partial-match autocomplete),
+    // which is why streets/houses were missing from results. "default"
+    // returns each place's native OSM name, which for Russian streets is
+    // already Russian, so query matching and result language are unaffected.
+    const params = `q=${encodeURIComponent(query)}&limit=${limit}&lang=default${
       lat && lng ? `&lat=${lat}&lon=${lng}` : ''
     }`;
 
