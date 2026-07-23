@@ -128,7 +128,7 @@ export default function SettingsPage() {
     await signOut({ redirect: false });
     useAuthStore.getState().logout();
     toast.success(t('settings.loggedOut'));
-    router.push('/');
+    router.push('/auth/login');
   };
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { FaTimes, FaUser, FaRoute, FaBookmark, FaTrophy, FaCog, FaSignOutAlt,
          FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers, FaHeadset } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { authApi } from '@/lib/api';
@@ -14,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 
 export function Sidebar() {
   const { t } = useTranslation();
+  const router = useRouter();
   const toggleSidebar = useMapStore(s => s.toggleSidebar);
   const { user, logout } = useAuthStore();
 
@@ -23,6 +25,7 @@ export function Sidebar() {
     logout();
     toggleSidebar();
     toast.success(t('sidebar.loggedOut'));
+    router.push('/auth/login');
   };
 
   const stats = [
