@@ -372,6 +372,15 @@ export class SocialService {
   }
 
   async leaveGroup(userId: string, groupId: string) {
+    // checkOwner/banMember/kickMember/the admin-exception rule all key off
+    // group.ownerId alone, not membership — an owner who left kept full
+    // owner authority (delete group, ban/kick/promote/demote, regenerate
+    // invite link) while no longer appearing as a member anywhere.
+    const group = await this.prisma.group.findUnique({ where: { id: groupId }, select: { ownerId: true } });
+    if (group?.ownerId === userId) {
+      throw new ForbiddenException('Владелец не может покинуть группу — удалите группу вместо этого');
+    }
+
     // A banned row is the only record of the ban — deleting it here would let
     // a banned member "leave" and immediately rejoin (invite link, or a fresh
     // join request) with no trace they were ever banned.
@@ -445,8 +454,12 @@ export class SocialService {
     const group = await this.prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new NotFoundException('Group not found');
 
+    // isBanned: false matters here — checkAdmin() (used elsewhere in this
+    // file) strips admin powers from a banned admin immediately; these three
+    // methods used to skip that check, so a banned admin could still work
+    // the join-request queue for a group they were forcibly removed from.
     const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
-      where: { groupId, userId, isAdmin: true },
+      where: { groupId, userId, isAdmin: true, isBanned: false },
     });
     if (!isAdmin) throw new ForbiddenException('Нет прав');
 
@@ -463,8 +476,12 @@ export class SocialService {
     const group = await this.prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new NotFoundException('Group not found');
 
+    // isBanned: false matters here — checkAdmin() (used elsewhere in this
+    // file) strips admin powers from a banned admin immediately; these three
+    // methods used to skip that check, so a banned admin could still work
+    // the join-request queue for a group they were forcibly removed from.
     const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
-      where: { groupId, userId, isAdmin: true },
+      where: { groupId, userId, isAdmin: true, isBanned: false },
     });
     if (!isAdmin) throw new ForbiddenException('Нет прав');
 
@@ -488,8 +505,12 @@ export class SocialService {
     const group = await this.prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new NotFoundException('Group not found');
 
+    // isBanned: false matters here — checkAdmin() (used elsewhere in this
+    // file) strips admin powers from a banned admin immediately; these three
+    // methods used to skip that check, so a banned admin could still work
+    // the join-request queue for a group they were forcibly removed from.
     const isAdmin = group.ownerId === userId || await this.prisma.groupMember.findFirst({
-      where: { groupId, userId, isAdmin: true },
+      where: { groupId, userId, isAdmin: true, isBanned: false },
     });
     if (!isAdmin) throw new ForbiddenException('Нет прав');
 
@@ -587,11 +608,18 @@ export class SocialService {
 
   async unbanMember(userId: string, groupId: string, targetUserId: string) {
     await this.checkAdmin(userId, groupId);
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
 
     const member = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: targetUserId } },
     });
     if (!member) throw new NotFoundException('Пользователь не в группе');
+    // Same rule as banMember/kickMember — without it, any admin could
+    // silently reinstate a fellow admin the owner had just banned.
+    if (member.isAdmin && group.ownerId !== userId) {
+      throw new ForbiddenException('Только владелец может разбанить администратора');
+    }
 
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId: targetUserId } },

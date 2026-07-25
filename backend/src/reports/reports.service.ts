@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { GatewayService } from '../websocket/gateway.service';
@@ -626,43 +627,56 @@ export class ReportsService {
       throw new BadRequestException('Cannot vote on expired, rejected, or resolved report');
     }
 
-    await this.prisma.reportVote.upsert({
-      where: { reportId_userId: { reportId, userId } },
-      create: { reportId, userId, isConfirm },
-      update: { isConfirm },
-    });
+    // Concurrent votes on the same report used to race: both could read the
+    // pre-vote status, both compute the same "just crossed the threshold"
+    // transition, and both grant +10 reputation — plus the final counts
+    // write was a plain last-write-wins overwrite. Locking the report row
+    // for the duration of the read-count-write serializes concurrent voters.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM reports WHERE id = ${reportId} FOR UPDATE`;
 
-    const votes = await this.prisma.reportVote.groupBy({
-      by: ['isConfirm'],
-      where: { reportId },
-      _count: true,
-    });
-
-    const confirmed = votes.find((v) => v.isConfirm)?._count || 0;
-    const rejected = votes.find((v) => !v.isConfirm)?._count || 0;
-
-    let newStatus = report.status;
-    if (confirmed >= 3) newStatus = ReportStatus.CONFIRMED;
-    if (rejected >= 5) newStatus = ReportStatus.REJECTED;
-
-    const confidence = confirmed + rejected > 0 ? confirmed / (confirmed + rejected) : 0.5;
-
-    const updated = await this.prisma.report.update({
-      where: { id: reportId },
-      data: {
-        confirmedBy: confirmed,
-        rejectedBy: rejected,
-        confidence,
-        status: newStatus,
-      },
-    });
-
-    if (newStatus === ReportStatus.CONFIRMED && report.status !== ReportStatus.CONFIRMED) {
-      await this.prisma.user.update({
-        where: { id: report.userId },
-        data: { reputation: { increment: 10 } },
+      await tx.reportVote.upsert({
+        where: { reportId_userId: { reportId, userId } },
+        create: { reportId, userId, isConfirm },
+        update: { isConfirm },
       });
-    }
+
+      const votes = await tx.reportVote.groupBy({
+        by: ['isConfirm'],
+        where: { reportId },
+        _count: true,
+      });
+
+      const confirmed = votes.find((v) => v.isConfirm)?._count || 0;
+      const rejected = votes.find((v) => !v.isConfirm)?._count || 0;
+
+      const currentStatus = (await tx.report.findUniqueOrThrow({ where: { id: reportId }, select: { status: true } })).status;
+
+      let newStatus = currentStatus;
+      if (confirmed >= 3) newStatus = ReportStatus.CONFIRMED;
+      if (rejected >= 5) newStatus = ReportStatus.REJECTED;
+
+      const confidence = confirmed + rejected > 0 ? confirmed / (confirmed + rejected) : 0.5;
+
+      const result = await tx.report.update({
+        where: { id: reportId },
+        data: {
+          confirmedBy: confirmed,
+          rejectedBy: rejected,
+          confidence,
+          status: newStatus,
+        },
+      });
+
+      if (newStatus === ReportStatus.CONFIRMED && currentStatus !== ReportStatus.CONFIRMED) {
+        await tx.user.update({
+          where: { id: report.userId },
+          data: { reputation: { increment: 10 } },
+        });
+      }
+
+      return result;
+    });
 
     return this.formatReport(updated);
   }
@@ -700,6 +714,13 @@ export class ReportsService {
     return { reports: reports.map((r) => this.formatReport(r)), total };
   }
 
+  // Was never wired to a scheduler anywhere in the codebase — reports never
+  // actually flipped to EXPIRED, so checkReportLimit/getUserReportLimit
+  // (which count ACTIVE/CONFIRMED reports in the last 7 days) kept counting
+  // reports whose short TTL (as little as 1h for TRAFFIC_JAM) had long
+  // passed, locking users out of reporting for up to a week over reports
+  // that had vanished from the map hours earlier.
+  @Cron('*/10 * * * *')
   async expireReports() {
     const count = await this.prisma.report.updateMany({
       where: {

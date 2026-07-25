@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,6 +40,23 @@ export class AiService {
     this.openaiBase = this.config.get('AI_API_BASE_URL', 'https://api.groq.com/openai/v1');
   }
 
+  // AI Co-Driver is documented (PREMIUM_TIERS in premium.service.ts) as a
+  // paid feature starting at PREMIUM_BASIC — neither this service nor the
+  // controller checked that anywhere, so any free-tier user could call
+  // these endpoints and consume metered external LLM credits that should
+  // be restricted to paying subscribers. Duplicated (rather than importing
+  // PremiumService) to avoid pulling the whole premium module's payment
+  // provider dependencies into AiModule for a two-field check.
+  private async hasPaidAiAccess(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscription: true, subscriptionEnd: true },
+    });
+    if (!user || user.subscription === 'FREE') return false;
+    if (user.subscriptionEnd && user.subscriptionEnd < new Date()) return false;
+    return true;
+  }
+
   async analyzeRouteAndSuggest(userId: string, ctx: RouteContext): Promise<{
     recommendation: string;
     reasoning: string;
@@ -47,9 +64,20 @@ export class AiService {
     suggestions: string[];
     voiceIntro: string;
   }> {
+    if (!(await this.hasPaidAiAccess(userId))) {
+      throw new ForbiddenException('AI Co-Driver requires a premium subscription');
+    }
+
     const cacheKey = `ai:route:${userId}:${ctx.originName}:${ctx.destName}`;
-    const cached = await this.redis.get(cacheKey);
-    if (cached) return JSON.parse(cached);
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (error) {
+      // Was outside the try/catch below — a Redis blip or a corrupted cache
+      // value threw straight past the fallback this method exists to
+      // provide, turning it into a raw 500 instead of a degraded response.
+      this.logger.warn('AI route cache read failed, proceeding without cache', error instanceof Error ? error.message : String(error));
+    }
 
     const userHistory = await this.getUserHistory(userId);
     const prompt = this.buildRoutePrompt(ctx, userHistory);
@@ -72,11 +100,15 @@ export class AiService {
   }> {
     const command = cmd.command.toLowerCase().trim();
 
-    // Rule-based intent detection for speed + accuracy
+    // Rule-based intent detection for speed + accuracy — free for everyone,
+    // no external API call.
     const intents = this.detectIntent(command, cmd.lang);
     if (intents) return intents;
 
-    // Fallback to LLM for complex commands
+    // Only the LLM fallback for complex commands is the metered/paid path.
+    if (!(await this.hasPaidAiAccess(userId))) {
+      throw new ForbiddenException('AI Co-Driver requires a premium subscription');
+    }
     return this.processWithLLM(userId, cmd);
   }
 

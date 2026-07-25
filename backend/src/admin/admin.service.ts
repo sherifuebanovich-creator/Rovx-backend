@@ -80,7 +80,15 @@ export class AdminService {
       where: { id },
       data: { isBanned: true, bannedReason: reason, isActive: false },
     });
-    await this.gatewayService.disconnectUser(id);
+    // The ban itself already committed — a socket-adapter hiccup here must
+    // not turn a successful ban into a 500 that tells the admin it failed
+    // (the user is banned either way; they just stay connected a bit
+    // longer if this best-effort disconnect fails).
+    try {
+      await this.gatewayService.disconnectUser(id);
+    } catch (e) {
+      this.logger.warn(`Failed to disconnect banned user ${id}: ${(e as Error).message}`);
+    }
     return updated;
   }
 
@@ -352,35 +360,41 @@ export class AdminService {
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + days);
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        subscription: t.name as any,
-        subscriptionEnd: endDate,
-      },
-    });
-
-    await this.prisma.premiumSubscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        tier: t.tier,
-        levelName: t.name,
-        endDate,
-        price: 0,
-        currency: 'ADMIN_GRANT',
-        status: 'active',
-        paymentId: `admin_grant_${Date.now()}`,
-        autoRenew: false,
-      },
-      update: {
-        tier: t.tier,
-        levelName: t.name,
-        endDate,
-        status: 'active',
-        paymentId: `admin_grant_${Date.now()}`,
-      },
-    });
+    // Was two independent writes — if the second one threw (race, DB blip),
+    // the user was left with User.subscription flipped to premium but no
+    // backing PremiumSubscription row, desyncing anything that reads the
+    // latter (billing/renewal jobs, admin stats).
+    const paymentId = `admin_grant_${Date.now()}`;
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          subscription: t.name as any,
+          subscriptionEnd: endDate,
+        },
+      }),
+      this.prisma.premiumSubscription.upsert({
+        where: { userId },
+        create: {
+          userId,
+          tier: t.tier,
+          levelName: t.name,
+          endDate,
+          price: 0,
+          currency: 'ADMIN_GRANT',
+          status: 'active',
+          paymentId,
+          autoRenew: false,
+        },
+        update: {
+          tier: t.tier,
+          levelName: t.name,
+          endDate,
+          status: 'active',
+          paymentId,
+        },
+      }),
+    ]);
 
     this.logger.log(`Granted ${t.name} to user ${userId} for ${days} days`);
     return { success: true, subscription: t.name, endDate };
