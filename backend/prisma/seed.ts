@@ -14,6 +14,7 @@ const MapObjectCategory = {
   HOSPITAL: 'HOSPITAL',
   TIRE_SERVICE: 'TIRE_SERVICE',
   CAR_SERVICE: 'CAR_SERVICE',
+  CAR_WASH: 'CAR_WASH',
   REST_AREA: 'REST_AREA',
   BORDER_CROSSING: 'BORDER_CROSSING',
   WEIGH_STATION: 'WEIGH_STATION',
@@ -121,6 +122,7 @@ async function main() {
     // Services
     { category: MapObjectCategory.TIRE_SERVICE, name: 'Shinka.ru', lat: 55.7300, lng: 37.6800, address: 'Volgogradsky Ave 14', rating: 4.4, phone: '+7-495-600-12-34' },
     { category: MapObjectCategory.CAR_SERVICE, name: 'Bosch Service', lat: 55.7800, lng: 37.5500, address: 'Leningradsky Ave 80', rating: 4.6 },
+    { category: MapObjectCategory.CAR_WASH, name: 'Blesk Autowash', lat: 55.7150, lng: 37.6600, address: 'Varshavskoe Shosse 32', rating: 4.5 },
 
     // Infrastructure
     { category: MapObjectCategory.REST_AREA, name: 'Rest Area M1 km50', lat: 55.8234, lng: 36.9812, address: 'M-1 Minsk Highway', rating: 3.7, amenities: ['toilet', 'parking', 'cafe'] },

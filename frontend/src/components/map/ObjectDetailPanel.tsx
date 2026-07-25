@@ -22,7 +22,7 @@ const CATEGORY_LABEL_KEYS: Record<string, string> = {
   METRO_STATION: 'metroStation', TRAIN_STATION: 'trainStation', AIRPORT: 'airport',
   PARK: 'park', SPORTS_FACILITY: 'sportsFacility', GOVERNMENT: 'government',
   ATTRACTION: 'attraction',
-  TIRE_SERVICE: 'tireService', CAR_SERVICE: 'carService',
+  TIRE_SERVICE: 'tireService', CAR_SERVICE: 'carService', CAR_WASH: 'carWash',
   REST_AREA: 'restArea', TOURIST_ATTRACTION: 'touristAttraction',
   BORDER_CROSSING: 'borderCrossing',
 };
@@ -237,9 +237,9 @@ function getCategoryEmoji(category: string): string {
     BANK: '🏦', ATM: '💳', BUS_STOP: '🚏',
     METRO_STATION: '🚇', TRAIN_STATION: '🚉', AIRPORT: '✈️',
     PARK: '🌲', SPORTS_FACILITY: '⚽', GOVERNMENT: '🏛️',
-    ATTRACTION: '📸',
-    TIRE_SERVICE: '🔧', CAR_SERVICE: '🔩',
-    REST_AREA: '🌳', TOURIST_ATTRACTION: '📸', BORDER_CROSSING: '🛂',
+    ATTRACTION: '🏞️',
+    TIRE_SERVICE: '🔧', CAR_SERVICE: '🔩', CAR_WASH: '🧽',
+    REST_AREA: '🌳', TOURIST_ATTRACTION: '🏞️', BORDER_CROSSING: '🛂',
   };
   return map[category] || '📍';
 }

@@ -31,6 +31,7 @@ const QUICK_CATEGORIES = [
   { key: 'HOSPITAL', labelKey: 'searchPanel.categories.hospitals', icon: <FaHospital size={14} />, color: '#ef4444' },
   { key: 'SHOP', labelKey: 'searchPanel.categories.shops', icon: <FaShoppingCart size={14} />, color: '#22c55e' },
   { key: 'CAR_SERVICE', labelKey: 'searchPanel.categories.carService', icon: <FaCar size={14} />, color: '#6b7280' },
+  { key: 'CAR_WASH', labelKey: 'searchPanel.categories.carWash', icon: <FaCar size={14} />, color: '#0369a1' },
   { key: 'PHARMACY', labelKey: 'searchPanel.categories.pharmacy', icon: <FaHospital size={14} />, color: '#ec4899' },
   { key: 'ATM', labelKey: 'searchPanel.categories.atm', icon: <FaShoppingCart size={14} />, color: '#14b8a6' },
   { key: 'POLICE', labelKey: 'searchPanel.categories.police', icon: <FaShieldAlt size={14} />, color: '#3b82f6' },
@@ -61,8 +62,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
   GAS_STATION: '⛽', EV_CHARGER: '🔌', PARKING: '🅿️', TRUCK_PARKING: '🚛',
   CAFE: '☕', RESTAURANT: '🍽️', HOTEL: '🏨', MOTEL: '🛌',
   TOILET: '🚻', SHOWER: '🚿', PHARMACY: '💊', HOSPITAL: '🏥',
-  SHOP: '🛒', TIRE_SERVICE: '🔧', CAR_SERVICE: '🔩',
-  REST_AREA: '🌳', TOURIST_ATTRACTION: '📸',
+  SHOP: '🛒', TIRE_SERVICE: '🔧', CAR_SERVICE: '🔩', CAR_WASH: '🧽',
+  REST_AREA: '🌳', TOURIST_ATTRACTION: '🏞️',
   ADDRESS: '📍', COORDINATES: '📍',
 };
 

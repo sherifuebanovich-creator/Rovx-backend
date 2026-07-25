@@ -83,6 +83,7 @@
       "hospitals": "Больницы",
       "shops": "Магазины",
       "carService": "Автосервис",
+      "carWash": "Автомойка",
       "evChargers": "Зарядки",
       "truckParking": "Грузовая стоянка",
       "pharmacy": "Аптеки",
@@ -235,6 +236,7 @@
       "supermarket": "Супермаркет",
       "tireService": "Шиномонтаж",
       "carService": "Автосервис",
+      "carWash": "Автомойка",
       "restArea": "Зона отдыха",
       "touristAttraction": "Достопримечательность",
       "borderCrossing": "Граница"

@@ -31,10 +31,11 @@ const CATEGORY_CONFIG: Record<string, { emoji: string; color: string; label: str
   PARK:               { emoji: '🌲', color: '#16a34a', label: 'Парк' },
   SPORTS_FACILITY:    { emoji: '⚽', color: '#22c55e', label: 'Спорт' },
   GOVERNMENT:         { emoji: '🏛️', color: '#78716c', label: 'Учреждение' },
-  ATTRACTION:         { emoji: '📸', color: '#d97706', label: 'Дост.' },
-  TOURIST_ATTRACTION: { emoji: '📸', color: '#d97706', label: 'Дост.' },
+  ATTRACTION:         { emoji: '🏞️', color: '#d97706', label: 'Дост.' },
+  TOURIST_ATTRACTION: { emoji: '🏞️', color: '#d97706', label: 'Дост.' },
   TIRE_SERVICE:       { emoji: '🔧', color: '#6b7280', label: 'Шины' },
   CAR_SERVICE:        { emoji: '🔩', color: '#4b5563', label: 'Автосервис' },
+  CAR_WASH:           { emoji: '🧽', color: '#0369a1', label: 'Автомойка' },
   WEIGH_STATION:      { emoji: '⚖️', color: '#78716c', label: 'Вес' },
   BORDER_CROSSING:    { emoji: '🛂', color: '#dc2626', label: 'Граница' },
   CUSTOMS:            { emoji: '🏛️', color: '#b91c1c', label: 'Таможня' },
@@ -129,13 +130,13 @@ export function createMarkerElement(emoji: string, color: string, size = 28, lab
 
 export function createCategoryMarker(category: MapObjectCategory, name = ''): HTMLDivElement {
   const config = CATEGORY_CONFIG[category] || { emoji: '📍', color: '#6b7280', label: '' };
-  return createMarkerElement(config.emoji, config.color, 28, name);
+  return createMarkerElement(config.emoji, config.color, 23, name);
 }
 
 export function createReportMarker(type: ReportType, severity = 3): HTMLDivElement {
   const config = REPORT_CONFIG[type] || { emoji: '⚠️', color: '#f97316' };
-  const size = 26 + severity * 3;
-  return createMarkerElement(config.emoji, config.color, Math.min(size, 44));
+  const size = 21 + severity * 2.5;
+  return createMarkerElement(config.emoji, config.color, Math.min(size, 36));
 }
 
 export function createUserMarkerElement(heading = 0): HTMLDivElement {

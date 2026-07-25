@@ -44,7 +44,7 @@ export default function BookmarksPage() {
   const CATEGORY_EMOJI: Record<string, string> = {
     SHOP: '🛒', SUPERMARKET: '🏪', GAS_STATION: '⛽', EV_CHARGER: '🔌',
     PARKING: '🅿️', CAFE: '☕', RESTAURANT: '🍽️', HOTEL: '🏨',
-    CAR_SERVICE: '🔩', TIRE_SERVICE: '🔧', HOME: '🏠', WORK: '💼',
+    CAR_SERVICE: '🔩', TIRE_SERVICE: '🔧', CAR_WASH: '🧽', HOME: '🏠', WORK: '💼',
   };
 
   const getEmoji = (cat?: string) => CATEGORY_EMOJI[cat || ''] || '📍';
