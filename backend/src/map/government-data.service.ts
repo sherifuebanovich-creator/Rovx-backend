@@ -43,7 +43,16 @@ export class GovernmentDataService {
   async fetchGovernmentSpeedCameras(lat: number, lng: number, radiusKm = 10): Promise<GovernmentSpeedCamera[]> {
     const cacheKey = `gov:cameras:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
-    if (cached) return JSON.parse(cached);
+    if (cached) {
+      // A truncated/corrupted cached value (e.g. a prior process crashing
+      // mid-write) used to throw straight out of this method instead of
+      // just falling through to a fresh fetch.
+      try {
+        return JSON.parse(cached);
+      } catch {
+        this.logger.warn(`Corrupted cache value for ${cacheKey}, refetching`);
+      }
+    }
 
     const results: GovernmentSpeedCamera[] = [];
 
@@ -72,7 +81,13 @@ export class GovernmentDataService {
   async fetchGovernmentTrafficSignals(lat: number, lng: number, radiusKm = 2): Promise<GovernmentTrafficSignal[]> {
     const cacheKey = `gov:signals:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
-    if (cached) return JSON.parse(cached);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {
+        this.logger.warn(`Corrupted cache value for ${cacheKey}, refetching`);
+      }
+    }
 
     const results: GovernmentTrafficSignal[] = [];
 
@@ -117,13 +132,21 @@ export class GovernmentDataService {
     return res.data;
   }
 
+  // Caps how many external records get processed per fetch — an
+  // unbounded government response (buggy or malicious source) used to be
+  // fully mapped and JSON-stringified into Redis with no limit.
+  private static readonly MAX_ITEMS_PER_SOURCE = 2000;
+
   private normalizeSpeedCameras(data: any, source: string): GovernmentSpeedCamera[] {
     if (!data) return [];
     const items = Array.isArray(data) ? data : data.features || data.data || data.results || [];
-    return items.map((item: any, idx: number) => {
+    const capped = items.slice(0, GovernmentDataService.MAX_ITEMS_PER_SOURCE);
+    const out: GovernmentSpeedCamera[] = [];
+    capped.forEach((item: any, idx: number) => {
       const props = item.properties || item;
       const coords = this.extractCoordinates(item);
-      return {
+      if (!coords) return;
+      out.push({
         id: `gov-${source}-${props.id || props.object_id || props.camera_id || idx}`,
         lat: coords.lat,
         lng: coords.lng,
@@ -134,42 +157,57 @@ export class GovernmentDataService {
           : undefined,
         direction: props.direction || props.facing || props.orientation || undefined,
         source,
-      };
+      });
     });
+    return out;
   }
 
   private normalizeTrafficSignals(data: any, source: string): GovernmentTrafficSignal[] {
     if (!data) return [];
     const items = Array.isArray(data) ? data : data.features || data.data || data.results || [];
-    return items.map((item: any, idx: number) => {
+    const capped = items.slice(0, GovernmentDataService.MAX_ITEMS_PER_SOURCE);
+    const out: GovernmentTrafficSignal[] = [];
+    capped.forEach((item: any, idx: number) => {
       const props = item.properties || item;
       const coords = this.extractCoordinates(item);
-      return {
+      if (!coords) return;
+      out.push({
         id: `gov-${source}-${props.id || props.object_id || props.signal_id || idx}`,
         lat: coords.lat,
         lng: coords.lng,
         name: props.name || props.address || props.intersection || props.location || '',
         crossing: props.crossing || props.pedestrian_crossing || props.crosswalk || undefined,
         source,
-      };
+      });
     });
+    return out;
   }
 
-  private extractCoordinates(item: any): { lat: number; lng: number } {
-    if (item.geometry?.coordinates) {
-      const coords = item.geometry.coordinates;
-      return { lng: coords[0], lat: coords[1] };
+  // Returns null (instead of the previous silent {lat:0,lng:0} "Null
+  // Island" fallback) for anything missing/malformed, so callers can drop
+  // the record instead of pinning a fake camera/signal in the Gulf of
+  // Guinea and caching it for every user querying that tile.
+  private extractCoordinates(item: any): { lat: number; lng: number } | null {
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    if (Array.isArray(item.geometry?.coordinates)) {
+      lng = Number(item.geometry.coordinates[0]);
+      lat = Number(item.geometry.coordinates[1]);
+    } else if (item.latitude !== undefined && item.longitude !== undefined) {
+      lat = parseFloat(item.latitude);
+      lng = parseFloat(item.longitude);
+    } else if (item.lat !== undefined && item.lon !== undefined) {
+      lat = parseFloat(item.lat);
+      lng = parseFloat(item.lon);
+    } else if (item.lat !== undefined && item.lng !== undefined) {
+      lat = parseFloat(item.lat);
+      lng = parseFloat(item.lng);
     }
-    if (item.latitude && item.longitude) {
-      return { lat: parseFloat(item.latitude), lng: parseFloat(item.longitude) };
-    }
-    if (item.lat !== undefined && item.lon !== undefined) {
-      return { lat: parseFloat(item.lat), lng: parseFloat(item.lon) };
-    }
-    if (item.lat !== undefined && item.lng !== undefined) {
-      return { lat: parseFloat(item.lat), lng: parseFloat(item.lng) };
-    }
-    return { lat: 0, lng: 0 };
+
+    if (lat === undefined || lng === undefined || !isFinite(lat) || !isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
   }
 
   private mapGovernmentCameraType(props: Record<string, any>): string {

@@ -90,26 +90,30 @@ export class XsollaService {
       return false;
     }
 
+    // Xsolla's real webhook header is `Authorization: Signature <hash>` —
+    // two parts, not three — where <hash> is plain SHA1(raw_body +
+    // secret_key), NOT a keyed HMAC. The previous implementation required
+    // a 3-part "Signature <algorithm> <hash>" header and computed an HMAC,
+    // neither of which a genuine Xsolla request ever sends: the length
+    // check alone rejected every real webhook regardless of hash scheme,
+    // so no Xsolla payment could ever be credited in production.
     const parts = authHeader.split(' ');
-    if (parts.length !== 3 || parts[0] !== 'Signature') {
+    if (parts.length !== 2 || parts[0] !== 'Signature') {
       this.logger.warn(`Invalid Xsolla auth header format: ${authHeader}`);
       return false;
     }
 
-    const algorithm = parts[1];
-    const signature = parts[2];
+    const signature = parts[1];
 
     try {
-      const hash = algorithm === 'sha256'
-        ? crypto.createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex')
-        : crypto.createHmac('sha1', this.webhookSecret).update(rawBody).digest('hex');
-        const tokenBuf = Buffer.from(hash, 'hex');
-        const sigBuf = Buffer.from(signature, 'hex');
-        if (tokenBuf.length !== sigBuf.length) {
-          this.logger.warn('Xsolla webhook signature length mismatch');
-          return false;
-        }
-        return crypto.timingSafeEqual(tokenBuf, sigBuf);
+      const hash = crypto.createHash('sha1').update(rawBody + this.webhookSecret).digest('hex');
+      const tokenBuf = Buffer.from(hash, 'hex');
+      const sigBuf = Buffer.from(signature, 'hex');
+      if (tokenBuf.length !== sigBuf.length) {
+        this.logger.warn('Xsolla webhook signature length mismatch');
+        return false;
+      }
+      return crypto.timingSafeEqual(tokenBuf, sigBuf);
     } catch {
       return false;
     }

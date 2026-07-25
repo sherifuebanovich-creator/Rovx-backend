@@ -50,7 +50,11 @@ export class LemonSqueezyService {
         data: {
           type: 'checkouts',
           attributes: {
-            custom_price: params.amount,
+            // Lemon Squeezy expects integer cents; unlike stripe.service.ts's
+            // Math.round(amount*100), this wasn't rounded — harmless today
+            // since every PREMIUM_TIERS price is a whole dollar, but would
+            // send a fractional-cent amount if a non-integer tier is ever added.
+            custom_price: Math.round(params.amount),
             product_options: {
               redirect_url: params.redirectUrl || 'https://rovx-app-livid.vercel.app/premium/success',
             },
