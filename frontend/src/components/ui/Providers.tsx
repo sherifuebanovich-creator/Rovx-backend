@@ -19,15 +19,21 @@ const queryClient = new QueryClient({
 
 function SocketInitializer() {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const isInitDone = useAuthStore(s => s.isInitDone);
   const { connect, disconnect } = useSocket();
 
   useEffect(() => {
+    // isAuthenticated is persisted and rehydrates as true immediately from
+    // localStorage, before initAuth() has actually validated/refreshed the
+    // session — connecting on that alone could attempt a socket handshake
+    // with an already-expired token. Wait for initAuth to finish first.
+    if (!isInitDone) return;
     if (isAuthenticated) {
       connect();
     } else {
       disconnect();
     }
-  }, [isAuthenticated, connect, disconnect]);
+  }, [isAuthenticated, isInitDone, connect, disconnect]);
 
   return null;
 }

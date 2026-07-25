@@ -42,7 +42,10 @@ const CONDITION_MAP: Record<number, { text: string; icon: string }> = {
 
 export async function getWeather(lat: number, lng: number): Promise<WeatherData | null> {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,precipitation&timezone=auto`;
+    // wind_speed_unit=ms — Open-Meteo defaults to km/h, but every consumer
+    // (SearchPanel/RoutePanel) labels and displays this value as m/s, so
+    // without this the displayed wind speed was ~3.6x the real value.
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,precipitation&wind_speed_unit=ms&timezone=auto`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();

@@ -51,8 +51,15 @@ api.interceptors.response.use(
     // timeout, not a real backend error. Retry once after a short delay
     // instead of failing immediately, mirroring the same tolerance already
     // applied to the /auth/refresh call below.
+    // Only retry safe/idempotent methods — this used to retry ANY method
+    // including POST, so a cold-start timeout on e.g. startTrip/createReport
+    // whose write actually landed server-side but whose response didn't make
+    // it back in time got blindly replayed, creating a duplicate trip/report.
+    const method = (originalRequest?.method || 'get').toLowerCase();
+    const isIdempotentMethod = ['get', 'head', 'options'].includes(method);
     if (
       originalRequest &&
+      isIdempotentMethod &&
       !originalRequest._coldStartRetry &&
       (!error.response || [502, 503, 504].includes(error.response.status))
     ) {
@@ -145,9 +152,24 @@ api.interceptors.response.use(
 
         processQueue(null, accessToken);
         return api(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshError: any) {
         processQueue(refreshError, null);
-        Cookies.remove('access_token', { path: '/' });
+        // Only a REAL auth failure (refresh token itself rejected) should
+        // wipe the session. This used to strip the cookie unconditionally,
+        // including for network errors / 5xx / 409 (a Render cold start or
+        // a concurrent refresh's Redis lock) — the same transient failures
+        // auth.store.ts's doRefresh() deliberately does NOT log out for,
+        // making this interceptor contradict that logic and force-logout
+        // a user who actually still had a valid session.
+        const status = refreshError?.response?.status;
+        const isRealAuthFailure = status === 400 || status === 401 || status === 403;
+        if (isRealAuthFailure) {
+          Cookies.remove('access_token', { path: '/' });
+          // Also drop the shared axios default — otherwise a request fired
+          // before the page navigates to login would silently go out with
+          // this now-revoked token even though the cookie is gone.
+          delete api.defaults.headers.common.Authorization;
+        }
         // Don't remove localStorage here — initAuth/logout handles cleanup.
         // No forced navigation: let the calling page decide how to handle the unauthenticated state.
         return Promise.reject(refreshError);

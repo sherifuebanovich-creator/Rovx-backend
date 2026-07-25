@@ -70,6 +70,11 @@ export function RoutePanel() {
   // Current-location weather, refreshed as the user actually moves rather
   // than pinned to whatever origin point was picked for the route.
   const lastWeatherFetchRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
+  // getWeather has no built-in ordering guarantee — without these, a
+  // slower-resolving request for an older location could resolve after a
+  // newer one and overwrite it, showing stale weather as "current".
+  const weatherOriginRequestIdRef = useRef(0);
+  const weatherDestRequestIdRef = useRef(0);
   useEffect(() => {
     if (!userLocation) return;
     const last = lastWeatherFetchRef.current;
@@ -79,7 +84,10 @@ export function RoutePanel() {
     if (!movedFar && !isStale) return;
 
     lastWeatherFetchRef.current = { lat: userLocation.lat, lng: userLocation.lng, time: now };
-    getWeather(userLocation.lat, userLocation.lng).then(setWeatherOrigin).catch(() => {});
+    const requestId = ++weatherOriginRequestIdRef.current;
+    getWeather(userLocation.lat, userLocation.lng)
+      .then((w) => { if (requestId === weatherOriginRequestIdRef.current) setWeatherOrigin(w); })
+      .catch(() => {});
   }, [userLocation?.lat, userLocation?.lng]);
 
   const calcAttemptedRef = useRef(false);
@@ -129,9 +137,15 @@ export function RoutePanel() {
       // above); only fall back to the route's origin point if we don't have
       // a GPS fix yet.
       if (!userLocation) {
-        getWeather(origin.lat, origin.lng).then(setWeatherOrigin).catch(() => {});
+        const originRequestId = ++weatherOriginRequestIdRef.current;
+        getWeather(origin.lat, origin.lng)
+          .then((w) => { if (originRequestId === weatherOriginRequestIdRef.current) setWeatherOrigin(w); })
+          .catch(() => {});
       }
-      getWeather(destination.lat, destination.lng).then(setWeatherDest).catch(() => {});
+      const destRequestId = ++weatherDestRequestIdRef.current;
+      getWeather(destination.lat, destination.lng)
+        .then((w) => { if (destRequestId === weatherDestRequestIdRef.current) setWeatherDest(w); })
+        .catch(() => {});
     } catch (err) {
       toast.error(t('routePanel.routeCalcFailed'));
     } finally {

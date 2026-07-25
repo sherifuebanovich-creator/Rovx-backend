@@ -3,6 +3,14 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import Cookies from 'js-cookie';
 import { User, UserPreferences } from '@/types';
 
+// api.ts's 401-retry interceptor rotates the refresh token by writing
+// straight to localStorage, bypassing this store entirely — so the
+// in-memory `refreshToken` field can be stale. Anywhere a fallback is
+// needed, read the freshest value from localStorage, not the Zustand state.
+function readStoredRefreshToken(): string | null {
+  try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken || null; } catch { return null; }
+}
+
 interface AuthState {
   user: User | null;
   preferences: UserPreferences | null;
@@ -36,13 +44,22 @@ export const useAuthStore = create<AuthState>()(
 
       setTokens: (accessToken, refreshToken) => {
         if (!accessToken) return;
+        // A refresh response commonly omits refreshToken when it's
+        // unchanged/cookie-only. Falling back to `state.refreshToken` (the
+        // in-memory copy) here could overwrite a token already rotated by
+        // api.ts's interceptor with a stale one — localStorage is the
+        // source of truth for whichever path rotated it last.
         set((state) => ({
           accessToken,
-          refreshToken: refreshToken || state.refreshToken || '',
+          refreshToken: refreshToken || readStoredRefreshToken() || state.refreshToken || '',
           isAuthenticated: true,
         }));
         Cookies.set('access_token', accessToken, {
-          expires: 30,
+          // Matches the access token's actual ~15min lifetime (same value
+          // api.ts's refresh path uses) — this was set to 30 days, so a
+          // stale cookie could linger in the browser far longer than the
+          // JWT inside it was ever valid for.
+          expires: 1 / 96,
           path: '/',
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
@@ -70,9 +87,7 @@ export const useAuthStore = create<AuthState>()(
         // straight to localStorage without going through this store). If a
         // concurrent refresh from that other path wins and rotates the token
         // first, this picks up the new value instead of a stale one.
-        const readStoredRefresh = () => {
-          try { return JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken || null; } catch { return null; }
-        };
+        const readStoredRefresh = readStoredRefreshToken;
 
         // 'ok' — session restored; 'invalid' — server rejected the refresh
         // token (real logout); 'network' — backend unreachable (Render cold
