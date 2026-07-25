@@ -96,7 +96,11 @@ function formatDistanceLocalized(meters: number, lang: string): string {
     return `${Math.round(km)} ${u.km_2}`;
   }
   if (meters >= 100) return `${Math.round(meters / 10) * 10} ${u.m}`;
-  if (meters >= 50) return `50 ${u.m}`;
+  // Was a fixed "50" literal — every distance from 50-99m rounded to the
+  // same announced value, and since re-announcements are deduped on the
+  // formatted string (see the caller), a car closing from 95m to 51m only
+  // ever heard "in 50 metres" once, at the wrong actual distance.
+  if (meters >= 50) return `${Math.round(meters / 10) * 10} ${u.m}`;
   return `${Math.round(meters)} ${u.m}`;
 }
 
@@ -546,6 +550,7 @@ const NAV: Record<string, Record<string, NavVal>> = {
     es: 'Ha llegado a su destino',
     it: 'Sei arrivato a destinazione',
     pt: 'Você chegou ao seu destino',
+    nl: 'U bent aangekomen op uw bestemming',
     pl: 'Dotarłeś do celu',
     sv: 'Du har anlänt till din destination',
     da: 'Du er ankommet til din destination',
@@ -815,9 +820,17 @@ function formatNavInstruction(
   instruction: { text: string; type: string; distance: number; streetName?: string },
   lang: string,
 ): string {
+  // Backend text is `Turn ${modifier}${street}` where modifier is an OSRM
+  // value — 'left'/'right'/'slight left'/'sharp right'/etc, but also
+  // 'straight' and 'uturn'. Defaulting anything that isn't literally
+  // "left" to "right" told the driver to turn right for a straight-ahead
+  // or U-turn maneuver — a real wrong-direction instruction, not just a
+  // wording nitpick.
+  const turnLower = instruction.text.toLowerCase();
   const phraseType = instruction.type === 'turn'
-    ? (instruction.text.toLowerCase().includes('left') ? 'turn_left' : 'turn_right')
+    ? (turnLower.includes('left') ? 'turn_left' : turnLower.includes('right') ? 'turn_right' : null)
     : instruction.type;
+  if (!phraseType) return instruction.text;
   const phraseSet = NAV[phraseType];
   if (!phraseSet) return instruction.text;
   const val = phraseSet[lang] || phraseSet.en;
@@ -833,9 +846,18 @@ function formatNavInstruction(
     tmpl = val;
   }
   if (phraseType === 'fork') {
-    const dir = instruction.text.toLowerCase().includes('left')
-      ? (DIR[lang]?.left || DIR.en.left) : (DIR[lang]?.right || DIR.en.right);
-    return expandTemplate(tmpl, { d: dist, dir });
+    // Same issue as turn above: backend text is `Keep ${modifier} at fork`
+    // where modifier can be 'straight' — defaulting non-left to "right"
+    // told the driver to bear right at a fork they should have gone
+    // straight through.
+    const forkLower = instruction.text.toLowerCase();
+    if (forkLower.includes('left')) {
+      return expandTemplate(tmpl, { d: dist, dir: DIR[lang]?.left || DIR.en.left });
+    }
+    if (forkLower.includes('right')) {
+      return expandTemplate(tmpl, { d: dist, dir: DIR[lang]?.right || DIR.en.right });
+    }
+    return instruction.text;
   }
   return expandTemplate(tmpl, { d: dist, s: street });
 }
@@ -893,6 +915,12 @@ export function useVoiceAssistant() {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastInstructionRef = useRef('');
   const voicesLoadedRef = useRef(false);
+  // Almost every real caller passes priority=true, so the busy-guard below
+  // rarely blocks a second overlapping call. Without a generation token, a
+  // slower-resolving fetch from an OLDER call could still win the race and
+  // play after a newer one — two announcements audible at once, or the
+  // stale one heard last.
+  const speakRequestIdRef = useRef(0);
   const lang = user?.preferredLang || 'ru';
   const langCfg = getLanguageConfig(lang);
 
@@ -924,6 +952,7 @@ export function useVoiceAssistant() {
     const audioBusy = !!currentAudioRef.current && !currentAudioRef.current.paused;
     if (!priority && (window.speechSynthesis.speaking || audioBusy)) return;
 
+    const requestId = ++speakRequestIdRef.current;
     const normalizedText = lang === 'ru' ? normalizeRussianText(text) : text;
 
     window.speechSynthesis.cancel();
@@ -941,9 +970,14 @@ export function useVoiceAssistant() {
       });
       if (!response.ok) throw new Error('TTS API error');
       const audioBlob = await response.blob();
+      // A newer speak() call started while this fetch was in flight —
+      // drop this stale response instead of letting it clobber
+      // currentAudioRef and play over (or after) the newer announcement.
+      if (requestId !== speakRequestIdRef.current) return;
       await playAudioBlob(audioBlob, currentAudioRef);
-      setIsSpeaking(false);
+      if (requestId === speakRequestIdRef.current) setIsSpeaking(false);
     } catch {
+      if (requestId !== speakRequestIdRef.current) return;
       const utterance = new SpeechSynthesisUtterance(normalizedText);
       const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith(langCfg.voiceLang.split('-')[0]));
       const best = voices.find(v => v.name.includes('Neural') || v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Microsoft'))
@@ -957,6 +991,17 @@ export function useVoiceAssistant() {
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
+      // Defensive fallback for a known Chrome/Edge quirk where speak() can
+      // silently no-op (tab lost focus, empty voice list) without ever
+      // firing onstart/onend, leaving isSpeaking stuck true for any UI
+      // indicator bound to it. Only clears if still the latest request and
+      // the browser genuinely isn't speaking by then — never overrides a
+      // legitimately still-playing utterance.
+      setTimeout(() => {
+        if (requestId === speakRequestIdRef.current && !window.speechSynthesis.speaking) {
+          setIsSpeaking(false);
+        }
+      }, 300);
     }
   }, [langCfg.voiceLang, lang]);
 

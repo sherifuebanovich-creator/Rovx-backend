@@ -85,11 +85,30 @@ export class UsersService {
     return updated;
   }
 
+  // Was `create: { userId, ...prefs }, update: prefs` with `prefs: any` —
+  // no DTO/metatype means the global ValidationPipe's whitelist/forbid
+  // options never applied here (unlike updateProfile above), so any caller
+  // could pass e.g. `{ userId: <victim-id> }` and hit the unique
+  // constraint with an uncaught P2002. Whitelisting to the actual
+  // UserPreference columns closes that off.
+  private static readonly PREFERENCE_FIELDS = [
+    'avoidTolls', 'avoidHighways', 'avoidFerries', 'preferScenicRoutes',
+    'nightMode', 'voiceEnabled', 'voiceLanguage', 'voiceVolume',
+    'speedAlerts', 'cameraAlerts', 'trafficAlerts', 'hazardAlerts',
+    'restStopInterval', 'fuelWarningLevel', 'units', 'mapStyle', 'defaultRouteType',
+  ] as const;
+
   async updatePreferences(userId: string, prefs: any) {
+    const data: Record<string, any> = {};
+    if (prefs && typeof prefs === 'object') {
+      for (const key of UsersService.PREFERENCE_FIELDS) {
+        if (prefs[key] !== undefined) data[key] = prefs[key];
+      }
+    }
     return this.prisma.userPreference.upsert({
       where: { userId },
-      create: { userId, ...prefs },
-      update: prefs,
+      create: { userId, ...data },
+      update: data,
     });
   }
 

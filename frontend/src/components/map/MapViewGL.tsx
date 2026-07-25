@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useMapStore } from '@/store/map.store';
@@ -25,6 +25,13 @@ function escapeHtml(text: string): string {
 
 export default function MapViewGL() {
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // mapRef alone doesn't trigger a re-render when set, so UserLocationLayer/
+  // MapFeaturesLayer/FriendMarkers/TrafficFlowLayer/TrafficLayer below (all
+  // read mapRef.current directly in JSX) used to render with map={null} on
+  // mount and only pick up the real instance whenever something else
+  // happened to re-render this component — the blue dot, traffic, and
+  // friend markers could stay missing until an unrelated state change.
+  const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const objectMarkersRef = useRef<maplibregl.Marker[]>([]);
   const reportMarkersRef = useRef<maplibregl.Marker[]>([]);
@@ -34,6 +41,7 @@ export default function MapViewGL() {
   const reportTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
+  const trafficSignalsRequestIdRef = useRef(0);
 
   const mapStyle = useMapStore(s => s.mapStyle);
   const mapStyleRef = useRef(mapStyle);
@@ -118,6 +126,7 @@ export default function MapViewGL() {
     });
 
     mapRef.current = map;
+    setMapInstance(map);
 
     return () => {
       clearTimeout(objectTimerRef.current);
@@ -127,6 +136,7 @@ export default function MapViewGL() {
       cleanupMarkers(trafficMarkersRef.current);
       map.remove();
       mapRef.current = null;
+      setMapInstance(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -295,6 +305,10 @@ export default function MapViewGL() {
 
       const cats = useMapStore.getState().activeCategories;
       if (cats.length === 0) {
+        // A pending debounced fetch scheduled while categories were active
+        // must not be left to fire later and repopulate markers the user
+        // just cleared.
+        clearTimeout(objectTimerRef.current);
         cleanupMarkers(objectMarkersRef.current);
         setVisibleObjects([]);
         return;
@@ -332,6 +346,7 @@ export default function MapViewGL() {
 
       const cats = useMapStore.getState().activeCategories;
       if (cats.length === 0) {
+        clearTimeout(reportTimerRef.current);
         cleanupMarkers(reportMarkersRef.current);
         setReports([]);
         return;
@@ -408,6 +423,10 @@ export default function MapViewGL() {
         return;
       }
 
+      // No debounce/sequence guard here (unlike the object/report loaders)
+      // meant an earlier viewport's response arriving after a later one
+      // would replace the correct markers with ones for the wrong bounds.
+      const requestId = ++trafficSignalsRequestIdRef.current;
       mapApi.getObjects({
         minLat: bounds.getSouth(),
         maxLat: bounds.getNorth(),
@@ -416,6 +435,7 @@ export default function MapViewGL() {
         categories: 'TRAFFIC_LIGHT',
         limit: 100,
       }).then((res) => {
+        if (requestId !== trafficSignalsRequestIdRef.current) return;
         const signals: MapObject[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
         cleanupMarkers(trafficMarkersRef.current);
 
@@ -566,11 +586,11 @@ export default function MapViewGL() {
   return (
     <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }}>
       <div ref={containerRef} className="w-full h-full" />
-      <UserLocationLayer map={mapRef.current} />
-      <MapFeaturesLayer map={mapRef.current} />
-      <FriendMarkers map={mapRef.current} />
-      <TrafficFlowLayer map={mapRef.current} />
-      <TrafficLayer map={mapRef.current} />
+      <UserLocationLayer map={mapInstance} />
+      <MapFeaturesLayer map={mapInstance} />
+      <FriendMarkers map={mapInstance} />
+      <TrafficFlowLayer map={mapInstance} />
+      <TrafficLayer map={mapInstance} />
     </div>
   );
 }

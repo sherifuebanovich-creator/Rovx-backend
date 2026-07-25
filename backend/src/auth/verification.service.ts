@@ -33,9 +33,16 @@ export class VerificationService {
     const a = Buffer.from(storedCode);
     const b = Buffer.from(code);
     if (a.length === b.length && timingSafeEqual(a, b)) {
-      await this.redis.del(`verify:code:${email}`);
+      // GET-then-compare-then-DEL is two round-trips, not atomic — two
+      // concurrent calls with the same valid code could both pass the
+      // compare above before either DEL runs, both returning true and
+      // driving two concurrent password resets / verifications off a
+      // single-use code. DEL is atomic and returns the number of keys
+      // actually removed, so only the request that really deleted the key
+      // gets to proceed; a second, racing request sees 0 and is rejected.
+      const deleted = await this.redis.del(`verify:code:${email}`);
       await this.redis.del(`verify:attempts:${email}`);
-      return true;
+      return deleted > 0;
     }
 
     const attempts = await this.redis.incr(`verify:attempts:${email}`);

@@ -55,7 +55,7 @@ export class GatewayService {
         socket.leave(room);
       }
     }
-    this.sendToUser(userId, 'group:force_leave', { groupId });
+    await this.sendToUser(userId, 'group:force_leave', { groupId });
   }
 
   async emitToRoom(room: string, event: string, data: any) {

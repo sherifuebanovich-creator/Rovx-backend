@@ -777,7 +777,7 @@ export class ReportsService {
     const city = reportCity;
     if (city) {
       const cityRoom = `city:${city.toLowerCase()}`;
-      this.gateway.emitToRoom(cityRoom, 'report:new', {
+      await this.gateway.emitToRoom(cityRoom, 'report:new', {
         ...report,
         cityNotification: true,
         time: timeStr,

@@ -86,6 +86,17 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         return;
       }
 
+      // validateJwtPayload is a DB round-trip — if the client disconnected
+      // while we were awaiting it, handleDisconnect already ran and found
+      // nothing (connectedUsers wasn't populated yet), so it was a no-op.
+      // Registering this now-dead socket anyway would leak a phantom entry
+      // that never gets cleaned up, and (on first connection) mark the user
+      // online in Redis for a connection that no longer exists.
+      if (!client.connected) {
+        this.logger.debug(`Client ${client.id} disconnected during auth, skipping registration`);
+        return;
+      }
+
       const userId = payload.sub;
       this.connectedUsers.set(client.id, userId);
       (client as any).userId = userId;
@@ -772,6 +783,26 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       }
     } catch (err) {
       this.logger.warn(`Stale cleanup failed: ${(err as Error).message}`);
+    }
+
+    await this.refreshOnlineHeartbeats();
+  }
+
+  // online:ts:${userId} is set once on first connection with a 30min TTL
+  // and was never refreshed afterward — any connection lasting longer than
+  // that had its key expire while still connected, and the cleanup pass
+  // above would then srem it from online:users, making
+  // friends.service.ts's getValidOnlineUserIds report a genuinely-connected
+  // user as offline. Running on the same 10min interval keeps the TTL
+  // ahead of expiry for as long as this instance still has the connection.
+  private async refreshOnlineHeartbeats() {
+    try {
+      for (const userId of this.userConnections.keys()) {
+        await this.redis.sadd('online:users', userId);
+        await this.redis.set(`online:ts:${userId}`, Date.now().toString(), this.USER_ONLINE_TTL);
+      }
+    } catch (err) {
+      this.logger.warn(`Online heartbeat refresh failed: ${(err as Error).message}`);
     }
   }
 

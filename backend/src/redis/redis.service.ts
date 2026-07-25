@@ -79,11 +79,12 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  async del(key: string): Promise<void> {
+  async del(key: string): Promise<number> {
     try {
-      await this.client.del(key);
+      return await this.client.del(key);
     } catch (e) {
       this.logger.debug(`Redis DEL ${key} failed: ${(e as Error).message}`);
+      return 0;
     }
   }
 
