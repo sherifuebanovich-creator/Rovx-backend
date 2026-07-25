@@ -83,6 +83,15 @@ export function ReportPanel() {
     if (newFileCount <= 0) return;
     const filesToAdd = files.slice(0, newFileCount);
 
+    // Set BEFORE the async compression/encoding work below, not after —
+    // compressing a full-res camera photo can take real time, and during
+    // that window `photos` hasn't been appended to yet, so hasValidPhotos
+    // (which used to short-circuit true on `photos.length === 0`) didn't
+    // reflect the in-flight photo at all. A tap on Submit in that window
+    // used to send the report with zero photos while the user believed one
+    // was attached.
+    setPhotoChecking(true);
+
     const addedPhotos: string[] = [];
     const addedFiles: File[] = [];
     for (const file of filesToAdd) {
@@ -96,7 +105,10 @@ export function ReportPanel() {
       }
     }
 
-    if (addedPhotos.length === 0) return;
+    if (addedPhotos.length === 0) {
+      setPhotoChecking(false);
+      return;
+    }
 
     const addedIds = addedPhotos.map(() => ++photoIdCounterRef.current);
     photoIdsRef.current = [...photoIdsRef.current, ...addedIds];
@@ -158,6 +170,11 @@ export function ReportPanel() {
   }, [submitted]);
 
   const handleSubmit = async () => {
+    // The disabled prop on the Submit button is the only guard against a
+    // double-fire — nothing here stopped a second invocation (duplicate
+    // click/touch events in the same task) from slipping through before
+    // React commits the disabled state, creating a duplicate report.
+    if (isSubmitting) return;
     if (!selectedType || !userLocation) {
       toast.error(t('reportPanel.needLocation'));
       return;
@@ -206,7 +223,11 @@ export function ReportPanel() {
     }
   };
 
-  const hasValidPhotos = photos.length === 0 || (photos.length > 0 && photoValidated.every(v => v) && !photoChecking);
+  // photoChecking is now checked unconditionally, not just when
+  // photos.length > 0 — it's set true synchronously before the async
+  // compress/validate pipeline even appends to `photos`, so a photo mid
+  // flight (still zero entries in `photos`) must still block submit.
+  const hasValidPhotos = !photoChecking && (photos.length === 0 || photoValidated.every(v => v));
 
   useEffect(() => {
     return () => {
@@ -417,7 +438,7 @@ export function ReportPanel() {
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSubmit}
-                disabled={!selectedType || isSubmitting || !hasValidPhotos || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
+                disabled={!selectedType || !userLocation || isSubmitting || !hasValidPhotos || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
                 className="mt-4 w-full btn-accent py-4 flex items-center justify-center gap-2
                            font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >

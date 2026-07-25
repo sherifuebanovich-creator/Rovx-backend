@@ -63,7 +63,21 @@ export default function ProfilePage() {
       homeAddress: user?.homeAddress || '',
       workAddress: user?.workAddress || '',
     });
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarFile(null);
+    setAvatarPreview(null);
     setEditing(true);
+  };
+
+  // Cancel used to just close the edit panel — avatarFile/avatarPreview
+  // were never cleared, so a "cancelled" photo selection silently got
+  // uploaded on the NEXT save (even one that only touched the display
+  // name), and the object URL was never revoked either.
+  const cancelEditing = () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setEditing(false);
   };
 
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,7 +301,7 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div className="flex gap-2 justify-center mt-3">
-                <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-all flex items-center gap-1">
+                <button onClick={() => { cancelEditing(); }} className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-all flex items-center gap-1">
                   <FaTimes size={12} /> {t('common.cancel')}
                 </button>
                 <button onClick={handleSaveProfile} disabled={editLoading} className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm hover:bg-primary-500 transition-all flex items-center gap-1 disabled:opacity-50">

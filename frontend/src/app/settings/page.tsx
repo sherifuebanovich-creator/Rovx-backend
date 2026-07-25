@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +28,25 @@ export default function SettingsPage() {
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [vehiclesError, setVehiclesError] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
+  // Tracks the last SERVER-CONFIRMED address/coords per field, separate
+  // from `user` (which the address inputs' onChange updates optimistically
+  // on every keystroke) — needed to revert to a known-good value if a save
+  // fails, and a per-field generation counter so a slow/failed older
+  // request can't clobber a newer edit that already succeeded.
+  const lastSavedAddressRef = useRef<Record<'home' | 'work', { address: string; lat: number | null; lng: number | null }>>({
+    home: { address: '', lat: null, lng: null },
+    work: { address: '', lat: null, lng: null },
+  });
+  const addressRequestIdRef = useRef<Record<'home' | 'work', number>>({ home: 0, work: 0 });
+
+  useEffect(() => {
+    if (!user) return;
+    lastSavedAddressRef.current = {
+      home: { address: user.homeAddress || '', lat: user.homeLat ?? null, lng: user.homeLng ?? null },
+      work: { address: user.workAddress || '', lat: user.workLat ?? null, lng: user.workLng ?? null },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     if (preferences) {
@@ -71,19 +90,38 @@ export default function SettingsPage() {
     const latKey = field === 'home' ? 'homeLat' : 'workLat';
     const lngKey = field === 'home' ? 'homeLng' : 'workLng';
 
+    // A failed save used to leave the input showing the new (unsaved) text
+    // while homeLat/homeLng still pointed at the OLD location — exactly the
+    // stale-coordinate mismatch this function exists to prevent, just on
+    // the error path. Revert to the last confirmed value instead.
+    const revertOnFailure = (requestId: number) => {
+      // A newer edit already superseded this one — let it own the outcome.
+      if (requestId !== addressRequestIdRef.current[field]) return;
+      const saved = lastSavedAddressRef.current[field];
+      const current = useAuthStore.getState().user;
+      if (!current) return;
+      setUser({ ...current, [addressKey]: saved.address, [latKey]: saved.lat, [lngKey]: saved.lng } as any);
+    };
+
+    const requestId = ++addressRequestIdRef.current[field];
+
     if (!value) {
       const patch = { [addressKey]: '', [latKey]: null, [lngKey]: null };
       try {
         await usersApi.updateProfile(patch);
-        setUser({ ...user, ...patch });
+        if (requestId !== addressRequestIdRef.current[field]) return;
+        setUser({ ...useAuthStore.getState().user!, ...patch });
+        lastSavedAddressRef.current[field] = { address: '', lat: null, lng: null };
       } catch {
         toast.error(t('settings.saveFailed'));
+        revertOnFailure(requestId);
       }
       return;
     }
 
     try {
       const res = await mapApi.search(value, undefined, undefined, 20);
+      if (requestId !== addressRequestIdRef.current[field]) return;
       const results = res.data?.data || res.data || [];
       const match = results[0];
       const patch = {
@@ -92,21 +130,34 @@ export default function SettingsPage() {
         [lngKey]: match?.lng ?? null,
       };
       await usersApi.updateProfile(patch);
-      setUser({ ...user, ...patch });
+      if (requestId !== addressRequestIdRef.current[field]) return;
+      setUser({ ...useAuthStore.getState().user!, ...patch });
+      lastSavedAddressRef.current[field] = { address: value, lat: patch[latKey], lng: patch[lngKey] };
       if (!match) toast.error(t('settings.addressNotFound'));
     } catch {
       toast.error(t('settings.saveFailed'));
+      revertOnFailure(requestId);
     }
   };
 
   const handleLanguageChange = (code: string) => {
+    const prevLang = lang;
     setLang(code);
     setLangSearch('');
     setShowLangPicker(false);
     i18n.changeLanguage(code);
     if (user) {
+      const prevUser = user;
       setUser({ ...user, preferredLang: code });
-      usersApi.updateProfile({ preferredLang: code }).catch(() => toast.error(t('settings.saveFailed')));
+      // Was fire-and-forget with only a toast on failure — the language
+      // selector, i18n, and user.preferredLang stayed on the new (unsaved)
+      // value forever with no re-sync to what the server actually has.
+      usersApi.updateProfile({ preferredLang: code }).catch(() => {
+        toast.error(t('settings.saveFailed'));
+        setLang(prevLang);
+        i18n.changeLanguage(prevLang);
+        setUser(prevUser);
+      });
     } else {
       localStorage.setItem('preferred_lang', code);
     }
@@ -114,10 +165,18 @@ export default function SettingsPage() {
   };
 
   const updatePreference = (key: string, value: boolean) => {
+    const prevPreferences = preferences;
     const updated = { ...(preferences ?? {}), [key]: value } as any;
     setPreferences(updated);
     if (user) {
-      usersApi.updatePreferences({ [key]: value }).catch(() => toast.error(t('settings.saveFailed')));
+      // Reverting `preferences` on failure also reverts the notifications/
+      // sound toggles, since the effect above re-syncs them from it — same
+      // fix as language above: a failed save used to leave the toggle
+      // showing the new (unsaved) state forever.
+      usersApi.updatePreferences({ [key]: value }).catch(() => {
+        toast.error(t('settings.saveFailed'));
+        setPreferences(prevPreferences as any);
+      });
     } else {
       localStorage.setItem('preferences', JSON.stringify(updated));
     }

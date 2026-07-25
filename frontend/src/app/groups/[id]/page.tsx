@@ -85,6 +85,12 @@ export default function GroupChatPage() {
   const [showReadBy, setShowReadBy] = useState<string | null>(null);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const joinedRef = useRef(false);
+  // Was a plain object literal recreated inside the message-listener effect
+  // (deps [user, groupId, router], so it doesn't rerun on isMember changes)
+  // — joining mid-session via handleJoin or onRequestApproved never updated
+  // it, so a socket reconnect after joining silently skipped re-fetching
+  // messages sent while disconnected.
+  const isMemberForConnectRef = useRef(false);
   const readSentRef = useRef<Set<string>>(new Set());
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🙏'];
 
@@ -139,7 +145,7 @@ export default function GroupChatPage() {
 
     // Re-fetch messages on socket reconnect, but only while the user is a
     // member — resolved once the group/member fetch below completes.
-    const isMemberForConnectRef = { current: false };
+    let cancelled = false;
     const onConnect = () => {
       if (!isMemberForConnectRef.current) return;
       socialApi.getGroupMessages(groupId).then(res => {
@@ -153,6 +159,12 @@ export default function GroupChatPage() {
       socialApi.getGroup(groupId),
       socialApi.getGroupMessages(groupId),
     ]).then(([gRes, mRes]) => {
+      // Quickly navigating from one group's chat to another's reuses this
+      // component with a new groupId — without this guard, an older
+      // group's still-in-flight fetch could resolve after the newer one
+      // and overwrite it, showing the wrong group's roster/messages under
+      // the new URL.
+      if (cancelled) return;
       const gData = gRes.data?.data || gRes.data;
       setGroup(gData);
       setIsMember(gData?.isMember ?? false);
@@ -177,9 +189,10 @@ export default function GroupChatPage() {
       // If member, fetch messages on socket connect too
       isMemberForConnectRef.current = !!gData?.isMember;
     }).catch(() => {
+      if (cancelled) return;
       toast.error(t('groupDetails.notFound'));
       router.push('/groups');
-    }).finally(() => setLoading(false));
+    }).finally(() => { if (!cancelled) setLoading(false); });
 
     const onUpdated = (data: any) => {
       setGroup(prev => prev ? { ...prev, ...data } : prev);
@@ -207,8 +220,25 @@ export default function GroupChatPage() {
         router.push('/groups');
       }
     };
-    const onMemberPromoted = () => { toast('Пользователь повышен до админа'); };
-    const onMemberDemoted = () => { toast('Пользователь понижен'); };
+    // These used to only toast — group.members (which isAdmin gates on)
+    // never updated, so admin-only controls (kick/ban/invite-link/pending
+    // requests) stayed visible for a just-demoted admin, or stayed hidden
+    // for a just-promoted member, until some unrelated event happened to
+    // refetch the group.
+    const onMemberPromoted = (data: { userId: string }) => {
+      toast('Пользователь повышен до админа');
+      setGroup(prev => {
+        if (!prev?.members) return prev;
+        return { ...prev, members: prev.members.map(m => m.userId === data.userId ? { ...m, isAdmin: true } : m) };
+      });
+    };
+    const onMemberDemoted = (data: { userId: string }) => {
+      toast('Пользователь понижен');
+      setGroup(prev => {
+        if (!prev?.members) return prev;
+        return { ...prev, members: prev.members.map(m => m.userId === data.userId ? { ...m, isAdmin: false } : m) };
+      });
+    };
 
     const onMessageRead = (data: { messageId: string; readBy: string[]; readByUser: string }) => {
       setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, readBy: data.readBy } : m));
@@ -231,6 +261,7 @@ export default function GroupChatPage() {
       if (data.groupId !== groupId) return;
       toast.success(`Заявка одобрена! Вы теперь в группе "${data.groupName}"`);
       setIsMember(true);
+      isMemberForConnectRef.current = true;
       setRequestStatus('APPROVED');
       // Reload messages
       socialApi.getGroupMessages(groupId).then(res => {
@@ -271,6 +302,7 @@ export default function GroupChatPage() {
     ws?.on('group:member_joined', onMemberJoined);
 
     return () => {
+      cancelled = true;
       ws?.off('group:message', onMessage);
       ws?.off('connect', onConnect);
       ws?.off('group:updated', onUpdated);
@@ -315,6 +347,7 @@ export default function GroupChatPage() {
         setIsMember(false);
       } else {
         setIsMember(true);
+        isMemberForConnectRef.current = true;
         toast.success('Вы вступили в группу!');
         const mRes = await socialApi.getGroupMessages(groupId);
         const msgs = mRes.data?.data || mRes.data;
