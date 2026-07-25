@@ -54,6 +54,12 @@ export function NavigationHUD() {
   const engineInitRef = useRef(false);
   const handleArrivalRef = useRef<() => Promise<void>>(async () => {});
   const handleRerouteRef = useRef<() => Promise<void>>(async () => {});
+  // Guards against a second reroute firing while one is still in flight —
+  // computeNavigationUpdate's own cooldown is measured from dispatch time,
+  // not resolution, so a slow route-calc request (poor mobile connectivity
+  // while driving) could otherwise still overlap with a newer one and have
+  // its stale response win the race and overwrite the fresher route.
+  const isReroutingRef = useRef(false);
   // ETA should read "--" until the trip actually gets moving, then track
   // the current pace — not the route's precomputed average.
   const movementStartedRef = useRef(false);
@@ -111,7 +117,8 @@ export function NavigationHUD() {
   }, [speak, t, destination, endTrip]);
 
   const handleReroute = useCallback(async () => {
-    if (!userLocation || !destination) return;
+    if (!userLocation || !destination || isReroutingRef.current) return;
+    isReroutingRef.current = true;
     setNavigation({ isRerouting: true });
     try {
       const res = await routesApi.calculate({
@@ -134,6 +141,8 @@ export function NavigationHUD() {
     } catch {
       setNavigation({ isRerouting: false });
       speak(t('navigationHud.rerouteFailed'), true);
+    } finally {
+      isReroutingRef.current = false;
     }
   }, [userLocation, destination, setNavigation, setSelectedRoute, speak, t]);
 
@@ -146,7 +155,7 @@ export function NavigationHUD() {
 
     const update: NavigationUpdate = computeNavigationUpdate(
       userLocation.lat, userLocation.lng, userHeading,
-      selectedRoute, navigation.currentLeg,
+      selectedRoute, navigation.currentLeg, userSpeed,
     );
 
     if (update.currentLeg !== navigation.currentLeg ||

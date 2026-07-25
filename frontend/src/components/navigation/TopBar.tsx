@@ -60,7 +60,7 @@ export function TopBar() {
         setLocating(false);
         toast.error(err.code === err.PERMISSION_DENIED ? t('topbar.locationPermissionDenied') : t('topbar.locationUnavailable'));
       },
-      { enableHighAccuracy: true, timeout: 10000 },
+      { enableHighAccuracy: true, timeout: 20000 },
     );
   }, [userLocation, setMapCenter, setFollowUser, setUserLocation, t]);
 

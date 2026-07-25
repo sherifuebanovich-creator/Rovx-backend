@@ -92,6 +92,19 @@ export class PremiumService {
     return found;
   }
 
+  // A renewal paid before the current period expires must ADD time on top
+  // of what's left, not overwrite it with a fresh 30-day window from now —
+  // otherwise a user with e.g. 20 days remaining who renews loses those 20
+  // days the moment the webhook fires. `user.subscriptionEnd` (not the
+  // shared, checkout-mutated `premiumSubscription` row) is the only
+  // reliable "currently entitled until" signal — see getMySubscription.
+  private async extendedEndDate(userId: string, months: number): Promise<Date> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { subscriptionEnd: true } });
+    const now = new Date();
+    const base = user?.subscriptionEnd && user.subscriptionEnd > now ? user.subscriptionEnd : now;
+    return new Date(base.getTime() + 30 * months * 24 * 60 * 60 * 1000);
+  }
+
   async getUserTier(userId: string): Promise<PremiumTier> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -241,7 +254,7 @@ export class PremiumService {
           this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount} / ${months}mo`);
         }
         const tier = this.getTierInfo(tierName);
-        const endDate = new Date(Date.now() + 30 * months * 24 * 60 * 60 * 1000);
+        const endDate = await this.extendedEndDate(userId, months);
 
         await this.prisma.$transaction([
           this.prisma.premiumSubscription.upsert({
@@ -375,7 +388,7 @@ export class PremiumService {
         this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
       }
       const tier = this.getTierInfo(tierName);
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const endDate = await this.extendedEndDate(userId, 1);
 
       await this.prisma.$transaction([
         this.prisma.premiumSubscription.upsert({
@@ -424,8 +437,14 @@ export class PremiumService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    if (existingSub?.status === 'active') {
+    // `premiumSubscription.status` is shared with in-flight checkouts from
+    // OTHER providers (Xsolla/Lemon Squeezy flip it to 'pending' the instant
+    // a checkout starts, even for an already-active user), so it can't be
+    // trusted here — starting an Xsolla checkout used to silently defeat
+    // this guard and let an active user open a second Stripe checkout too.
+    // `user.subscriptionEnd` is only ever written by a confirmed webhook or
+    // cancellation, so it's the reliable "currently entitled" signal.
+    if (user.subscriptionEnd && user.subscriptionEnd > new Date()) {
       throw new BadRequestException('Already subscribed');
     }
 
@@ -461,7 +480,7 @@ export class PremiumService {
         return;
       }
 
-      const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const endDate = await this.extendedEndDate(userId, 1);
 
       await this.prisma.$transaction([
         this.prisma.premiumSubscription.upsert({

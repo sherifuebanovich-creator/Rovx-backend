@@ -244,8 +244,17 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
-    await this.redis.set(`convoy:active:${userId}`, data.active ? 'true' : 'false', 86400);
-    return { active: data.active };
+    try {
+      await this.redis.set(`convoy:active:${userId}`, data.active ? 'true' : 'false', 86400);
+      return { active: data.active };
+    } catch (err) {
+      // Unlike most other handlers, this had no try/catch — a Redis blip
+      // would reject the handler's promise, Nest's WS filter swallows it
+      // silently, and a caller passing an ack callback would hang until its
+      // own client-side timeout instead of getting a response.
+      this.logger.warn(`Convoy toggle failed for ${userId}: ${(err as Error).message}`);
+      return { active: data.active, error: 'Failed to persist convoy state' };
+    }
   }
 
   @SubscribeMessage('sos:trigger')
@@ -317,7 +326,17 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { lat: number; lng: number; radius?: number },
   ) {
+    // Unlike location:update, this never left stale `area:*` rooms on
+    // repeated calls (e.g. the user panning/searching the map) — the
+    // socket's room membership only grew, up to hundreds of rooms per
+    // connection, and kept delivering broadcasts for areas no longer in view.
     const cells = this.getNearbyCells(data.lat, data.lng, data.radius);
+    const currentRooms = [...client.rooms];
+    for (const room of currentRooms) {
+      if (room.startsWith('area:') && !cells.includes(room)) {
+        client.leave(room);
+      }
+    }
     for (const cell of cells) {
       client.join(cell);
     }
@@ -382,16 +401,23 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
 
-    const member = await this.prisma.groupMember.findFirst({
-      where: { groupId: data.groupId, userId },
-    });
+    try {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId },
+      });
 
-    if (member) {
-      if (member.isBanned) return { joined: false, error: 'Banned' };
-      client.join(`group:${data.groupId}`);
-      return { joined: true };
+      if (member) {
+        if (member.isBanned) return { joined: false, error: 'Banned' };
+        client.join(`group:${data.groupId}`);
+        return { joined: true };
+      }
+      return { joined: false, error: 'Not a member' };
+    } catch (err) {
+      // No try/catch previously — a DB blip would silently swallow the
+      // rejection and leave a caller with an ack callback hanging.
+      this.logger.warn(`join:group failed for ${userId}/${data.groupId}: ${(err as Error).message}`);
+      return { joined: false, error: 'Failed to join group' };
     }
-    return { joined: false, error: 'Not a member' };
   }
 
   @SubscribeMessage('leave:group')
@@ -539,29 +565,43 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       });
       if (!member || member.isBanned) return;
 
-      const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
-      if (!msg || msg.groupId !== data.groupId) return;
+      // Plain findUnique-then-update was a read-modify-write race: two users
+      // reacting within milliseconds both read the same row, and the second
+      // update silently overwrote the first's reaction. Compare-and-swap on
+      // the previous `reactions` value + retry turns it into an atomic op
+      // without needing a schema change to a real JSON/relational column.
+      const MAX_ATTEMPTS = 5;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
+        if (!msg || msg.groupId !== data.groupId) return;
 
-      let reactions: Record<string, string[]> = {};
-      try { reactions = JSON.parse(msg.reactions || '{}'); } catch {}
+        let reactions: Record<string, string[]> = {};
+        try { reactions = JSON.parse(msg.reactions || '{}'); } catch {}
 
-      const existing = reactions[data.emoji] || [];
-      if (existing.includes(userId)) {
-        reactions[data.emoji] = existing.filter(id => id !== userId);
-        if (reactions[data.emoji].length === 0) delete reactions[data.emoji];
-      } else {
-        reactions[data.emoji] = [...existing, userId];
+        const existing = reactions[data.emoji] || [];
+        if (existing.includes(userId)) {
+          reactions[data.emoji] = existing.filter(id => id !== userId);
+          if (reactions[data.emoji].length === 0) delete reactions[data.emoji];
+        } else {
+          reactions[data.emoji] = [...existing, userId];
+        }
+
+        const result = await this.prisma.groupMessage.updateMany({
+          where: { id: data.messageId, reactions: msg.reactions },
+          data: { reactions: JSON.stringify(reactions) },
+        });
+
+        if (result.count > 0) {
+          this.server.to(`group:${data.groupId}`).emit('group:reaction', {
+            messageId: data.messageId,
+            reactions,
+          });
+          return;
+        }
+        // Someone else updated reactions between our read and write — retry
+        // with fresh data instead of silently dropping this reaction.
       }
-
-      await this.prisma.groupMessage.update({
-        where: { id: data.messageId },
-        data: { reactions: JSON.stringify(reactions) },
-      });
-
-      this.server.to(`group:${data.groupId}`).emit('group:reaction', {
-        messageId: data.messageId,
-        reactions,
-      });
+      this.logger.warn(`Reaction update for message ${data.messageId} lost the race ${MAX_ATTEMPTS} times in a row`);
     } catch (err) {
       this.logger.warn(`Reaction failed: ${(err as Error).message}`);
     }
@@ -609,10 +649,15 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.tripId) return;
-    const trip = await this.prisma.trip.findFirst({ where: { id: data.tripId, userId } });
-    if (!trip) return;
-    client.join(`trip:${data.tripId}`);
-    return { ok: true };
+    try {
+      const trip = await this.prisma.trip.findFirst({ where: { id: data.tripId, userId } });
+      if (!trip) return { ok: false };
+      client.join(`trip:${data.tripId}`);
+      return { ok: true };
+    } catch (err) {
+      this.logger.warn(`trip:started failed for ${userId}/${data.tripId}: ${(err as Error).message}`);
+      return { ok: false };
+    }
   }
 
   /** True if `userId` and `otherUserId` are accepted friends or share at least one (non-banned) group. */
@@ -701,9 +746,17 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
 
+    // Unlike voice:call/voice:signal above, this handler had no relationship
+    // check at all — any authenticated client could terminate an arbitrary
+    // user's call UI, or disrupt a group call for a group it never joined.
     if (data.groupId) {
+      const member = await this.prisma.groupMember.findFirst({
+        where: { groupId: data.groupId, userId },
+      });
+      if (!member) return;
       this.server.to(`group:${data.groupId}`).emit('voice:end', { userId });
     } else if (data.targetUserId) {
+      if (!(await this.areUsersConnected(userId, data.targetUserId))) return;
       this.gatewayService.sendToUser(data.targetUserId, 'voice:end', { userId });
     }
   }

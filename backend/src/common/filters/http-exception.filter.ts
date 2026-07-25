@@ -66,7 +66,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
         }
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // Never echo a raw, unclassified error message to the client — e.g. a
+      // Prisma "Unique constraint failed" from a racing duplicate-register,
+      // or the JWT-secrets-missing config error, would otherwise leak
+      // internal implementation/config details straight into the response
+      // body. Log the real message server-side; the client gets a generic one.
+      message = translate('Internal server error', lang);
       this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
     }
 

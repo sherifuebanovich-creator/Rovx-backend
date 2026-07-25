@@ -36,6 +36,7 @@ export function useGeolocation() {
   const lastFixRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   const deviceHeadingRef = useRef<number | null>(null);
   const isActiveRef = useRef(true);
+  const hasFixRef = useRef(false);
   const [location, setLocation] = useState<LocationState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt');
@@ -93,6 +94,9 @@ export function useGeolocation() {
       timestamp: position.timestamp,
     };
 
+    hasFixRef.current = true;
+    setError(null);
+    setLocationError(null);
     setLocation(loc);
     setUserLocation({ lat: latitude, lng: longitude }, resolvedHeading, smoothSpeedRef.current, accuracy || 0, position.timestamp);
 
@@ -118,8 +122,14 @@ export function useGeolocation() {
         setPermissionState('unavailable');
         break;
       case error.TIMEOUT:
-        setError('Location request timed out. Retrying...');
-        setLocationError('Location request timed out');
+        // High-accuracy GPS cold start routinely takes longer than the
+        // watch timeout indoors/urban — once we already have a fix, this
+        // is just a background retry, not a real failure. Surfacing the
+        // banner anyway made a working blue dot look "broken".
+        if (!hasFixRef.current) {
+          setError('Location request timed out. Retrying...');
+          setLocationError('Location request timed out');
+        }
         break;
     }
   }, [setLocationError]);
@@ -134,7 +144,10 @@ export function useGeolocation() {
     const options: PositionOptions = {
       enableHighAccuracy: true,
       maximumAge: 500,
-      timeout: 10000,
+      // 10s was too tight for a high-accuracy GPS cold start on real
+      // phones (indoors, dense urban areas) — it fired a "timed out" error
+      // before the very first fix, which read as location being broken.
+      timeout: 30000,
     };
 
     watchIdRef.current = navigator.geolocation.watchPosition(processPosition, handleError, options);

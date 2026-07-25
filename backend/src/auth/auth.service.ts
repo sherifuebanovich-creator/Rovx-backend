@@ -105,6 +105,10 @@ export class AuthService {
       throw new UnauthorizedException('Account has been banned');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is deactivated');
+    }
+
     if (!user.isVerified) {
       return { needsVerification: true, email: user.email };
     }
@@ -166,7 +170,16 @@ export class AuthService {
         await this.saveRefreshToken(user.id, tokens.refreshToken);
         return tokens;
       } finally {
-        await this.redis.del(lockKey);
+        // Must not throw here: a lock-release failure (e.g. Redis blip) would
+        // otherwise override the successful token rotation above and fall
+        // into the outer catch, turning a completed refresh into a forced
+        // logout for the legitimate user even though the new token was
+        // already committed and the old one already discarded.
+        try {
+          await this.redis.del(lockKey);
+        } catch (e) {
+          this.logger.warn(`Failed to release refresh lock ${lockKey}: ${(e as Error).message}`);
+        }
       }
     } catch (e) {
       if (e instanceof UnauthorizedException || e instanceof ConflictException) throw e;

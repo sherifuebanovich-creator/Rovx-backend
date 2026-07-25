@@ -22,6 +22,12 @@ const OFF_ROUTE_THRESHOLD_METERS = 18;
 const LEG_ADVANCE_DISTANCE_METERS = 15;
 const WRONG_WAY_ANGLE_DEG = 100;
 const FORWARD_SEARCH_RADIUS_M = 200;
+// GPS course-over-ground (and the device compass fallback) is unreliable
+// below walking speed and defaults to 0 ("north") when neither is
+// available — without this gate, a stationary car at trip start (heading
+// not yet meaningful) could get flagged wrong-way and reroute before it
+// ever moved.
+const MIN_RELIABLE_HEADING_SPEED_KMH = 3;
 
 let lastRerouteTime = 0;
 // Shorter than before so a reroute that doesn't fully resolve the
@@ -156,18 +162,25 @@ export function computeNavigationUpdate(
   userHeading: number,
   route: RouteResult,
   currentLeg: number,
+  speedKmh?: number,
 ): NavigationUpdate {
   const { polyline, instructions } = route;
   const totalPoints = polyline.length;
 
-  const fwd = findForwardClosestPoint(userLat, userLng, userHeading, polyline);
+  // Below MIN_RELIABLE_HEADING_SPEED_KMH, userHeading carries no real
+  // directional information (see constant comment) — fall back to a plain
+  // nearest-point lookup instead of feeding a meaningless heading into the
+  // wrong-way check.
+  const fwd = speedKmh != null && speedKmh < MIN_RELIABLE_HEADING_SPEED_KMH
+    ? { ...findClosestPointOnPolyline(userLat, userLng, polyline), isWrongWay: false }
+    : findForwardClosestPoint(userLat, userLng, userHeading, polyline);
 
   const isOffRoute = fwd.distance > OFF_ROUTE_THRESHOLD_METERS;
 
   if (!instructions.length || currentLeg >= instructions.length) {
     return {
       currentLeg: instructions.length,
-      routeProgress: totalPoints > 0 ? fwd.index / (totalPoints - 1) : 1,
+      routeProgress: totalPoints > 1 ? fwd.index / (totalPoints - 1) : 1,
       distanceToManeuver: 0,
       bearingToManeuver: 0,
       isArrived: true,
@@ -202,7 +215,12 @@ export function computeNavigationUpdate(
   const destLat = polyline[totalPoints - 1].lat;
   const destLng = polyline[totalPoints - 1].lng;
   const distToDest = haversineDist(userLat, userLng, destLat, destLng);
-  const isArrived = distToDest < ARRIVAL_THRESHOLD_METERS;
+  // Straight-line proximity to the destination coordinate alone isn't
+  // enough — a route that loops around a block, a divided highway, or a
+  // one-way detour can pass within ARRIVAL_THRESHOLD_METERS of the
+  // destination well before the final leg, which used to end the trip
+  // early. Require actually being on the last maneuver too.
+  const isArrived = distToDest < ARRIVAL_THRESHOLD_METERS && newLeg === instructions.length - 1;
 
   const now = Date.now();
   const shouldReroute = (isOffRoute || fwd.isWrongWay) && !isArrived && (now - lastRerouteTime > REROUTE_COOLDOWN_MS);
