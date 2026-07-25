@@ -471,8 +471,16 @@ export class TelegramController implements OnModuleInit {
             await this.telegram.sendMessageToChat(chatId, '❌ Укажи user ID');
             return { ok: true };
           }
-          await this.premium.deactivateUser(userId);
-          await this.telegram.sendMessageToChat(chatId, `✅ Подписка деактивирована для ${userId}`);
+          // Unlike neighboring handlers, this had no local try/catch — a bad
+          // userId (typo) threw a Prisma P2025 caught only by the outer
+          // webhook handler, which logs it but never replies, so the admin
+          // saw no response and could believe it had succeeded.
+          try {
+            await this.premium.deactivateUser(userId);
+            await this.telegram.sendMessageToChat(chatId, `✅ Подписка деактивирована для ${userId}`);
+          } catch (e) {
+            await this.telegram.sendMessageToChat(chatId, `❌ Не удалось деактивировать: ${(e as Error).message}`);
+          }
           return { ok: true };
         }
 
@@ -484,16 +492,20 @@ export class TelegramController implements OnModuleInit {
               'Пример: <code>/setpass userId новый_пароль</code>');
             return { ok: true };
           }
-          const bcrypt = require('bcrypt');
-          const hash = await bcrypt.hash(parts[1], 10);
-          // Revoke the user's existing sessions so a compromised account can't
-          // keep using old tokens after the password is reset.
-          await this.prisma.user.update({
-            where: { id: parts[0] },
-            data: { passwordHash: hash, refreshToken: null },
-          });
-          await this.telegram.sendMessageToChat(chatId,
-            `✅ Пароль изменён для <code>${parts[0]}</code>\nСтарые сессии отозваны.`);
+          try {
+            const bcrypt = require('bcrypt');
+            const hash = await bcrypt.hash(parts[1], 10);
+            // Revoke the user's existing sessions so a compromised account can't
+            // keep using old tokens after the password is reset.
+            await this.prisma.user.update({
+              where: { id: parts[0] },
+              data: { passwordHash: hash, refreshToken: null },
+            });
+            await this.telegram.sendMessageToChat(chatId,
+              `✅ Пароль изменён для <code>${parts[0]}</code>\nСтарые сессии отозваны.`);
+          } catch (e) {
+            await this.telegram.sendMessageToChat(chatId, `❌ Не удалось сменить пароль: ${(e as Error).message}`);
+          }
           return { ok: true };
         }
 
@@ -551,7 +563,13 @@ export class TelegramController implements OnModuleInit {
         const cbId = body.callback_query.id;
         const chatId = body.callback_query.message?.chat?.id;
 
-        if (chatId && !this.isAuthorized(chatId)) {
+        // Was `chatId && !isAuthorized(chatId)` — fails OPEN when chatId is
+        // missing (Telegram omits `callback_query.message` for old/expired
+        // messages per the Bot API), letting pay_approve_*/pay_reject_*
+        // (and every other privileged callback below) run with zero
+        // authorization check. Must fail closed: no chatId is never
+        // authorized.
+        if (!chatId || !this.isAuthorized(chatId)) {
           await this.telegram.answerCallbackQuery(cbId, '🔒 Нужна авторизация');
           return { ok: true };
         }

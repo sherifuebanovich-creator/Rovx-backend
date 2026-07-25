@@ -160,7 +160,11 @@ export class MapService {
   async getObjectsInBounds(query: BoundsQuery) {
     const { minLat, maxLat, minLng, maxLng, categories, limit = 200 } = query;
 
-    const cacheKey = `map:${minLat.toFixed(3)},${maxLat.toFixed(3)},${minLng.toFixed(3)},${maxLng.toFixed(3)}:${(categories || []).join(',')}`;
+    // `limit` must be part of the key — the cached value is already sliced
+    // to it (line below), so a low-limit request followed by a high-limit
+    // request for the same bbox+categories used to return the first
+    // request's truncated array to the second caller (and vice versa).
+    const cacheKey = `map:${minLat.toFixed(3)},${maxLat.toFixed(3)},${minLng.toFixed(3)},${maxLng.toFixed(3)}:${(categories || []).join(',')}:${limit}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -369,19 +373,32 @@ export class MapService {
     return null;
   }
 
+  // None of the radius->bbox call sites in this file handled the
+  // antimeridian (lng near ±180, where a real point just past the meridian
+  // has the opposite sign and gets missed by a plain gte/lte range) or the
+  // pole degeneracy (cos(lat) -> 0 as lat -> ±90, blowing lngDelta up to an
+  // enormous value). Full antimeridian wraparound would need every caller
+  // rewritten to OR two ranges — out of scope here — but clamping at least
+  // keeps the bbox within valid coordinate space instead of feeding
+  // Prisma/Overpass out-of-range values near the poles.
+  private lngDeltaForRadius(radiusKm: number, lat: number, kmPerDegLat = 111): number {
+    const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
+    return radiusKm / (kmPerDegLat * cosLat);
+  }
+
   async getSpeedCameras(lat: number, lng: number, radiusKm = 10) {
     const cacheKey = `cameras:db:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
     const latDeg = radiusKm / 111.32;
-    const lngDeg = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
+    const lngDeg = this.lngDeltaForRadius(radiusKm, lat, 111.32);
 
     const dbCameras = await this.prisma.speedCamera.findMany({
       where: {
         isActive: true,
-        lat: { gte: lat - latDeg, lte: lat + latDeg },
-        lng: { gte: lng - lngDeg, lte: lng + lngDeg },
+        lat: { gte: Math.max(lat - latDeg, -90), lte: Math.min(lat + latDeg, 90) },
+        lng: { gte: Math.max(lng - lngDeg, -180), lte: Math.min(lng + lngDeg, 180) },
       },
       select: {
         id: true,
@@ -429,13 +446,13 @@ export class MapService {
     if (cached) return JSON.parse(cached);
 
     const latDeg = radiusKm / 111.32;
-    const lngDeg = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
+    const lngDeg = this.lngDeltaForRadius(radiusKm, lat, 111.32);
 
     const dbSignals = await this.prisma.mapFeature.findMany({
       where: {
         type: 'traffic_signals',
-        lat: { gte: lat - latDeg, lte: lat + latDeg },
-        lng: { gte: lng - lngDeg, lte: lng + lngDeg },
+        lat: { gte: Math.max(lat - latDeg, -90), lte: Math.min(lat + latDeg, 90) },
+        lng: { gte: Math.max(lng - lngDeg, -180), lte: Math.min(lng + lngDeg, 180) },
       },
       select: {
         id: true,
@@ -462,11 +479,11 @@ export class MapService {
 
   async getNearby(lat: number, lng: number, radiusKm: number, category?: MapObjectCategory) {
     const latDelta = radiusKm / 111;
-    const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
-    const minLat = lat - latDelta;
-    const maxLat = lat + latDelta;
-    const minLng = lng - lngDelta;
-    const maxLng = lng + lngDelta;
+    const lngDelta = this.lngDeltaForRadius(radiusKm, lat);
+    const minLat = Math.max(lat - latDelta, -90);
+    const maxLat = Math.min(lat + latDelta, 90);
+    const minLng = Math.max(lng - lngDelta, -180);
+    const maxLng = Math.min(lng + lngDelta, 180);
 
     // 1. DB results
     const where: any = {
@@ -626,9 +643,9 @@ export class MapService {
 
     if (lat && lng) {
       const latDelta = radiusKm / 111;
-      const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
-      where.lat = { gte: lat - latDelta, lte: lat + latDelta };
-      where.lng = { gte: lng - lngDelta, lte: lng + lngDelta };
+      const lngDelta = this.lngDeltaForRadius(radiusKm, lat);
+      where.lat = { gte: Math.max(lat - latDelta, -90), lte: Math.min(lat + latDelta, 90) };
+      where.lng = { gte: Math.max(lng - lngDelta, -180), lte: Math.min(lng + lngDelta, 180) };
     }
 
     const localResults: any[] = await this.prisma.mapObject.findMany({ where, take: 10 }).catch(() => []);

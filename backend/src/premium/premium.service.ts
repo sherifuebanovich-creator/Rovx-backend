@@ -632,42 +632,50 @@ export class PremiumService {
   }
 
   async approvePayment(userId: string): Promise<{ success: boolean; message: string }> {
-    const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    if (!sub || sub.status !== 'pending') {
-      return { success: false, message: 'Нет ожидающего платежа' };
-    }
+    // Telegram redelivers callbacks on timeout, and the inline keyboard
+    // buttons stay clickable after use — a double-tap or a redelivered
+    // update could both read status:'pending' before either write commits.
+    // Locking the row for the check+write serializes concurrent approvals.
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
 
-    const endDate = (sub.endDate && sub.endDate.getTime() > 0) ? sub.endDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const sub = await tx.premiumSubscription.findUnique({ where: { userId } });
+      if (!sub || sub.status !== 'pending') {
+        return { success: false, message: 'Нет ожидающего платежа' };
+      }
 
-    await this.prisma.$transaction([
-      this.prisma.premiumSubscription.update({
+      const endDate = (sub.endDate && sub.endDate.getTime() > 0) ? sub.endDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await tx.premiumSubscription.update({
         where: { userId },
         data: { status: 'active' },
-      }),
-      this.prisma.user.update({
+      });
+      await tx.user.update({
         where: { id: userId },
         data: { subscription: sub.levelName, subscriptionEnd: endDate },
-      }),
-    ]);
+      });
 
-    return { success: true, message: `Подписка ${sub.levelName} активирована для пользователя` };
+      return { success: true, message: `Подписка ${sub.levelName} активирована для пользователя` };
+    });
   }
 
   async rejectPayment(userId: string): Promise<{ success: boolean; message: string }> {
-    const sub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    if (!sub || sub.status !== 'pending') {
-      return { success: false, message: 'Нет ожидающего платежа' };
-    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
 
-    await this.prisma.$transaction([
-      this.prisma.premiumSubscription.delete({ where: { userId } }),
-      this.prisma.user.update({
+      const sub = await tx.premiumSubscription.findUnique({ where: { userId } });
+      if (!sub || sub.status !== 'pending') {
+        return { success: false, message: 'Нет ожидающего платежа' };
+      }
+
+      await tx.premiumSubscription.delete({ where: { userId } });
+      await tx.user.update({
         where: { id: userId },
         data: { subscription: 'FREE', subscriptionEnd: null },
-      }),
-    ]);
+      });
 
-    return { success: true, message: `Платёж отклонён, подписка сброшена` };
+      return { success: true, message: `Платёж отклонён, подписка сброшена` };
+    });
   }
 
   async getPendingPayments() {

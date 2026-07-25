@@ -374,7 +374,10 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     resetRerouteCooldown();
     setNavigation({ isNavigating: true });
 
-    const mins = Math.round(selectedLocalRoute.duration / 60);
+    // route.duration comes back from the backend already in minutes
+    // (routes.service.ts rounds seconds->minutes before responding) —
+    // dividing by 60 again made every spoken ETA ~60x too small.
+    const mins = Math.round(selectedLocalRoute.duration);
     const dist = selectedLocalRoute.distance >= 1
       ? `${selectedLocalRoute.distance.toFixed(1)} ${t('navigationHud.km')}`
       : `${Math.round(selectedLocalRoute.distance * 1000)} ${t('navigationHud.m')}`;
@@ -473,7 +476,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
             resetRerouteCooldown();
             setNavigation({ isNavigating: true });
 
-            const mins = Math.round(route.duration / 60);
+            const mins = Math.round(route.duration);
             const dist = route.distance >= 1
               ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
               : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
@@ -507,7 +510,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
             resetRerouteCooldown();
             setNavigation({ isNavigating: true });
 
-            const mins = Math.round(route.duration / 60);
+            const mins = Math.round(route.duration);
             const dist = route.distance >= 1
               ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
               : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
@@ -554,7 +557,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         distance: route.distance, duration: route.duration,
       });
       useMapStore.getState().setActiveTrip(trip.data.data.id);
-      const mins = Math.round(route.duration / 60);
+      const mins = Math.round(route.duration);
       const dist = route.distance >= 1
         ? `${route.distance.toFixed(1)} ${t('navigationHud.km')}`
         : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
@@ -795,7 +798,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
               {localRoutes.map((route, i) => {
                 const cfg = ROUTE_OPTIONS.find(o => o.key === route.type) || ROUTE_OPTIONS[0];
                 const isSelected = selectedLocalRoute?.type === route.type;
-                const durationMin = Math.round(route.duration / 60);
+                const durationMin = Math.round(route.duration);
                 const distStr = route.distance >= 1
                   ? `${route.distance.toFixed(1)} ${t('searchPanel.km')}`
                   : `${Math.round(route.distance * 1000)} ${t('searchPanel.m')}`;

@@ -40,6 +40,11 @@ export interface RouteResult {
   hazardCount: number;
   instructions: TurnInstruction[];
   summary: string;
+  // True when the real routing engine (OSRM) call failed and this is a
+  // straight-line Haversine approximation instead of an actual routed path
+  // — previously indistinguishable from a real route on the wire, so a
+  // transient OSRM outage/timeout silently returned a normal-looking route.
+  isEstimate?: boolean;
 }
 
 interface TurnInstruction {
@@ -172,6 +177,7 @@ export class RoutesService {
         hazardCount,
         instructions,
         summary: `${Math.round(distanceKm)} km · ${Math.round(durationMin)} min`,
+        isEstimate: false,
       };
     } catch (error) {
       this.logger.error(`Route calculation failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -285,6 +291,7 @@ export class RoutesService {
         { type: 'arrive', text: 'Arrive at destination', distance: 0, duration: 0, lat: lat2, lng: lng2 },
       ],
       summary: `${Math.round(distance)} km · ${Math.round((distance / 80) * 60)} min`,
+      isEstimate: true,
     };
   }
 

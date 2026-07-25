@@ -60,6 +60,9 @@ export interface RouteResult {
   hazardCount: number;
   instructions: TurnInstruction[];
   summary: string;
+  // Set when the real routing engine failed and this is a straight-line
+  // Haversine approximation instead of an actual routed path.
+  isEstimate?: boolean;
 }
 
 export type RouteType =

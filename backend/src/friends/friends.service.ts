@@ -19,21 +19,32 @@ export class FriendsService {
     const target = await this.prisma.user.findUnique({ where: { id: friendId } });
     if (!target) throw new NotFoundException('User not found');
 
-    const existing = await this.prisma.friend.findFirst({
-      where: {
-        OR: [
-          { userId, friendId },
-          { userId: friendId, friendId: userId },
-        ],
-      },
-    });
-    if (existing) {
-      if (existing.status === 'ACCEPTED') throw new ConflictException('Already friends');
-      if (existing.status === 'PENDING') throw new ConflictException('Request already sent');
-    }
+    // The unique constraint is on the ORDERED pair (userId, friendId), so it
+    // doesn't stop A and B from both creating a request to each other at
+    // the same instant — (A,B) and (B,A) are distinct rows to Postgres,
+    // producing a mirrored/duplicated relationship once one side gets
+    // accepted. An advisory lock keyed by the unordered pair serializes
+    // concurrent sendRequest calls between the same two users.
+    const [lockA, lockB] = [userId, friendId].sort();
+    const friend = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`friend:${lockA}:${lockB}`})::bigint)`;
 
-    const friend = await this.prisma.friend.create({
-      data: { userId, friendId, status: 'PENDING' },
+      const existing = await tx.friend.findFirst({
+        where: {
+          OR: [
+            { userId, friendId },
+            { userId: friendId, friendId: userId },
+          ],
+        },
+      });
+      if (existing) {
+        if (existing.status === 'ACCEPTED') throw new ConflictException('Already friends');
+        if (existing.status === 'PENDING') throw new ConflictException('Request already sent');
+      }
+
+      return tx.friend.create({
+        data: { userId, friendId, status: 'PENDING' },
+      });
     });
 
     const notification = await this.prisma.notification.create({
