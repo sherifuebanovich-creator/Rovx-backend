@@ -59,11 +59,37 @@ function PremiumPage() {
     if (success) {
       toast.success(t('premium.paymentSuccess') || 'Оплата прошла успешно!');
     }
-    fetchData();
+    // Xsolla redirects here the instant the user finishes on its hosted
+    // payment page — the webhook that actually credits the subscription is
+    // a separate, independent server-to-server call that can land a beat
+    // later. A bare fetchData() right on return could still show the old
+    // (pre-payment) tier for a moment, reading as "the payment didn't go
+    // through". Poll briefly instead of taking that one snapshot as final.
+    const isPaymentReturn = searchParams.get('payment') === 'return';
+    fetchData().then((sub) => {
+      if (!isPaymentReturn) return;
+      if (sub?.active) {
+        toast.success(t('premium.paymentSuccess'));
+      } else {
+        pollForActivation();
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchData = async () => {
+  const pollForActivation = async () => {
+    for (let i = 0; i < 4; i++) {
+      await new Promise(r => setTimeout(r, 2500));
+      const sub = await fetchData();
+      if (sub?.active) {
+        toast.success(t('premium.paymentSuccess'));
+        return;
+      }
+    }
+    toast(t('premium.paymentProcessing'), { icon: '⏳' });
+  };
+
+  const fetchData = async (): Promise<PremiumSubscription | null> => {
     try {
       const [tiersRes, subRes] = await Promise.allSettled([
         premiumApi.getTiers(i18n.language),
@@ -73,19 +99,40 @@ function PremiumPage() {
         setTiers(tiersRes.value.data?.data || tiersRes.value.data);
       }
       if (subRes.status === 'fulfilled') {
-        setMySub(subRes.value.data?.data || subRes.value.data);
+        const sub = subRes.value.data?.data || subRes.value.data;
+        setMySub(sub);
+        return sub;
       }
+      return null;
     } catch {
-      // ignore
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
   const handleSubscribe = async (tier: PremiumTier) => {
-    // Covers the whole time the payment modal is open (not just the
-    // synchronous state update), so the tier button stays visibly
-    // disabled/loading instead of looking clickable again immediately.
+    setSubscribeLoading(tier.name);
+    try {
+      const res = await premiumApi.createCheckout(tier.name, 1);
+      const { url } = res.data?.data || res.data;
+      if (!url) throw new Error('no url');
+      // Xsolla's hosted Pay Station page — the backend's return_url sends
+      // the user straight back to /premium once they're done, and the
+      // webhook (processed server-side, independent of this redirect)
+      // is what actually credits the subscription.
+      window.location.href = url;
+    } catch {
+      // Xsolla not configured yet (no live merchant credentials) or the
+      // request failed outright — fall back to the manual bank-transfer
+      // flow instead of leaving the user stuck with just a loading spinner.
+      toast.error(t('premium.checkoutError'));
+      setSubscribeLoading(null);
+      setPaymentTier(tier);
+    }
+  };
+
+  const handleManualPay = (tier: PremiumTier) => {
     setSubscribeLoading(tier.name);
     setPaymentTier(tier);
   };
@@ -243,6 +290,15 @@ function PremiumPage() {
                       <><FaCrown size={12} /> {t('premium.subscribe')}</>
                     )}
                   </button>
+                  {!isActive && (
+                    <button
+                      onClick={() => handleManualPay(tier)}
+                      disabled={subscribeLoading === tier.name}
+                      className="w-full mt-2 py-2 text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      {t('premium.payByTransfer')}
+                    </button>
+                  )}
                 </motion.div>
               );
             })}

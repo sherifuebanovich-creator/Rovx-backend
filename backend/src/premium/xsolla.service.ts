@@ -46,7 +46,7 @@ export class XsollaService {
         language: language || 'en',
         mode: this.isSandbox ? 'sandbox' : 'production',
         ui: { theme: 'dark' },
-        return_url: `${this.appUrl}/premium`,
+        return_url: `${this.appUrl}/premium?payment=return`,
       },
       purchase: {
         checkout: { amount, currency: 'USD' },

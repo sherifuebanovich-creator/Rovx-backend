@@ -817,8 +817,10 @@
     "cancelError": "Failed to cancel",
     "paymentSuccess": "Payment successful! Your premium is now active.",
     "paymentCanceled": "Payment was canceled. No charges were made.",
+    "paymentProcessing": "Payment is processing — refresh this page in a minute",
     "testModeActivated": "Premium activated (test mode)!",
     "checkoutError": "Failed to create checkout session",
+    "payByTransfer": "Or pay by bank transfer",
     "subscribeError": "Failed to process subscription",
     "features": {
       "allRouteTypes": "All route types: fastest, shortest, safest",
