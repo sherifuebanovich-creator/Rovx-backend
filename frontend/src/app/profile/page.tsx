@@ -10,6 +10,7 @@ import { usersApi } from '@/lib/api';
 import { mediaUrl } from '@/lib/media';
 import { getFuelType } from '@/lib/fuelMap';
 import { Vehicle } from '@/types';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import toast from 'react-hot-toast';
 
 const CAR_MAKES_LIST = [
@@ -311,7 +312,10 @@ export default function ProfilePage() {
             </div>
           ) : (
             <>
-              <h1 className="text-2xl font-black text-white font-display">{user.displayName}</h1>
+              <h1 className="text-2xl font-black text-white font-display flex items-center gap-1.5">
+                {user.displayName}
+                <RoleBadge role={user.role} size={16} />
+              </h1>
               <p className="text-gray-400 text-sm">@{user.username}</p>
               {user.bio && <p className="text-gray-500 text-xs mt-1 text-center max-w-xs">{user.bio}</p>}
               <div className="flex items-center gap-1 mt-2">

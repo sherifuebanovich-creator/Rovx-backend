@@ -7,6 +7,7 @@ import { socialApi } from '@/lib/api';
 import { mediaUrl } from '@/lib/media';
 import { useSocket, getSocket } from '@/hooks/useSocket';
 import { Group, GroupMessage, GroupMember, GroupRequest } from '@/types';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaArrowLeft, FaUsers, FaEdit, FaTrash, FaTimes, FaSave, FaPaperPlane,
@@ -664,7 +665,7 @@ export default function GroupChatPage() {
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
                     {m.user?.avatar ? <img src={mediaUrl(m.user.avatar)} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                   </div>
-                  <span className="text-sm text-dark-text">{m.user.displayName}</span>
+                  <span className="text-sm text-dark-text flex items-center gap-1">{m.user.displayName}<RoleBadge role={m.user?.role} /></span>
                   {m.isAdmin && <span className="text-[10px] text-primary-400 bg-primary-600/20 px-1.5 py-0.5 rounded">{t('groupDetails.admin')}</span>}
                 </div>
               ))}
@@ -777,7 +778,10 @@ export default function GroupChatPage() {
                   }`
                 }`}>
                   {!isOwn && !msg.sticker && (
-                    <p className="text-[10px] text-primary-300 font-medium mb-1">{msg.sender?.displayName || msg.senderId}</p>
+                    <p className="text-[10px] text-primary-300 font-medium mb-1 flex items-center gap-1">
+                      {msg.sender?.displayName || msg.senderId}
+                      <RoleBadge role={msg.sender?.role} size={10} />
+                    </p>
                   )}
                   {msg.sticker && <span className="block">{msg.sticker}</span>}
                   {msg.images && msg.images.length > 0 && (
@@ -1100,7 +1104,7 @@ export default function GroupChatPage() {
                     <div className="flex items-center gap-3">
                       <FaCrown size={14} className="text-yellow-400" />
                       <div>
-                        <p className="text-sm text-dark-text font-medium">{group.owner.displayName}</p>
+                        <p className="text-sm text-dark-text font-medium flex items-center gap-1">{group.owner.displayName}<RoleBadge role={group.owner.role} /></p>
                         <p className="text-[10px] text-gray-500">Владелец</p>
                       </div>
                     </div>
@@ -1196,7 +1200,7 @@ export default function GroupChatPage() {
                           {m.user?.avatar ? <img src={mediaUrl(m.user.avatar)} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-dark-text font-medium truncate">{m.user.displayName}</p>
+                          <p className="text-sm text-dark-text font-medium truncate flex items-center gap-1">{m.user.displayName}<RoleBadge role={m.user?.role} /></p>
                           <p className="text-[10px] text-gray-500">@{m.user.username || '—'}</p>
                         </div>
                         {m.isAdmin && <FaShieldAlt size={12} className="text-primary-400 flex-shrink-0" />}

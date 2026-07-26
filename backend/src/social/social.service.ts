@@ -783,10 +783,10 @@ export class SocialService {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       include: {
-        owner: { select: { id: true, displayName: true, avatar: true, city: true } },
+        owner: { select: { id: true, displayName: true, avatar: true, city: true, role: true } },
         members: {
           include: {
-            user: { select: { id: true, username: true, displayName: true, avatar: true } },
+            user: { select: { id: true, username: true, displayName: true, avatar: true, role: true } },
           },
         },
         _count: { select: { members: true } },
@@ -833,7 +833,7 @@ export class SocialService {
         skip,
         take: limit,
         include: {
-          sender: { select: { id: true, displayName: true, avatar: true } },
+          sender: { select: { id: true, displayName: true, avatar: true, role: true } },
         },
       }),
       this.prisma.groupMessage.count({ where: { groupId, isDeleted: false } }),

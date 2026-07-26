@@ -33,7 +33,12 @@ export default function MapViewGL() {
   // friend markers could stay missing until an unrelated state change.
   const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const objectMarkersRef = useRef<maplibregl.Marker[]>([]);
+  // Keyed by object id (rather than a plain array) so a viewport update can
+  // diff against what's already on the map instead of tearing down and
+  // recreating every marker on every pan/zoom settle — with up to 200 POIs
+  // per viewport, a full remove+recreate was a visible, janky pop-in burst
+  // of synchronous DOM/Marker work even when most POIs hadn't changed.
+  const objectMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const reportMarkersRef = useRef<maplibregl.Marker[]>([]);
   const trafficMarkersRef = useRef<maplibregl.Marker[]>([]);
   const routeSourceRef = useRef<string | null>(null);
@@ -72,6 +77,11 @@ export default function MapViewGL() {
   const cleanupMarkers = useCallback((markers: maplibregl.Marker[]) => {
     markers.forEach(m => m.remove());
     markers.length = 0;
+  }, []);
+
+  const cleanupMarkerMap = useCallback((markers: Map<string, maplibregl.Marker>) => {
+    markers.forEach(m => m.remove());
+    markers.clear();
   }, []);
 
   useEffect(() => {
@@ -137,7 +147,7 @@ export default function MapViewGL() {
     return () => {
       clearTimeout(objectTimerRef.current);
       clearTimeout(reportTimerRef.current);
-      cleanupMarkers(objectMarkersRef.current);
+      cleanupMarkerMap(objectMarkersRef.current);
       cleanupMarkers(reportMarkersRef.current);
       cleanupMarkers(trafficMarkersRef.current);
       map.remove();
@@ -265,41 +275,59 @@ export default function MapViewGL() {
     return () => { map.off('style.load', drawRoute); };
   }, [drawRoute]);
 
-  // Render POI markers
+  // Render POI markers — diffed by id against what's already on the map, so
+  // panning slightly (the common case) only adds/removes the handful of
+  // markers that entered/left the viewport instead of rebuilding all ~200.
   const renderObjectMarkers = useCallback(
     (objects: MapObject[]) => {
       if (!mapRef.current) return;
-      cleanupMarkers(objectMarkersRef.current);
+      const existing = objectMarkersRef.current;
+      const nextIds = new Set(objects.map(obj => String(obj.id)));
+
+      for (const [id, marker] of existing) {
+        if (!nextIds.has(id)) {
+          marker.remove();
+          existing.delete(id);
+        }
+      }
 
       objects.forEach((obj) => {
+        const id = String(obj.id);
+        if (existing.has(id)) return;
+
         const el = createCategoryMarker(obj.category, obj.name);
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([obj.lng, obj.lat])
           .addTo(mapRef.current!);
 
-        const popupHtml = createPopupContent(
-          obj.name, obj.category,
-          obj.address, obj.rating, obj.distance,
-        );
-        const popup = new maplibregl.Popup({
-          offset: [0, -10],
-          closeButton: true,
-          closeOnClick: false,
-          className: 'mapboxgl-popup-custom',
-        }).setHTML(popupHtml);
-
-        marker.setPopup(popup);
-
+        // Popup HTML is only built on first click, not upfront for every
+        // marker — most POIs in a viewport are never clicked, so eagerly
+        // constructing ~200 Popup instances was pure wasted work on every
+        // viewport settle.
+        let popup: maplibregl.Popup | null = null;
         el.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (!popup) {
+            const popupHtml = createPopupContent(
+              obj.name, obj.category,
+              obj.address, obj.rating, obj.distance,
+            );
+            popup = new maplibregl.Popup({
+              offset: [0, -10],
+              closeButton: true,
+              closeOnClick: false,
+              className: 'mapboxgl-popup-custom',
+            }).setHTML(popupHtml);
+            marker.setPopup(popup);
+          }
           marker.togglePopup();
           setSelectedObject(obj);
         });
 
-        objectMarkersRef.current.push(marker);
+        existing.set(id, marker);
       });
     },
-    [setSelectedObject, cleanupMarkers],
+    [setSelectedObject],
   );
 
   // Load objects from API
@@ -316,7 +344,7 @@ export default function MapViewGL() {
         // just cleared.
         clearTimeout(objectTimerRef.current);
         objectsRequestIdRef.current++;
-        cleanupMarkers(objectMarkersRef.current);
+        cleanupMarkerMap(objectMarkersRef.current);
         setVisibleObjects([]);
         return;
       }
@@ -347,7 +375,7 @@ export default function MapViewGL() {
         }
       }, 500);
     },
-    [setVisibleObjects, renderObjectMarkers, cleanupMarkers],
+    [setVisibleObjects, renderObjectMarkers, cleanupMarkerMap],
   );
 
   // Load reports

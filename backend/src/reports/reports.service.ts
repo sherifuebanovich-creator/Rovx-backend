@@ -754,12 +754,14 @@ export class ReportsService {
 
     const premiumIds = premiumUserIds.filter(uid => uid !== userId);
     if (premiumIds.length > 0) {
-      const premiumNotifs = await this.prisma.notification.createMany({
+      const premiumTitle = `⚠️ ${typeLabel}`;
+      const premiumBody = dto.description || `Новый репорт: ${typeLabel}`;
+      await this.prisma.notification.createMany({
         data: premiumIds.map(uid => ({
           userId: uid,
           type: 'report_premium',
-          title: `⚠️ ${typeLabel}`,
-          body: dto.description || `Новый репорт: ${typeLabel}`,
+          title: premiumTitle,
+          body: premiumBody,
           data: notificationData,
         })),
       }).catch(e => { this.logger.error('Failed to batch-create premium notifications', e); return null; });
@@ -769,6 +771,19 @@ export class ReportsService {
           ...report,
           premiumNotification: true,
           time: timeStr,
+        }).catch(() => {});
+        // createMany doesn't return the created rows, so this is a
+        // lightweight stub rather than the real DB record — every consumer
+        // (TopBar's unread badge, the notifications page) only uses this
+        // event as a "go refetch from the API" signal and ignores the
+        // payload, same as the friend-request/follow notification emits.
+        await this.gateway.sendToUser(uid, 'notification:new', {
+          type: 'report_premium',
+          title: premiumTitle,
+          body: premiumBody,
+          data: notificationData,
+          isRead: false,
+          createdAt: new Date().toISOString(),
         }).catch(() => {});
       }
     }
@@ -789,12 +804,14 @@ export class ReportsService {
       const premiumSet = new Set(premiumUserIds);
       const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumSet.has(uid)))];
       if (uniqueIds.length > 0) {
+        const cityTitle = `⚠️ ${typeLabel} в ${city}`;
+        const cityBody = dto.description || `Новое сообщение о "${typeLabel}" в ${city}`;
         await this.prisma.notification.createMany({
           data: uniqueIds.map(uid => ({
             userId: uid,
             type: 'report' as const,
-            title: `⚠️ ${typeLabel} в ${city}`,
-            body: dto.description || `Новое сообщение о "${typeLabel}" в ${city}`,
+            title: cityTitle,
+            body: cityBody,
             data: notificationData,
           })),
         }).catch(e => this.logger.error('Failed to batch-create city notifications', e));
@@ -804,6 +821,14 @@ export class ReportsService {
             ...report,
             cityNotification: true,
             time: timeStr,
+          }).catch(() => {});
+          await this.gateway.sendToUser(uid, 'notification:new', {
+            type: 'report',
+            title: cityTitle,
+            body: cityBody,
+            data: notificationData,
+            isRead: false,
+            createdAt: new Date().toISOString(),
           }).catch(() => {});
         }
       }

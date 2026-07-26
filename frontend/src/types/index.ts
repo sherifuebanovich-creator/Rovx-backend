@@ -267,7 +267,7 @@ export interface Group {
   isFavorited?: boolean;
   createdAt: string;
   updatedAt: string;
-  owner?: { id: string; displayName: string; avatar?: string };
+  owner?: { id: string; displayName: string; avatar?: string; role?: string };
   members?: GroupMember[];
 }
 
@@ -277,7 +277,7 @@ export interface GroupMember {
   isAdmin: boolean;
   isBanned?: boolean;
   joinedAt: string;
-  user: { id: string; username: string; displayName: string; avatar?: string };
+  user: { id: string; username: string; displayName: string; avatar?: string; role?: string };
 }
 
 export interface GroupRequest {
@@ -303,7 +303,7 @@ export interface GroupMessage {
   readBy?: string[];
   reactions?: Record<string, string[]>;
   createdAt: string;
-  sender: { id: string; displayName: string; avatar?: string };
+  sender: { id: string; displayName: string; avatar?: string; role?: string };
 }
 
 export interface UserPreferences {

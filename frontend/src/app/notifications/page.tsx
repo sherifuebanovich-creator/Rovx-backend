@@ -65,7 +65,8 @@ export default function NotificationsPage() {
 
   const getIcon = (type: string) => {
     switch (type) {
-      case 'report': return <FaExclamationTriangle size={14} />;
+      case 'report':
+      case 'report_premium': return <FaExclamationTriangle size={14} />;
       case 'route': return <FaRoute size={14} />;
       case 'support_reply': return <FaHeadset size={14} />;
       default: return <FaBell size={14} />;
@@ -74,6 +75,7 @@ export default function NotificationsPage() {
 
   const colorMap: Record<string, string> = {
     report: 'text-orange-400 bg-orange-600/20',
+    report_premium: 'text-orange-400 bg-orange-600/20',
     route: 'text-primary-400 bg-primary-600/20',
     support_reply: 'text-accent-400 bg-accent-600/20',
     info: 'text-gray-400 bg-white/10',
