@@ -37,6 +37,9 @@
     "lightTheme": "Светлая тема",
     "darkTheme": "Тёмная тема",
     "traffic": "Пробки",
+    "menu": "Меню",
+    "notifications": "Уведомления",
+    "search": "Поиск",
     "locationUnavailable": "Не удалось определить местоположение",
     "locationPermissionDenied": "Доступ к геолокации запрещён. Разрешите в настройках браузера.",
     "trafficLoadFailed": "Не удалось загрузить слой пробок — проверьте TomTom API-ключ"

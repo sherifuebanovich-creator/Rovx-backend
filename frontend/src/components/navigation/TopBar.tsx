@@ -128,12 +128,12 @@ export function TopBar() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute top-0 left-0 right-0 z-40 safe-top flex justify-center">
         <div className="px-2 sm:px-4 pt-2 sm:pt-3 pb-2 w-full max-w-5xl">
         <div className="flex items-center gap-1 sm:gap-2">
-          <button onClick={toggleSidebar}
+          <button onClick={toggleSidebar} title={t('topbar.menu')} aria-label={t('topbar.menu')}
             className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all">
             <FaBars size={14} className="text-gray-300" />
           </button>
 
-          <button onClick={toggleSearch}
+          <button onClick={toggleSearch} aria-label={t('topbar.search')}
             className="flex-1 glass-dark rounded-xl flex items-center gap-2 sm:gap-3 px-3 sm:px-4 h-9 sm:h-10 hover:bg-white/10 active:scale-95 transition-all text-left">
             <FaSearch size={12} className="text-primary-400 flex-shrink-0" />
             {hasRoute ? (
@@ -152,6 +152,7 @@ export function TopBar() {
               onClick={() => setShowModeMenu(!showModeMenu)}
               className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all"
               title={t('topbar.mapMode')}
+              aria-label={t('topbar.mapMode')}
             >
               <FaCube size={13} className="text-primary-400" />
             </button>
@@ -200,6 +201,7 @@ export function TopBar() {
             disabled={locating}
             className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all disabled:opacity-60 ${userLocation ? 'text-primary-400' : 'text-gray-400'}`}
             title={t('topbar.myLocation')}
+            aria-label={t('topbar.myLocation')}
           >
             {locating ? (
               <div className="w-3.5 h-3.5 border-2 border-primary-400/30 border-t-primary-400 rounded-full animate-spin" />
@@ -220,12 +222,13 @@ export function TopBar() {
             }}
             className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all"
             title={darkMode ? t('topbar.lightTheme') : t('topbar.darkTheme')}
+            aria-label={darkMode ? t('topbar.lightTheme') : t('topbar.darkTheme')}
           >
             {darkMode ? <FaSun size={13} className="text-yellow-400" /> : <FaMoon size={13} className="text-gray-300" />}
           </button>
 
           {/* Notifications */}
-          <button onClick={() => router.push('/notifications')}
+          <button onClick={() => router.push('/notifications')} title={t('topbar.notifications')} aria-label={t('topbar.notifications')}
             className="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all relative">
             <FaBell size={14} className="text-gray-300" />
             {hasUnread && <span className="absolute top-1.5 right-1.5 w-2 h-2.5 bg-accent-500 rounded-full animate-pulse" />}

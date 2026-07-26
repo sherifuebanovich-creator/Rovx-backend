@@ -17,6 +17,7 @@ function MapFeaturesLayer({ map }: Props) {
   const clusterLayerId = 'map-features-clusters';
   const clusterCountId = 'map-features-cluster-count';
   const cameraLayerId = 'map-features-cameras';
+  const cameraIconLayerId = 'map-features-camera-icon';
   const signalLayerId = 'map-features-signals';
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const lastBoundsRef = useRef<string>('');
@@ -30,7 +31,7 @@ function MapFeaturesLayer({ map }: Props) {
   const cleanup = useCallback(() => {
     if (!map) return;
     try {
-      [clusterLayerId, clusterCountId, cameraLayerId, signalLayerId].forEach(id => {
+      [clusterLayerId, clusterCountId, cameraLayerId, cameraIconLayerId, signalLayerId].forEach(id => {
         if (map.getLayer(id)) map.removeLayer(id);
       });
       if (map.getSource(sourceId)) map.removeSource(sourceId);
@@ -124,17 +125,32 @@ function MapFeaturesLayer({ map }: Props) {
         },
       });
 
-      // Speed cameras — red diamonds
+      // Speed cameras — a white "badge" circle so the icon on top reads
+      // clearly against any basemap color, topped with an actual camera
+      // glyph instead of a plain colored dot (which read as an anonymous
+      // point with no indication of what it was until tapped).
       map.addLayer({
         id: cameraLayerId,
         type: 'circle',
         source: sourceId,
         filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'type'], 'speed_camera']],
         paint: {
-          'circle-radius': 6,
-          'circle-color': '#ef4444',
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': 'rgba(255,255,255,0.6)',
+          'circle-radius': 10,
+          'circle-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ef4444',
+        },
+      });
+      map.addLayer({
+        id: cameraIconLayerId,
+        type: 'symbol',
+        source: sourceId,
+        filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'type'], 'speed_camera']],
+        layout: {
+          'text-field': '📷',
+          'text-size': 13,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
         },
       });
 
@@ -177,7 +193,18 @@ function MapFeaturesLayer({ map }: Props) {
       const props = feature.properties as any;
       const coords = (feature.geometry as any).coordinates;
       const typeLabel = props.type === 'speed_camera' ? '📷 Радар' : '🚦 Светофор';
-      const tags = props.tags || {};
+      // GeoJSON sources can only hold primitive property values — maplibre-gl
+      // silently JSON.stringifies nested objects (like `tags`) when the
+      // source is built, so by the time a click event reads them back here,
+      // `tags` is a JSON *string*, not the object it was assigned as in
+      // loadFeatures(). Object.entries() on a raw string iterates characters
+      // (0: "{", 1: "\"", 2: "c", ...) instead of the actual tag key/values.
+      let tags: Record<string, unknown> = {};
+      if (typeof props.tags === 'string') {
+        try { tags = JSON.parse(props.tags) || {}; } catch { tags = {}; }
+      } else if (props.tags && typeof props.tags === 'object') {
+        tags = props.tags;
+      }
       const tagEntries = Object.entries(tags)
         .filter(([k]) => !['highway', 'created_by'].includes(k))
         .slice(0, 8);
@@ -203,9 +230,12 @@ function MapFeaturesLayer({ map }: Props) {
     const onLeave = () => { map.getCanvas().style.cursor = ''; };
 
     map.on('click', cameraLayerId, onClick);
+    map.on('click', cameraIconLayerId, onClick);
     map.on('click', signalLayerId, onClick);
     map.on('mouseenter', cameraLayerId, onEnter);
     map.on('mouseleave', cameraLayerId, onLeave);
+    map.on('mouseenter', cameraIconLayerId, onEnter);
+    map.on('mouseleave', cameraIconLayerId, onLeave);
     map.on('mouseenter', signalLayerId, onEnter);
     map.on('mouseleave', signalLayerId, onLeave);
 
@@ -221,9 +251,12 @@ function MapFeaturesLayer({ map }: Props) {
       map.off('zoomend', debouncedLoad);
       map.off('style.load', loadFeatures);
       map.off('click', cameraLayerId, onClick);
+      map.off('click', cameraIconLayerId, onClick);
       map.off('click', signalLayerId, onClick);
       map.off('mouseenter', cameraLayerId, onEnter);
       map.off('mouseleave', cameraLayerId, onLeave);
+      map.off('mouseenter', cameraIconLayerId, onEnter);
+      map.off('mouseleave', cameraIconLayerId, onLeave);
       map.off('mouseenter', signalLayerId, onEnter);
       map.off('mouseleave', signalLayerId, onLeave);
       popup.remove();

@@ -74,7 +74,7 @@ export function Sidebar() {
               <p className="text-[10px] text-primary-400 font-medium -mt-0.5">{t('sidebar.brandSubtitle')}</p>
             </div>
           </div>
-          <button onClick={toggleSidebar} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-all">
+          <button onClick={toggleSidebar} title={t('common.close')} aria-label={t('common.close')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-all">
             <FaTimes size={14} className="text-gray-400" />
           </button>
         </div>

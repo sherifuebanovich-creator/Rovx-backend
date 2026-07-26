@@ -37,6 +37,9 @@
     "lightTheme": "Light theme",
     "darkTheme": "Dark theme",
     "traffic": "Traffic",
+    "menu": "Menu",
+    "notifications": "Notifications",
+    "search": "Search",
     "locationUnavailable": "Couldn't get your location",
     "locationPermissionDenied": "Location access denied. Enable it in your browser settings.",
     "trafficLoadFailed": "Failed to load the traffic layer — check the TomTom API key"
