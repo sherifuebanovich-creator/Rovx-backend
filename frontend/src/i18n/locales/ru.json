@@ -14,7 +14,9 @@
     "success": "Успешно",
     "signIn": "Войти",
     "signOut": "Выйти",
-    "or": "или"
+    "or": "или",
+    "showPassword": "Показать пароль",
+    "hidePassword": "Скрыть пароль"
   },
   "meta": {
     "title": "ROVX — Умная навигация",
@@ -36,7 +38,8 @@
     "darkTheme": "Тёмная тема",
     "traffic": "Пробки",
     "locationUnavailable": "Не удалось определить местоположение",
-    "locationPermissionDenied": "Доступ к геолокации запрещён. Разрешите в настройках браузера."
+    "locationPermissionDenied": "Доступ к геолокации запрещён. Разрешите в настройках браузера.",
+    "trafficLoadFailed": "Не удалось загрузить слой пробок — проверьте TomTom API-ключ"
   },
   "bottombar": {
     "map": "Карта",
@@ -129,7 +132,9 @@
     "routeType": "Тип маршрута",
     "calculate": "Рассчитать",
     "onMap": "На карте",
-    "routesFound": "Найдено маршрутов: {{count}}",
+    "routesFound_one": "Найден {{count}} маршрут",
+    "routesFound_few": "Найдено {{count}} маршрута",
+    "routesFound_many": "Найдено {{count}} маршрутов",
     "recommended": "Рекомендуемый",
     "start": "Начать",
     "back": "Назад",
@@ -150,8 +155,12 @@
     "mapAction": "Карта",
     "startTyping": "Начните вводить, чтобы найти место",
     "noResults": "Ничего не найдено",
-    "foundNearby": "Найдено {{count}} мест рядом",
-    "foundResults": "Найдено {{count}} результатов",
+    "foundNearby_one": "Найдено {{count}} место рядом",
+    "foundNearby_few": "Найдено {{count}} места рядом",
+    "foundNearby_many": "Найдено {{count}} мест рядом",
+    "foundResults_one": "Найден {{count}} результат",
+    "foundResults_few": "Найдено {{count}} результата",
+    "foundResults_many": "Найдено {{count}} результатов",
     "navigate": "Маршрут",
     "showOnMap": "На карте",
     "noCategoryResults": "Поблизости ничего не найдено",
@@ -168,7 +177,9 @@
     "routeTypes": "Типы маршрутов",
     "calculating": "Расчёт...",
     "calculateRoutes": "Рассчитать маршруты",
-    "routesFound": "{{count}} маршрутов найдено",
+    "routesFound_one": "{{count}} маршрут найден",
+    "routesFound_few": "{{count}} маршрута найдено",
+    "routesFound_many": "{{count}} маршрутов найдено",
     "departure": "Отправление",
     "destination": "Назначение",
     "recommended": "Рекомендуемый",
@@ -296,6 +307,7 @@
     "whatHappened": "Что случилось?",
     "chooseCategory": "Выберите категорию",
     "cityOnly": "Сообщение будет видно жителям {{city}}",
+    "inCity": " в {{city}}",
     "sendToTelegram": "Отправлено в Telegram",
     "status": "Статус",
     "underReview": "На рассмотрении",
@@ -579,6 +591,35 @@
     "unknown": "Неизвестная ошибка",
     "reload": "Обновить страницу"
   },
+  "offlineScreen": {
+    "title": "Нет подключения к интернету",
+    "subtitle": "Проверьте соединение — приложение восстановится автоматически"
+  },
+  "weather": {
+    "conditions": {
+      "clear": "Ясно",
+      "mostlyClear": "Преимущественно ясно",
+      "partlyCloudy": "Переменная облачность",
+      "overcast": "Пасмурно",
+      "fog": "Туман",
+      "rimeFog": "Изморозь",
+      "drizzle": "Морось",
+      "freezingDrizzle": "Ледяная морось",
+      "rain": "Дождь",
+      "heavyRain": "Сильный дождь",
+      "freezingRain": "Ледяной дождь",
+      "snow": "Снег",
+      "heavySnow": "Сильный снег",
+      "snowGrains": "Снежные зёрна",
+      "rainShowers": "Ливень",
+      "heavyRainShowers": "Сильный ливень",
+      "snowShowers": "Снегопад",
+      "heavySnowShowers": "Сильный снегопад",
+      "thunderstorm": "Гроза",
+      "thunderstormHail": "Гроза с градом",
+      "unknown": "Неизвестно"
+    }
+  },
   "mapAppLoader": {
     "brand": "ROVX",
     "loading": "Загрузка карты...",
@@ -769,6 +810,29 @@
       "unlimitedAI": "Безлимитные AI голосовые команды",
       "convoys": "Создание групп и конвоев до 10 шт",
       "support247": "Приоритетная поддержка 24/7"
+    },
+    "directPayment": {
+      "loadFailed": "Не удалось загрузить реквизиты для оплаты. Попробуйте позже.",
+      "cardCopied": "Номер карты скопирован!",
+      "enterLast4Error": "Введите последние 4 цифры карты",
+      "genericError": "Ошибка",
+      "back": "Назад",
+      "submittedTitle": "Заявка отправлена!",
+      "awaitConfirmation": "Ожидайте подтверждения администратора.",
+      "usuallyWithin": "Обычно до 30 минут.",
+      "close": "Закрыть",
+      "payTitle": "Оплата {{tier}}",
+      "transferToCard": "Переведите на карту",
+      "bank": "Банк:",
+      "recipient": "Получатель:",
+      "amount": "Сумма:",
+      "exactAmountWarning": "⚠️ Переведите точную сумму. После оплаты нажмите «Далее» и введите последние 4 цифры вашей карты.",
+      "detailsLoadFailedInline": "Не удалось загрузить реквизиты для оплаты. Обновите страницу и попробуйте снова.",
+      "paidNext": "Я оплатил — Далее",
+      "confirmPaymentTitle": "Подтвердите оплату",
+      "enterLast4Sub": "Введите последние 4 цифры карты, с которой перевели",
+      "last4Label": "Последние 4 цифры",
+      "submitRequest": "Отправить заявку"
     }
   }
 }

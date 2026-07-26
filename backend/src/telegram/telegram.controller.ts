@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Headers, Logger, OnModuleInit } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { TelegramService } from './telegram.service';
 import { AdminService } from '../admin/admin.service';
@@ -79,6 +80,8 @@ export class TelegramController implements OnModuleInit {
       { command: 'dashboard', description: 'Полная статистика' },
       { command: 'grant', description: 'Выдать премиум' },
       { command: 'setrole', description: 'Сменить роль пользователя' },
+      { command: 'deleteuser', description: 'Удалить пользователя навсегда' },
+      { command: 'purgetest', description: 'Удалить все тестовые аккаунты' },
       { command: 'logout', description: 'Выйти из бота' },
     ]);
   }
@@ -116,6 +119,7 @@ export class TelegramController implements OnModuleInit {
   @Public()
   @Throttle({ short: { limit: 20, ttl: 60000 } })
   @Post('webhook')
+  @ApiExcludeEndpoint()
   async webhook(@Body() body: any, @Headers('x-telegram-bot-api-secret-token') secretToken?: string) {
     // Fail closed: without a configured secret we cannot tell a real Telegram
     // callback from a forged POST claiming an arbitrary chat.id, which would
@@ -193,6 +197,8 @@ export class TelegramController implements OnModuleInit {
             '🏠 /groups — список групп\n' +
             '📋 /group <id> — инфо о группе\n' +
             '🚫 /deactivate <id> — деактивировать подписку\n' +
+            '🗑 /deleteuser <id> — удалить пользователя навсегда\n' +
+            '🧹 /purgetest [суффикс] — удалить всех с email на суффикс (по умолчанию @test.rovx.dev)\n' +
             '🚪 /logout — выйти');
           return { ok: true };
         }
@@ -344,7 +350,25 @@ export class TelegramController implements OnModuleInit {
         }
 
         if (cmd === '/users') {
-          await this.sendUsersList(chatId);
+          const pageArg = parseInt(text.replace('/users', '').trim(), 10);
+          await this.sendUsersList(chatId, Number.isFinite(pageArg) && pageArg > 0 ? pageArg : 1);
+          return { ok: true };
+        }
+
+        if (cmd === '/deleteuser') {
+          const userId = text.replace('/deleteuser', '').trim();
+          if (!userId) {
+            await this.telegram.sendMessageToChat(chatId,
+              '🗑 <b>Удалить пользователя</b>\n\nПример: <code>/deleteuser userId</code>\n⚠️ Необратимо — удаляет пользователя и все его данные.');
+            return { ok: true };
+          }
+          await this.sendDeleteUser(chatId, userId);
+          return { ok: true };
+        }
+
+        if (cmd === '/purgetest') {
+          const suffix = text.replace('/purgetest', '').trim() || '@test.rovx.dev';
+          await this.sendPurgeTestUsers(chatId, suffix);
           return { ok: true };
         }
 
@@ -574,6 +598,21 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
+        if (data?.startsWith('users_page_')) {
+          const page = parseInt(data.replace('users_page_', ''), 10) || 1;
+          const messageId = body.callback_query.message?.message_id;
+          try {
+            const built = await this.buildUsersListPage(page);
+            await this.telegram.answerCallbackQuery(cbId, '', false);
+            if (built && messageId) {
+              await this.telegram.editMessageText(chatId, messageId, built.text, built.buttons);
+            }
+          } catch {
+            await this.telegram.answerCallbackQuery(cbId, '❌ Ошибка загрузки страницы', false);
+          }
+          return { ok: true };
+        }
+
         if (data?.startsWith('premium_')) {
           const id = data.replace('premium_', '');
           try {
@@ -674,7 +713,7 @@ export class TelegramController implements OnModuleInit {
 
       const msg = `👤 <b>ПОЛЬЗОВАТЕЛЬ</b>\n━━━━━━━━━━━━━━━\n` +
         `🆔 <code>${user.id}</code>\n` +
-        `📛 <b>${user.displayName || '—'}</b>\n\n` +
+        `📛 <b>${escapeTelegramHtml(user.displayName || '—')}</b>\n\n` +
         `━━ <b>АККАУНТ</b> ━━\n` +
         `🌐 Регистрация: ${regMethod}\n` +
         `📧 Google / Email: <code>${user.email || '—'}</code>\n` +
@@ -807,7 +846,7 @@ export class TelegramController implements OnModuleInit {
       for (const g of groups) {
         const type = g.isPublic ? '🌐' : '🔒';
         const photo = g.avatar ? '📷' : '';
-        msg += `${type} <b>${g.name}</b> ${photo}\n`;
+        msg += `${type} <b>${escapeTelegramHtml(g.name)}</b> ${photo}\n`;
         msg += `   👥 ${g._count.members} | 💬 ${g._count.messages}\n`;
         msg += `   📅 ${new Date(g.createdAt).toLocaleDateString('ru-RU')}\n`;
         msg += `   🆔 <code>${g.id}</code>\n\n`;
@@ -849,7 +888,7 @@ export class TelegramController implements OnModuleInit {
         `🖼 Фото: ${photoStatus}\n` +
         `👥 Участников: ${group._count.members}\n` +
         `💬 Сообщений: ${group._count.messages}\n` +
-        `👑 Владелец: ${group.owner?.displayName || '—'}\n` +
+        `👑 Владелец: ${escapeTelegramHtml(group.owner?.displayName || '—')}\n` +
         `📅 Создана: ${new Date(group.createdAt).toLocaleDateString('ru-RU')}\n` +
         `🆔 <code>${group.id}</code>\n` +
         `━━━━━━━━━━━━━━━\n\n`;
@@ -858,7 +897,7 @@ export class TelegramController implements OnModuleInit {
         msg += `👥 <b>Участники:</b>\n`;
         for (const m of members) {
           const role = m.isAdmin ? '⭐' : '•';
-          msg += `${role} ${m.user.displayName || m.user.username || '—'}\n`;
+          msg += `${role} ${escapeTelegramHtml(m.user.displayName || m.user.username || '—')}\n`;
         }
       }
 
@@ -915,7 +954,7 @@ export class TelegramController implements OnModuleInit {
         }) : '—';
         const severityBar = '🔴'.repeat(Math.min(r.severity || 3, 5)) + '⚪'.repeat(5 - Math.min(r.severity || 3, 5));
         const mapLink = `https://www.google.com/maps?q=${r.lat},${r.lng}`;
-        const name = r.user?.displayName || '—';
+        const name = escapeTelegramHtml(r.user?.displayName || '—');
 
         let caption = `${emoji} <b>${r.type}</b>\n`;
         caption += `━━━━━━━━━━━━━━━\n`;
@@ -986,8 +1025,8 @@ export class TelegramController implements OnModuleInit {
         msg += 'Никого нет онлайн';
       } else {
         for (const u of users) {
-          const name = u.displayName || u.username || '—';
-          const city = u.city ? ` 🏙 ${u.city}` : '';
+          const name = escapeTelegramHtml(u.displayName || u.username || '—');
+          const city = u.city ? ` 🏙 ${escapeTelegramHtml(u.city)}` : '';
           msg += `• ${name}${city}\n`;
         }
       }
@@ -1007,7 +1046,7 @@ export class TelegramController implements OnModuleInit {
       }
       let msg = `💰 <b>ОЖИДАЮЩИЕ ОПЛАТЫ (${payments.length})</b>\n━━━━━━━━━━━━━━━\n\n`;
       for (const p of payments) {
-        const name = p.user?.displayName || p.user?.email || '—';
+        const name = escapeTelegramHtml(p.user?.displayName || p.user?.email || '—');
         const time = p.createdAt ? new Date(p.createdAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '';
         msg += `👤 <b>${name}</b>\n`;
         msg += `💎 ${p.levelName} — $${p.price}\n`;
@@ -1042,21 +1081,71 @@ export class TelegramController implements OnModuleInit {
     }
   }
 
-  private async sendUsersList(chatId: number) {
+  private async buildUsersListPage(page: number): Promise<{ text: string; buttons: Array<{ text: string; callback_data: string }>[] } | null> {
+    const { users, total, pages } = await this.premium.getAllUsers(page, 15);
+    if (users.length === 0) {
+      return null;
+    }
+    const start = (page - 1) * 15 + 1;
+    let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ (${start}-${start + users.length - 1} из ${total}, стр. ${page}/${pages})</b>\n━━━━━━━━━━━━━━━\n\n`;
+    for (const u of users) {
+      const name = escapeTelegramHtml(u.displayName || u.username || u.email || '—');
+      const sub = u.subscription === 'FREE' ? '🆓' : '💎';
+      const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
+      msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${u.id}</code>\n\n`;
+    }
+    msg += `Для поиска: <code>/find имя</code>\nДля удаления: <code>/deleteuser userId</code>`;
+
+    const navRow: Array<{ text: string; callback_data: string }> = [];
+    if (page > 1) navRow.push({ text: '◀ Назад', callback_data: `users_page_${page - 1}` });
+    navRow.push({ text: `${page}/${pages}`, callback_data: `users_page_${page}` });
+    if (page < pages) navRow.push({ text: 'Вперёд ▶', callback_data: `users_page_${page + 1}` });
+
+    return { text: msg, buttons: [navRow] };
+  }
+
+  private async sendUsersList(chatId: number, page = 1) {
     try {
-      const { users, total } = await this.premium.getAllUsers(1, 10);
-      let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ (показано ${users.length} из ${total})</b>\n━━━━━━━━━━━━━━━\n\n`;
-      for (const u of users) {
-        const name = u.displayName || u.username || u.email || '—';
-        const sub = u.subscription === 'FREE' ? '🆓' : '💎';
-        const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
-        msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${u.id}</code>\n\n`;
+      const built = await this.buildUsersListPage(page);
+      if (!built) {
+        await this.telegram.sendMessageToChat(chatId, `👥 Страница ${page} пуста`);
+        return;
       }
-      msg += `Для поиска: <code>/find имя</code>\nДля пароля: <code>/userinfo userId</code>`;
-      await this.telegram.sendMessageToChat(chatId, msg);
+      await this.telegram.sendMessageToChat(chatId, built.text, built.buttons);
     } catch (error) {
       this.logger.error('Failed to send users', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при получении пользователей');
+    }
+  }
+
+  private async sendDeleteUser(chatId: number, userId: string) {
+    try {
+      const result = await this.premium.deleteUser(userId);
+      if (result.success) {
+        await this.telegram.sendMessageToChat(chatId, `🗑 Пользователь удалён: ${escapeTelegramHtml(result.email || userId)}`);
+      } else {
+        await this.telegram.sendMessageToChat(chatId, `❌ ${escapeTelegramHtml(result.message)}`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to delete user', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при удалении пользователя');
+    }
+  }
+
+  private async sendPurgeTestUsers(chatId: number, emailSuffix: string) {
+    try {
+      const { deleted, failed } = await this.premium.purgeTestUsers(emailSuffix);
+      let msg = `🧹 <b>Очистка тестовых аккаунтов (*${escapeTelegramHtml(emailSuffix)})</b>\n━━━━━━━━━━━━━━━\n`;
+      msg += `✅ Удалено: ${deleted.length}\n`;
+      if (deleted.length > 0) msg += deleted.map(e => `   • ${escapeTelegramHtml(e)}`).join('\n') + '\n';
+      if (failed.length > 0) {
+        msg += `\n⚠️ Не удалось удалить: ${failed.length}\n`;
+        msg += failed.map(f => `   • ${escapeTelegramHtml(f.email)} — ${escapeTelegramHtml(f.reason)}`).join('\n');
+      }
+      await this.telegram.sendMessageToChat(chatId, msg);
+    } catch (error) {
+      this.logger.error('Failed to purge test users', error instanceof Error ? error.message : String(error));
+      await this.telegram.sendMessageToChat(chatId, '❌ Ошибка при очистке тестовых аккаунтов');
     }
   }
 
@@ -1067,7 +1156,7 @@ export class TelegramController implements OnModuleInit {
         await this.telegram.sendMessageToChat(chatId, `🔍 Пользователь «${query}» не найден`);
         return;
       }
-      const name = user.displayName || user.username || '—';
+      const name = escapeTelegramHtml(user.displayName || user.username || '—');
       const subEnd = user.subscriptionEnd ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU') : '—';
       const msg = `👤 <b>${name}</b>\n━━━━━━━━━━━━━━━\n` +
         `📧 ${user.email || '—'}\n` +

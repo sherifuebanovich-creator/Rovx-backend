@@ -58,21 +58,37 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        username: dto.username,
-        displayName: dto.displayName || dto.username,
-        passwordHash,
-        preferredLang: dto.lang || 'ru',
-        preferences: {
-          create: {},
+    // The findUnique checks above are check-then-create, not atomic — two
+    // concurrent registrations for the same email/username can both pass
+    // them and race to .create(), so the loser hits the DB's unique
+    // constraint. Without this, that surfaced as an unhandled Prisma
+    // error and a generic 500 (per http-exception.filter.ts) instead of
+    // the same clean 409 a slightly-later duplicate attempt would get.
+    let user;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          email: dto.email,
+          username: dto.username,
+          displayName: dto.displayName || dto.username,
+          passwordHash,
+          preferredLang: dto.lang || 'ru',
+          preferences: {
+            create: {},
+          },
         },
-      },
-      include: {
-        preferences: true,
-      },
-    });
+        include: {
+          preferences: true,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        const target = Array.isArray(err.meta?.target) ? err.meta.target.join(',') : String(err.meta?.target || '');
+        if (target.includes('email')) throw new ConflictException('Email already registered');
+        if (target.includes('username')) throw new ConflictException('Username already taken');
+      }
+      throw err;
+    }
 
     const code = await this.verificationService.generateCode(user.email);
     await this.mailService.sendVerificationCode(user.email, code);
@@ -409,6 +425,16 @@ export class AuthService {
       }).catch(() => {});
     }
 
+    // Unlike login(), this path issued tokens straight away — a banned or
+    // deactivated user (or a plain-password account subsequently banned)
+    // could bypass the ban entirely just by signing in with Google instead.
+    if (user.isBanned) {
+      throw new UnauthorizedException('Account has been banned');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is deactivated');
+    }
+
     const tokens = await this.generateTokens(user.id, user.email, user.role);
     await this.saveRefreshToken(user.id, tokens.refreshToken, data.deviceInfo);
 
@@ -439,6 +465,16 @@ export class AuthService {
     const valid = await this.verificationService.verifyCode(email, code);
     if (!valid) {
       throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    // Unlike login()/googleAuth(), this path issued tokens straight away —
+    // a user banned/deactivated before completing email verification could
+    // still finish verifying and get valid tokens, bypassing the ban.
+    if (user.isBanned) {
+      throw new UnauthorizedException('Account has been banned');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is deactivated');
     }
 
     await this.prisma.user.update({

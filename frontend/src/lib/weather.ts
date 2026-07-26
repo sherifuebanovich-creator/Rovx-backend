@@ -1,3 +1,5 @@
+import i18n from '@/i18n/i18n';
+
 export interface WeatherData {
   temp: number;
   feelsLike: number;
@@ -9,35 +11,38 @@ export interface WeatherData {
   precipitation: number;
 }
 
-const CONDITION_MAP: Record<number, { text: string; icon: string }> = {
-  0:  { text: 'Ясно',           icon: '☀️' },
-  1:  { text: 'Преимущественно ясно', icon: '🌤️' },
-  2:  { text: 'Переменная облачность', icon: '⛅' },
-  3:  { text: 'Пасмурно',       icon: '☁️' },
-  45: { text: 'Туман',          icon: '🌫️' },
-  48: { text: 'Изморозь',       icon: '🌫️' },
-  51: { text: 'Морось',         icon: '🌦️' },
-  53: { text: 'Морось',         icon: '🌦️' },
-  55: { text: 'Морось',         icon: '🌦️' },
-  56: { text: 'Ледяная морось', icon: '🌧️' },
-  57: { text: 'Ледяная морось', icon: '🌧️' },
-  61: { text: 'Дождь',          icon: '🌧️' },
-  63: { text: 'Дождь',          icon: '🌧️' },
-  65: { text: 'Сильный дождь',  icon: '🌧️' },
-  66: { text: 'Ледяной дождь',  icon: '🌧️' },
-  67: { text: 'Ледяной дождь',  icon: '🌧️' },
-  71: { text: 'Снег',           icon: '❄️' },
-  73: { text: 'Снег',           icon: '❄️' },
-  75: { text: 'Сильный снег',   icon: '❄️' },
-  77: { text: 'Снежные зёрна',  icon: '❄️' },
-  80: { text: 'Ливень',         icon: '🌧️' },
-  81: { text: 'Ливень',         icon: '🌧️' },
-  82: { text: 'Сильный ливень', icon: '🌧️' },
-  85: { text: 'Снегопад',       icon: '❄️' },
-  86: { text: 'Сильный снегопад', icon: '❄️' },
-  95: { text: 'Гроза',          icon: '⛈️' },
-  96: { text: 'Гроза с градом', icon: '⛈️' },
-  99: { text: 'Гроза с градом', icon: '⛈️' },
+// Text keys are looked up via i18n so the condition shown matches the
+// user's selected app language rather than always rendering in Russian
+// (this value is displayed as-is in RoutePanel/SearchPanel).
+const CONDITION_MAP: Record<number, { key: string; icon: string }> = {
+  0:  { key: 'clear',             icon: '☀️' },
+  1:  { key: 'mostlyClear',       icon: '🌤️' },
+  2:  { key: 'partlyCloudy',      icon: '⛅' },
+  3:  { key: 'overcast',          icon: '☁️' },
+  45: { key: 'fog',               icon: '🌫️' },
+  48: { key: 'rimeFog',           icon: '🌫️' },
+  51: { key: 'drizzle',           icon: '🌦️' },
+  53: { key: 'drizzle',           icon: '🌦️' },
+  55: { key: 'drizzle',           icon: '🌦️' },
+  56: { key: 'freezingDrizzle',   icon: '🌧️' },
+  57: { key: 'freezingDrizzle',   icon: '🌧️' },
+  61: { key: 'rain',              icon: '🌧️' },
+  63: { key: 'rain',              icon: '🌧️' },
+  65: { key: 'heavyRain',         icon: '🌧️' },
+  66: { key: 'freezingRain',      icon: '🌧️' },
+  67: { key: 'freezingRain',      icon: '🌧️' },
+  71: { key: 'snow',              icon: '❄️' },
+  73: { key: 'snow',              icon: '❄️' },
+  75: { key: 'heavySnow',         icon: '❄️' },
+  77: { key: 'snowGrains',        icon: '❄️' },
+  80: { key: 'rainShowers',       icon: '🌧️' },
+  81: { key: 'rainShowers',       icon: '🌧️' },
+  82: { key: 'heavyRainShowers',  icon: '🌧️' },
+  85: { key: 'snowShowers',       icon: '❄️' },
+  86: { key: 'heavySnowShowers',  icon: '❄️' },
+  95: { key: 'thunderstorm',      icon: '⛈️' },
+  96: { key: 'thunderstormHail',  icon: '⛈️' },
+  99: { key: 'thunderstormHail',  icon: '⛈️' },
 };
 
 export async function getWeather(lat: number, lng: number): Promise<WeatherData | null> {
@@ -50,14 +55,14 @@ export async function getWeather(lat: number, lng: number): Promise<WeatherData 
     if (!res.ok) return null;
     const data = await res.json();
     const c = data.current;
-    const cond = CONDITION_MAP[c.weather_code] || { text: 'Неизвестно', icon: '❓' };
+    const cond = CONDITION_MAP[c.weather_code] || { key: 'unknown', icon: '❓' };
     return {
       temp: c.temperature_2m,
       feelsLike: c.apparent_temperature,
       humidity: c.relative_humidity_2m,
       windSpeed: c.wind_speed_10m,
       windDir: c.wind_direction_10m,
-      condition: cond.text,
+      condition: i18n.t(`weather.conditions.${cond.key}`),
       icon: cond.icon,
       precipitation: c.precipitation,
     };

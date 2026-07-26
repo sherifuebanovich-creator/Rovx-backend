@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FaBookmark, FaRegBookmark, FaChevronRight, FaClock, FaCompass, FaGlobe, FaMapMarkerAlt, FaPhone, FaStar, FaTimes } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
@@ -38,6 +38,15 @@ export function ObjectDetailPanel() {
   const { t } = useTranslation();
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // isBookmarked used to persist across objects — since this panel stays
+  // mounted while selectedObject swaps from one place to another (it's only
+  // conditionally rendered on truthiness, not remounted per object), picking
+  // a new marker right after bookmarking a previous one kept showing the
+  // filled bookmark icon for a place that was never actually saved.
+  useEffect(() => {
+    setIsBookmarked(false);
+  }, [selectedObject?.id]);
 
   if (!selectedObject) return null;
 

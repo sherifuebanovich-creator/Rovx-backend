@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Param, Body, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body, UseGuards, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -21,37 +21,41 @@ export class MapFeaturesController {
     @Query('bbox') bbox: string,
     @Query('types') types?: string,
   ) {
+    // NOTE: the global TransformInterceptor (see main.ts) already wraps every
+    // controller return value as { success, data, timestamp }. Manually
+    // building that same shape here double-wrapped the payload into
+    // { success, data: { success, data: [...] } }, which silently broke
+    // every consumer expecting the standard single-wrapped shape (e.g. the
+    // frontend's MapFeaturesLayer reads res.data.data and got the inner
+    // wrapper object instead of the feature array). Just return the raw data.
     if (!bbox) {
-      return { success: true, data: [] };
+      return [];
     }
 
     const parts = bbox.split(',').map(Number);
     if (parts.length !== 4 || parts.some(isNaN)) {
-      return { success: true, data: [] };
+      return [];
     }
 
     const [minLat, minLng, maxLat, maxLng] = parts;
     const latSpan = Math.abs(maxLat - minLat);
     const lngSpan = Math.abs(maxLng - minLng);
     if (latSpan > 10 || lngSpan > 10) {
-      return { success: true, data: [] };
+      return [];
     }
 
     const typeList = types ? types.split(',').map(t => t.trim()) : undefined;
     const features = await this.syncService.getFeaturesByBbox(minLat, minLng, maxLat, maxLng, typeList);
 
-    return {
-      success: true,
-      data: features.map(f => ({
-        id: f.id,
-        type: f.type,
-        lat: f.lat,
-        lng: f.lng,
-        countryCode: f.countryCode,
-        tags: f.tags ? JSON.parse(f.tags) : null,
-        updatedAt: f.updatedAt,
-      })),
-    };
+    return features.map(f => ({
+      id: f.id,
+      type: f.type,
+      lat: f.lat,
+      lng: f.lng,
+      countryCode: f.countryCode,
+      tags: f.tags ? JSON.parse(f.tags) : null,
+      updatedAt: f.updatedAt,
+    }));
   }
 
   @Get('stats')
@@ -59,10 +63,9 @@ export class MapFeaturesController {
   @ApiOperation({ summary: 'Get map features statistics' })
   async getStats() {
     try {
-      const stats = await this.syncService.getStats();
-      return { success: true, data: stats };
+      return await this.syncService.getStats();
     } catch {
-      return { success: true, data: { total: 0, byType: {}, byCountry: {} } };
+      return { total: 0, byType: {}, byCountry: {} };
     }
   }
 
@@ -72,10 +75,12 @@ export class MapFeaturesController {
   @ApiOperation({ summary: 'Trigger full sync of all CIS countries (admin only)' })
   async triggerSync() {
     try {
-      const result = await this.syncService.syncAll();
-      return { success: true, data: result };
+      return await this.syncService.syncAll();
     } catch (err) {
-      return { success: false, message: (err as Error).message };
+      // Thrown instead of returned as a 200 { success: false } body, so this
+      // goes through the global HttpExceptionFilter and matches the same
+      // error shape every other endpoint in the API produces.
+      throw new InternalServerErrorException((err as Error).message);
     }
   }
 
@@ -93,9 +98,9 @@ export class MapFeaturesController {
     }
     try {
       const count = await this.syncService.syncCountry(code);
-      return { success: true, data: { country: code, count } };
+      return { country: code, count };
     } catch (err) {
-      return { success: false, message: (err as Error).message };
+      throw new InternalServerErrorException((err as Error).message);
     }
   }
 
@@ -114,9 +119,9 @@ export class MapFeaturesController {
     }
     try {
       const count = await this.syncService.importElements(body.elements, body.countryCode.toUpperCase());
-      return { success: true, data: { country: body.countryCode.toUpperCase(), imported: count } };
+      return { country: body.countryCode.toUpperCase(), imported: count };
     } catch (err) {
-      return { success: false, message: (err as Error).message };
+      throw new InternalServerErrorException((err as Error).message);
     }
   }
 }

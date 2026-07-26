@@ -3,16 +3,18 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AdminService } from '../admin/admin.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
+import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
-  private lastReportHour: string | null = null;
 
   constructor(
     private admin: AdminService,
     private telegram: TelegramService,
     private config: ConfigService,
+    private redis: RedisService,
   ) {}
 
   // Render's free plan spins the service down after ~15min of no inbound
@@ -42,11 +44,21 @@ export class TasksService {
     const tashkentHour = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent', hour: '2-digit', hour12: false });
     const hourKey = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false });
 
-    if (this.lastReportHour === hourKey) {
-      this.logger.debug(`Skipping hourly report — already sent for ${hourKey}`);
-      return;
+    // A per-process in-memory flag can't prevent a duplicate send when two
+    // instances briefly overlap during a redeploy (or the platform scales to
+    // multiple replicas) — both start with a clean flag and both fire at the
+    // same :00 tick. Redis SETNX makes the "already sent this hour" check
+    // shared across every instance. If Redis is unreachable, fail open (send
+    // anyway) rather than silently going quiet for the hour.
+    try {
+      const acquired = await this.redis.setnx(`hourly-report:sent:${hourKey}`, '1', 3600);
+      if (!acquired) {
+        this.logger.debug(`Skipping hourly report — already sent for ${hourKey}`);
+        return;
+      }
+    } catch (error) {
+      this.logger.warn(`Hourly report dedup check failed, sending anyway: ${error instanceof Error ? error.message : String(error)}`);
     }
-    this.lastReportHour = hourKey;
 
     try {
       const stats = await this.admin.getStats();
@@ -71,7 +83,7 @@ export class TasksService {
       msg += `🟢 <b>ОНЛАЙН</b>\n`;
       msg += `Сейчас: ${stats.online.count}\n`;
       if (stats.online.users.length > 0) {
-        msg += stats.online.users.map((u: any) => `• ${u.displayName || u.username}`).join('\n');
+        msg += stats.online.users.map((u: any) => `• ${escapeTelegramHtml(u.displayName || u.username)}`).join('\n');
       }
       msg += '\n\n';
 

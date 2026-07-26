@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
-import { join } from 'path';
+import { join, sep } from 'path';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -29,7 +29,16 @@ export class UsersController {
   private deleteOldAvatar(avatarUrl?: string | null) {
     if (!avatarUrl || !avatarUrl.startsWith('/uploads/avatars/')) return;
     try {
+      // `avatarUrl` comes from the DB and `avatar` is a free-form string
+      // accepted verbatim by updateProfile()/PUT /users/me — without
+      // resolving and re-checking it against the avatars directory, a value
+      // like `/uploads/avatars/../../../../some/other/file` still passes the
+      // prefix check above and `join()` happily walks the `..` segments
+      // back out, turning the next avatar upload into an arbitrary file
+      // delete anywhere the process has write access.
+      const avatarsDir = join(process.cwd(), 'uploads', 'avatars') + sep;
       const filePath = join(process.cwd(), avatarUrl);
+      if (!filePath.startsWith(avatarsDir)) return;
       if (existsSync(filePath)) {
         unlinkSync(filePath);
       }
@@ -116,6 +125,7 @@ export class UsersController {
   @Get('me/achievements')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get my achievements' })
   async getAchievements(@CurrentUser('id') userId: string) {
     return this.usersService.getAchievements(userId);
   }
@@ -123,6 +133,7 @@ export class UsersController {
   @Post('me/vehicles')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a vehicle' })
   async addVehicle(@CurrentUser('id') userId: string, @Body() data: any) {
     return this.usersService.addVehicle(userId, data);
   }
@@ -130,6 +141,7 @@ export class UsersController {
   @Get('me/vehicles')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get my vehicles' })
   async getVehicles(@CurrentUser('id') userId: string) {
     return this.usersService.getVehicles(userId);
   }
@@ -137,6 +149,7 @@ export class UsersController {
   @Delete('me/vehicles/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a vehicle' })
   async deleteVehicle(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.usersService.deleteVehicle(id, userId);
   }

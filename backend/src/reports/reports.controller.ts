@@ -158,6 +158,9 @@ export class ReportsController {
     @Query('page') page = 1,
     @Query('limit') limit = 20,
   ) {
-    return this.reportsService.getReportsByUser(userId, +page, +limit);
+    // Capped like every other bounds-checked list endpoint in the app (see
+    // MapController#getObjects) — otherwise a client can pass an arbitrarily
+    // large `limit` straight through to the Prisma `take`.
+    return this.reportsService.getReportsByUser(userId, +page, Math.min(+limit, 100));
   }
 }

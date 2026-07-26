@@ -73,6 +73,7 @@ export class FriendsService {
       where: { id: request.id },
       data: { status: 'ACCEPTED' },
     });
+    await this.invalidateFriendsListCache([userId, friendId]);
 
     const acceptedNotification = await this.prisma.notification.create({
       data: {
@@ -112,10 +113,27 @@ export class FriendsService {
         status: 'ACCEPTED',
       },
     });
+    await this.invalidateFriendsListCache([userId, friendId]);
     return { removed: true };
   }
 
-  async getFriends(userId: string) {
+  /**
+   * The relationship join (who's friends with whom) barely changes between
+   * calls, but `/friends/locations` is polled repeatedly by the client for
+   * live map updates — without this cache, every single poll re-ran the
+   * full friend join query just to re-derive a friend list that's almost
+   * always identical to the one fetched seconds earlier. Only the static
+   * part (id/name/avatar/city) is cached; online status is always read
+   * fresh below so this can't go stale on that front. Short TTL plus
+   * explicit invalidation on accept/remove keeps the window tiny.
+   */
+  private async getAcceptedFriendsRaw(userId: string) {
+    const cacheKey = `friends:list:${userId}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch {}
+    }
+
     const friends = await this.prisma.friend.findMany({
       where: {
         OR: [{ userId }, { friendId: userId }],
@@ -127,9 +145,7 @@ export class FriendsService {
       },
     });
 
-    const onlineUserIds = await this.getValidOnlineUserIds();
-
-    return friends.map(f => {
+    const raw = friends.map(f => {
       const friend = f.userId === userId ? f.friend : f.user;
       return {
         id: friend.id,
@@ -137,10 +153,28 @@ export class FriendsService {
         displayName: friend.displayName,
         avatar: friend.avatar,
         city: friend.city,
-        isOnline: onlineUserIds.includes(friend.id),
         since: f.createdAt,
       };
     });
+
+    await this.redis.set(cacheKey, JSON.stringify(raw), 20);
+    return raw;
+  }
+
+  private async invalidateFriendsListCache(userIds: string[]) {
+    await Promise.all(userIds.map(id => this.redis.del(`friends:list:${id}`)));
+  }
+
+  async getFriends(userId: string) {
+    const [raw, onlineUserIds] = await Promise.all([
+      this.getAcceptedFriendsRaw(userId),
+      this.getValidOnlineUserIds(),
+    ]);
+
+    return raw.map((f: any) => ({
+      ...f,
+      isOnline: onlineUserIds.includes(f.id),
+    }));
   }
 
   async getFriendRequests(userId: string) {
@@ -182,8 +216,16 @@ export class FriendsService {
       take: 20,
     });
 
-    const friendIds = (await this.getFriends(currentUserId)).map(f => f.id);
-    const onlineUserIds = await this.getValidOnlineUserIds();
+    // Was calling getFriends() (which itself calls getValidOnlineUserIds())
+    // and then getValidOnlineUserIds() again independently — every search
+    // keystroke did two redundant online-set lookups (SMEMBERS + MGET)
+    // against Redis. Fetching the raw friend list and the online set once
+    // each here does the same work in half the round trips.
+    const [rawFriends, onlineUserIds] = await Promise.all([
+      this.getAcceptedFriendsRaw(currentUserId),
+      this.getValidOnlineUserIds(),
+    ]);
+    const friendIds = rawFriends.map((f: any) => f.id);
     return users.map(u => ({
       ...u,
       isFriend: friendIds.includes(u.id),

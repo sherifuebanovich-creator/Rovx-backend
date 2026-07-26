@@ -193,43 +193,43 @@ export default function RegisterPage() {
 
             <form onSubmit={handleRegister} className="space-y-3.5">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.displayNameLabel')}</label>
+                <label htmlFor="register-displayName" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.displayNameLabel')}</label>
                 <div className="relative">
                   <FaUser size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="text" value={form.displayName} onChange={update('displayName')} className="input-field pl-9" placeholder={t('auth.register.displayNamePlaceholder')} required />
+                  <input id="register-displayName" type="text" value={form.displayName} onChange={update('displayName')} className="input-field pl-9" placeholder={t('auth.register.displayNamePlaceholder')} required />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.usernameLabel')}</label>
+                <label htmlFor="register-username" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.usernameLabel')}</label>
                 <div className="relative">
                   <FaAt size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="text" value={form.username} onChange={update('username')} className="input-field pl-9" placeholder={t('auth.register.usernamePlaceholder')} pattern="[a-zA-Z0-9_]+" minLength={3} maxLength={30} required />
+                  <input id="register-username" type="text" value={form.username} onChange={update('username')} className="input-field pl-9" placeholder={t('auth.register.usernamePlaceholder')} pattern="[a-zA-Z0-9_]+" minLength={3} maxLength={30} required />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.emailLabel')}</label>
+                <label htmlFor="register-email" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.emailLabel')}</label>
                 <div className="relative">
                   <FaEnvelope size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="email" value={form.email} onChange={update('email')} className="input-field pl-9" placeholder={t('auth.register.emailPlaceholder')} required />
+                  <input id="register-email" type="email" value={form.email} onChange={update('email')} className="input-field pl-9" placeholder={t('auth.register.emailPlaceholder')} required />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.passwordLabel')}</label>
+                <label htmlFor="register-password" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.passwordLabel')}</label>
                 <div className="relative">
                   <FaLock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type={showPass ? 'text' : 'password'} value={form.password} onChange={update('password')} className="input-field pl-9 pr-10" placeholder={t('auth.register.passwordPlaceholder')} minLength={8} required />
-                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                  <input id="register-password" type={showPass ? 'text' : 'password'} value={form.password} onChange={update('password')} className="input-field pl-9 pr-10" placeholder={t('auth.register.passwordPlaceholder')} minLength={8} required />
+                  <button type="button" onClick={() => setShowPass(!showPass)} aria-label={t(showPass ? 'common.hidePassword' : 'common.showPassword')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
                     {showPass ? <FaEyeSlash size={13} /> : <FaEye size={13} />}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.language')}</label>
-                <LanguagePicker value={form.lang} onChange={(code) => { setForm((p) => ({ ...p, lang: code })); i18n.changeLanguage(code); }} />
+                <label htmlFor="register-lang" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.language')}</label>
+                <LanguagePicker id="register-lang" value={form.lang} onChange={(code) => { setForm((p) => ({ ...p, lang: code })); i18n.changeLanguage(code); }} />
               </div>
 
               {/* Vehicle section */}
@@ -258,8 +258,9 @@ export default function RegisterPage() {
 
                 {/* Make (autocomplete) */}
                 <div className="relative mb-3" ref={makeRef}>
-                  <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.makeLabel')}</label>
-                  <input type="text" value={makeSearch || form.vehicleMake}
+                  <label htmlFor="register-make" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.makeLabel')}</label>
+                  <input id="register-make" type="text" value={makeSearch || form.vehicleMake}
+                    role="combobox" aria-expanded={showMakeDropdown} aria-haspopup="listbox"
                     onChange={(e) => { setMakeSearch(e.target.value); setShowMakeDropdown(true); setForm(p => ({ ...p, vehicleMake: '', vehicleModel: '' })); }}
                     onFocus={() => { setMakeSearch(''); setShowMakeDropdown(true); }}
                     className="input-field pr-10" placeholder={t('auth.register.makePlaceholder')} />
@@ -286,8 +287,9 @@ export default function RegisterPage() {
 
                 {/* Model (autocomplete, filtered by make) */}
                 <div className="relative mb-3" ref={modelRef}>
-                  <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.modelLabel')}</label>
-                  <input type="text" value={modelSearch || form.vehicleModel}
+                  <label htmlFor="register-model" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.modelLabel')}</label>
+                  <input id="register-model" type="text" value={modelSearch || form.vehicleModel}
+                    role="combobox" aria-expanded={showModelDropdown} aria-haspopup="listbox"
                     onChange={(e) => { setModelSearch(e.target.value); setShowModelDropdown(true); setForm(p => ({ ...p, vehicleModel: '' })); }}
                     onFocus={() => { setShowModelDropdown(true); }}
                     disabled={!form.vehicleMake}
@@ -315,8 +317,8 @@ export default function RegisterPage() {
 
                 {/* Year */}
                 <div className="mb-3">
-                  <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.yearLabel')}</label>
-                  <select value={form.vehicleYear} onChange={update('vehicleYear')}
+                  <label htmlFor="register-year" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.yearLabel')}</label>
+                  <select id="register-year" value={form.vehicleYear} onChange={update('vehicleYear')}
                     className="input-field appearance-none">
                     {years.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>

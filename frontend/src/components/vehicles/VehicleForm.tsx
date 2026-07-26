@@ -30,6 +30,16 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
   // were actually founded) instead of a blanket range for every brand.
   const years = useMemo(() => getYearsForMake(selectedMake, currentYear), [selectedMake, currentYear]);
   const [year, setYear] = useState(currentYear);
+
+  // Picking a make with a narrower production span (e.g. a discontinued
+  // brand) left `year` at whatever was previously selected, which could fall
+  // outside the new `years` list — the <select> then matched no <option>,
+  // silently submitting a year the vehicle was never made in.
+  useEffect(() => {
+    if (years.length > 0 && !years.includes(year)) {
+      setYear(years[0]);
+    }
+  }, [years]);
   const [showMakeDropdown, setShowMakeDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const makeRef = useRef<HTMLDivElement>(null);
@@ -97,8 +107,9 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
       </div>
 
       <div className="relative" ref={makeRef}>
-        <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.make')}</label>
-        <input type="text" value={makeSearch || selectedMake}
+        <label htmlFor="vehicleform-make" className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.make')}</label>
+        <input id="vehicleform-make" type="text" value={makeSearch || selectedMake}
+          role="combobox" aria-expanded={showMakeDropdown} aria-haspopup="listbox"
           onChange={(e) => { setMakeSearch(e.target.value); setShowMakeDropdown(true); setSelectedMake(''); setSelectedModel(''); }}
           onFocus={() => setShowMakeDropdown(true)}
           className="input-field pr-8 text-sm" placeholder={t('vehicleForm.makePlaceholder')} />
@@ -116,8 +127,9 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
       </div>
 
       <div className="relative" ref={modelRef}>
-        <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.model')}</label>
-        <input type="text" value={modelSearch || selectedModel}
+        <label htmlFor="vehicleform-model" className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.model')}</label>
+        <input id="vehicleform-model" type="text" value={modelSearch || selectedModel}
+          role="combobox" aria-expanded={showModelDropdown} aria-haspopup="listbox"
           onChange={(e) => { setModelSearch(e.target.value); setShowModelDropdown(true); setSelectedModel(''); }}
           onFocus={() => setShowModelDropdown(true)}
           disabled={!selectedMake}
@@ -136,8 +148,8 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
       </div>
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.year')}</label>
-        <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+        <label htmlFor="vehicleform-year" className="block text-xs text-gray-400 mb-1 font-medium">{t('vehicleForm.year')}</label>
+        <select id="vehicleform-year" value={year} onChange={(e) => setYear(Number(e.target.value))}
           className="input-field text-sm">
           {years.map((y) => (
             <option key={y} value={y}>{y}</option>

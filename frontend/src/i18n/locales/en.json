@@ -14,7 +14,9 @@
     "success": "Success",
     "signIn": "Sign In",
     "signOut": "Sign Out",
-    "or": "or"
+    "or": "or",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "meta": {
     "title": "ROVX — Smart Navigation",
@@ -36,7 +38,8 @@
     "darkTheme": "Dark theme",
     "traffic": "Traffic",
     "locationUnavailable": "Couldn't get your location",
-    "locationPermissionDenied": "Location access denied. Enable it in your browser settings."
+    "locationPermissionDenied": "Location access denied. Enable it in your browser settings.",
+    "trafficLoadFailed": "Failed to load the traffic layer — check the TomTom API key"
   },
   "bottombar": {
     "map": "Map",
@@ -129,7 +132,8 @@
     "routeType": "Route Type",
     "calculate": "Calculate",
     "onMap": "On Map",
-    "routesFound": "Routes found: {{count}}",
+    "routesFound_one": "Route found: {{count}}",
+    "routesFound_other": "Routes found: {{count}}",
     "recommended": "Recommended",
     "start": "Start",
     "back": "Back",
@@ -150,8 +154,10 @@
     "mapAction": "Map",
     "startTyping": "Start typing to find a place",
     "noResults": "No results found",
-    "foundNearby": "Found {{count}} places nearby",
-    "foundResults": "Found {{count}} results",
+    "foundNearby_one": "Found {{count}} place nearby",
+    "foundNearby_other": "Found {{count}} places nearby",
+    "foundResults_one": "Found {{count}} result",
+    "foundResults_other": "Found {{count}} results",
     "navigate": "Route",
     "showOnMap": "On Map",
     "noCategoryResults": "Nothing found nearby",
@@ -168,7 +174,8 @@
     "routeTypes": "Route Types",
     "calculating": "Calculating...",
     "calculateRoutes": "Calculate Routes",
-    "routesFound": "{{count}} routes found",
+    "routesFound_one": "{{count}} route found",
+    "routesFound_other": "{{count}} routes found",
     "departure": "Departure",
     "destination": "Destination",
     "recommended": "Recommended",
@@ -296,6 +303,7 @@
     "whatHappened": "What happened?",
     "chooseCategory": "Choose category",
     "cityOnly": "This report will be visible to residents of {{city}}",
+    "inCity": " in {{city}}",
     "sendToTelegram": "Sent to Telegram",
     "status": "Status",
     "underReview": "Under review",
@@ -579,6 +587,35 @@
     "unknown": "Unknown error",
     "reload": "Reload page"
   },
+  "offlineScreen": {
+    "title": "No internet connection",
+    "subtitle": "Check your connection — the app will recover automatically"
+  },
+  "weather": {
+    "conditions": {
+      "clear": "Clear",
+      "mostlyClear": "Mostly clear",
+      "partlyCloudy": "Partly cloudy",
+      "overcast": "Overcast",
+      "fog": "Fog",
+      "rimeFog": "Rime fog",
+      "drizzle": "Drizzle",
+      "freezingDrizzle": "Freezing drizzle",
+      "rain": "Rain",
+      "heavyRain": "Heavy rain",
+      "freezingRain": "Freezing rain",
+      "snow": "Snow",
+      "heavySnow": "Heavy snow",
+      "snowGrains": "Snow grains",
+      "rainShowers": "Rain showers",
+      "heavyRainShowers": "Heavy rain showers",
+      "snowShowers": "Snow showers",
+      "heavySnowShowers": "Heavy snow showers",
+      "thunderstorm": "Thunderstorm",
+      "thunderstormHail": "Thunderstorm with hail",
+      "unknown": "Unknown"
+    }
+  },
   "mapAppLoader": {
     "brand": "ROVX",
     "loading": "Loading map...",
@@ -769,6 +806,29 @@
       "unlimitedAI": "Unlimited AI voice commands",
       "convoys": "Create convoys and groups (up to 10)",
       "support247": "Priority 24/7 support"
+    },
+    "directPayment": {
+      "loadFailed": "Couldn't load payment details. Please try again later.",
+      "cardCopied": "Card number copied!",
+      "enterLast4Error": "Enter the last 4 digits of the card",
+      "genericError": "Error",
+      "back": "Back",
+      "submittedTitle": "Application submitted!",
+      "awaitConfirmation": "Awaiting admin confirmation.",
+      "usuallyWithin": "Usually within 30 minutes.",
+      "close": "Close",
+      "payTitle": "Payment: {{tier}}",
+      "transferToCard": "Transfer to card",
+      "bank": "Bank:",
+      "recipient": "Recipient:",
+      "amount": "Amount:",
+      "exactAmountWarning": "⚠️ Transfer the exact amount. After paying, press \"Next\" and enter the last 4 digits of your card.",
+      "detailsLoadFailedInline": "Couldn't load payment details. Refresh the page and try again.",
+      "paidNext": "I've paid — Next",
+      "confirmPaymentTitle": "Confirm Payment",
+      "enterLast4Sub": "Enter the last 4 digits of the card you transferred from",
+      "last4Label": "Last 4 digits",
+      "submitRequest": "Submit Request"
     }
   }
 }

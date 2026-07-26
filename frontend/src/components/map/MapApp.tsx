@@ -16,32 +16,42 @@ import { ReportPanel } from '@/components/map/ReportPanel';
 import { FriendLocation, Report } from '@/types';
 import VoiceChat from '@/components/chat/VoiceChat';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const MapView = dynamic(() => import('@/components/map/MapViewGL'), { ssr: false });
 
-const REPORT_TYPE_LABELS: Record<string, string> = {
-  ACCIDENT: 'Авария',
-  ROAD_CLOSURE: 'Перекрытие',
-  ROAD_WORKS: 'Дор. работы',
-  TRAFFIC_JAM: 'Пробка',
-  ICE: 'Гололёд',
-  FOG: 'Туман',
-  FLOODING: 'Наводнение',
-  POLICE: 'Полиция',
-  POTHOLE: 'Яма',
-  BAD_ROAD: 'Плохая дорога',
-  STRONG_WIND: 'Ветер',
-  HAZARD: 'Опасность',
-  SPEED_CAMERA: 'Камера',
+// Maps backend report type constants to the same reportPanel.reportTypes.*
+// i18n keys used by ReportPanel.tsx, so the real-time toast shown when
+// another user submits a hazard nearby is localized instead of always
+// rendering in Russian.
+const REPORT_TYPE_KEYS: Record<string, string> = {
+  ACCIDENT: 'accident',
+  ROAD_CLOSURE: 'roadClosed',
+  ROAD_WORKS: 'roadWorks',
+  TRAFFIC_JAM: 'trafficJam',
+  ICE: 'ice',
+  FOG: 'fog',
+  FLOODING: 'flooding',
+  POLICE: 'police',
+  POTHOLE: 'pothole',
+  BAD_ROAD: 'badRoad',
+  STRONG_WIND: 'strongWind',
+  HAZARD: 'other',
+  SPEED_CAMERA: 'speedCamera',
 };
 
 export default function MapApp() {
+  const { t } = useTranslation();
   const isSearchOpen = useMapStore(s => s.isSearchOpen);
   const isRoutesPanelOpen = useMapStore(s => s.isRoutesPanelOpen);
   const isSidebarOpen = useMapStore(s => s.isSidebarOpen);
   const selectedObject = useMapStore(s => s.selectedObject);
   const isReportPanelOpen = useMapStore(s => s.isReportPanelOpen);
-  const navigation = useMapStore(s => s.navigation);
+  // Only isNavigating is used below — selecting it directly avoids
+  // re-rendering the whole app shell on every unrelated navigation field
+  // change (distanceToManeuver, bearingToManeuver, etc.), which fires on
+  // nearly every GPS update while driving.
+  const isNavigating = useMapStore(s => s.navigation.isNavigating);
   const updateFriendLocation = useMapStore(s => s.updateFriendLocation);
   const addReport = useMapStore(s => s.addReport);
 
@@ -68,8 +78,9 @@ export default function MapApp() {
       // Don't show own reports
       if (data.userId === user?.id) return;
 
-      const label = REPORT_TYPE_LABELS[data.type] || data.type;
-      const city = data.city ? ` в ${data.city}` : '';
+      const typeKey = REPORT_TYPE_KEYS[data.type];
+      const label = typeKey ? t('reportPanel.reportTypes.' + typeKey) : data.type;
+      const city = data.city ? t('reportPanel.inCity', { city: data.city }) : '';
       const desc = data.description ? `: ${data.description.slice(0, 50)}` : '';
 
       toast(`⚠️ ${label}${city}${desc}`, {
@@ -96,7 +107,7 @@ export default function MapApp() {
     };
     window.addEventListener('rovx:report-new', handler);
     return () => window.removeEventListener('rovx:report-new', handler);
-  }, [user?.id, addReport]);
+  }, [user?.id, addReport, t]);
 
   // Auto-join city room for notifications
   useEffect(() => {
@@ -108,11 +119,11 @@ export default function MapApp() {
     <div className="relative w-full h-screen overflow-hidden bg-dark-bg" style={{ isolation: 'isolate' }}>
       <MapView />
 
-      {navigation.isNavigating && <NavigationHUD />}
+      {isNavigating && <NavigationHUD />}
 
-      {!navigation.isNavigating && <TopBar />}
+      {!isNavigating && <TopBar />}
 
-      {!navigation.isNavigating && <BottomBar />}
+      {!isNavigating && <BottomBar />}
 
       {isSearchOpen && <SearchPanel />}
       {isRoutesPanelOpen && <RoutePanel />}

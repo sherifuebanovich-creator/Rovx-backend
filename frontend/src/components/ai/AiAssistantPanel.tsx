@@ -39,6 +39,7 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const suggestionsFetchedRef = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const lang = user?.preferredLang || 'ru';
 
@@ -80,6 +81,12 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
       processCommand(transcript);
     }
   }, [transcript, isListening]);
+
+  // Keep the newest message in view — without this, incoming AI replies and
+  // suggestions land below the fold and the user has to scroll manually to see them.
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isProcessing]);
 
   // Load AI suggestions when location is available (once)
   useEffect(() => {
@@ -188,6 +195,7 @@ export function AiAssistantPanel({ onClose }: AiAssistantPanelProps) {
             </div>
           </motion.div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Quick suggestions */}

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 
@@ -22,7 +22,7 @@ function severityToWeight(severity: number): number {
   return 0.15;
 }
 
-export default function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
+function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
   const reports = useMapStore(s => s.reports);
   const prevReportsRef = useRef<string>('');
 
@@ -170,3 +170,5 @@ export default function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
 
   return null;
 }
+
+export default memo(TrafficLayer);

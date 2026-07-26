@@ -221,9 +221,16 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     try {
       const sender = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { subscription: true },
+        select: { subscription: true, subscriptionEnd: true },
       });
-      if (!sender || !['PREMIUM_STANDARD', 'PREMIUM_MAX'].includes(sender.subscription)) return;
+      // subscriptionEnd must be checked too — it's only ever reset to FREE on
+      // explicit cancel/admin action, not automatically on expiry, so relying
+      // on `subscription` alone kept broadcasting a lapsed user's live
+      // location to friends indefinitely (same gap as friends.controller.ts's
+      // getLocations, which every other premium check in this codebase avoids
+      // by also checking subscriptionEnd).
+      const expired = !!sender?.subscriptionEnd && sender.subscriptionEnd < new Date();
+      if (!sender || expired || !['PREMIUM_STANDARD', 'PREMIUM_MAX'].includes(sender.subscription)) return;
 
       const friendships = await this.prisma.friend.findMany({
         where: {

@@ -118,20 +118,24 @@ export class TelegramService {
     }
   }
 
-  async answerCallbackQuery(callbackQueryId: string, text: string) {
+  async answerCallbackQuery(callbackQueryId: string, text: string, showAlert = true) {
     if (!this.isConfigured) return;
     try {
       await axios.post(`https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`, {
         callback_query_id: callbackQueryId,
         text,
-        show_alert: true,
+        show_alert: showAlert,
       }, { timeout: 10000 });
     } catch (error) {
       this.logger.error('Failed to answer callback', error instanceof Error ? error.message : String(error));
     }
   }
 
-  async sendMessageToChat(chatId: number, text: string, buttons?: Array<{ text: string; callback_data: string }>) {
+  // Accepts either a flat list (one button per row, existing behavior) or
+  // pre-grouped rows (e.g. a single row with both a "prev" and "next"
+  // button side by side, for book-style pagination) — a plain button object
+  // becomes its own row, an array is used as a row as-is.
+  async sendMessageToChat(chatId: number, text: string, buttons?: Array<{ text: string; callback_data: string } | Array<{ text: string; callback_data: string }>>) {
     if (!this.botToken) return;
     try {
       const payload: any = {
@@ -141,11 +145,32 @@ export class TelegramService {
         disable_web_page_preview: true,
       };
       if (buttons && buttons.length > 0) {
-        payload.reply_markup = { inline_keyboard: buttons.map(b => [b]) };
+        payload.reply_markup = { inline_keyboard: buttons.map(b => Array.isArray(b) ? b : [b]) };
       }
-      await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, payload, { timeout: 15000 });
+      const res = await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, payload, { timeout: 15000 });
+      return res.data?.result?.message_id as number | undefined;
     } catch (error) {
       this.logger.error('Failed to send message to chat', error instanceof Error ? error.message : String(error));
+      return undefined;
+    }
+  }
+
+  async editMessageText(chatId: number, messageId: number, text: string, buttons?: Array<{ text: string; callback_data: string } | Array<{ text: string; callback_data: string }>>) {
+    if (!this.botToken) return;
+    try {
+      const payload: any = {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      };
+      if (buttons && buttons.length > 0) {
+        payload.reply_markup = { inline_keyboard: buttons.map(b => Array.isArray(b) ? b : [b]) };
+      }
+      await axios.post(`https://api.telegram.org/bot${this.botToken}/editMessageText`, payload, { timeout: 15000 });
+    } catch (error) {
+      this.logger.error('Failed to edit message', error instanceof Error ? error.message : String(error));
     }
   }
 

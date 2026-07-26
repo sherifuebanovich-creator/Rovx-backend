@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const SOURCE_ID = 'tomtom-traffic-flow-source';
 const LAYER_ID = 'tomtom-traffic-flow-layer';
@@ -11,7 +12,8 @@ const MAX_TILE_FAILURES = 3;
 const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
 let warnedMissingKey = false;
 
-export default function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }) {
+function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }) {
+  const { t } = useTranslation();
   const showTraffic = useMapStore((s) => s.showTraffic);
   const setShowTraffic = useMapStore((s) => s.setShowTraffic);
   const tileFailuresRef = useRef(0);
@@ -103,7 +105,7 @@ export default function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }
         disabledForKeyRef.current = true;
         removeLayer();
         setShowTraffic(false);
-        toast.error('Не удалось загрузить слой пробок — проверьте TomTom API-ключ');
+        toast.error(t('topbar.trafficLoadFailed'));
       }
     };
     map.on('error', onError);
@@ -112,3 +114,5 @@ export default function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }
 
   return null;
 }
+
+export default memo(TrafficFlowLayer);

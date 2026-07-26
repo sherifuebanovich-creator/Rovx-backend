@@ -405,7 +405,7 @@ export function NavigationHUD() {
         ? (remainingDist / 1000) / (lastMovingSpeedKmhRef.current / 3.6) * 3600
         : getRemainingDuration(
             userLocation.lat, userLocation.lng, selectedRoute.polyline,
-            selectedRoute.duration, selectedRoute.distance * 1000,
+            selectedRoute.duration * 60, selectedRoute.distance * 1000,
             selectedVehicle?.type,
           ))
     : null;
@@ -431,7 +431,7 @@ export function NavigationHUD() {
             exit={{ opacity: 0, scale: 0.95 }}
             className="absolute top-20 left-4 right-4 pointer-events-auto z-10"
           >
-            <div className="bg-amber-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-amber-400/30 shadow-2xl">
+            <div className="bg-amber-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-amber-400/30 shadow-2xl" role="status" aria-live="polite">
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm font-semibold text-white">{t('navigationHud.recalculating')}</p>
@@ -450,7 +450,7 @@ export function NavigationHUD() {
             exit={{ opacity: 0, scale: 0.95 }}
             className="absolute top-20 left-4 right-4 pointer-events-auto z-10"
           >
-            <div className="bg-red-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-red-400/30 shadow-2xl">
+            <div className="bg-red-600/90 backdrop-blur-xl rounded-2xl px-5 py-3 border border-red-400/30 shadow-2xl" role="alert" aria-live="assertive">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">⚠️</span>
                 <div>
@@ -502,7 +502,7 @@ export function NavigationHUD() {
                 )}
               </>
             ) : (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4" role="status" aria-live="assertive">
                 <div className="w-16 h-16 flex-shrink-0 bg-green-600 rounded-2xl flex items-center justify-center text-3xl">🏁</div>
                 <div>
                   <p className="text-xl font-bold text-white">{t('navigationHud.arrived')}</p>

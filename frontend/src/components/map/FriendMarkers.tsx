@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -36,7 +36,7 @@ function createMarkerEl(displayName: string): HTMLElement {
   return el;
 }
 
-export default function FriendMarkers({ map }: Props) {
+function FriendMarkers({ map }: Props) {
   const friendLocations = useMapStore((s) => s.friendLocations);
   const setFriendLocations = useMapStore((s) => s.setFriendLocations);
   const user = useAuthStore((s) => s.user);
@@ -112,3 +112,5 @@ export default function FriendMarkers({ map }: Props) {
   if (!hasPremium) return null;
   return null;
 }
+
+export default memo(FriendMarkers);

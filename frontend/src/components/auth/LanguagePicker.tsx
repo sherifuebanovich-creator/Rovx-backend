@@ -9,15 +9,23 @@ const POPULAR = ['en', 'ru', 'uz', 'tr', 'uk', 'de'];
 interface LanguagePickerProps {
   value: string;
   onChange: (code: string) => void;
+  id?: string;
 }
 
-export default function LanguagePicker({ value, onChange }: LanguagePickerProps) {
+export default function LanguagePicker({ value, onChange, id }: LanguagePickerProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = LANGUAGES.find((l) => l.code === value) || LANGUAGES.find((l) => l.code === 'en') || LANGUAGES[0];
+
+  const closeAndReturnFocus = () => {
+    setIsOpen(false);
+    setSearch('');
+    triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -29,6 +37,22 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Custom listbox has no native Escape-to-close/focus-return behavior —
+  // without this, keyboard and screen-reader users have no way to dismiss
+  // the popup other than tabbing away, and focus is left stranded in a
+  // removed list instead of going back to the trigger.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeAndReturnFocus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen]);
 
   const popular = POPULAR.map((c) => LANGUAGES.find((l) => l.code === c)).filter(Boolean) as typeof LANGUAGES;
   const others = LANGUAGES.filter((l) => !POPULAR.includes(l.code));
@@ -44,8 +68,12 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
+        id={id}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className="input-field flex items-center gap-2 w-full cursor-pointer"
       >
         <span className="text-lg leading-none font-emojiflag">{selected.flag}</span>
@@ -68,16 +96,17 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
             />
           </div>
 
-          <div className="overflow-y-auto max-h-56">
+          <div className="overflow-y-auto max-h-56" role="listbox">
             {filtered ? (
               filtered.map((l) => (
                 <button
                   key={l.code}
                   type="button"
+                  role="option"
+                  aria-selected={l.code === value}
                   onClick={() => {
                     onChange(l.code);
-                    setIsOpen(false);
-                    setSearch('');
+                    closeAndReturnFocus();
                   }}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors hover:bg-dark-border/60 ${
                     l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
@@ -98,9 +127,11 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                   <button
                     key={l.code}
                     type="button"
+                    role="option"
+                    aria-selected={l.code === value}
                     onClick={() => {
                       onChange(l.code);
-                      setIsOpen(false);
+                      closeAndReturnFocus();
                     }}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors hover:bg-dark-border/60 ${
                       l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'
@@ -120,9 +151,11 @@ export default function LanguagePicker({ value, onChange }: LanguagePickerProps)
                       <button
                         key={l.code}
                         type="button"
+                        role="option"
+                        aria-selected={l.code === value}
                         onClick={() => {
                           onChange(l.code);
-                          setIsOpen(false);
+                          closeAndReturnFocus();
                         }}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors hover:bg-dark-border/60 ${
                           l.code === value ? 'bg-primary-900/20 text-primary-400' : 'text-white'

@@ -56,10 +56,34 @@ export class StripeService {
         userId: params.userId,
         tierName: params.tierName,
       },
+      // Session metadata alone isn't copied to the resulting PaymentIntent/Charge,
+      // so a later `charge.refunded` webhook has no way to identify the user —
+      // duplicating it onto payment_intent_data makes refunds traceable.
+      payment_intent_data: {
+        metadata: {
+          userId: params.userId,
+          tierName: params.tierName,
+        },
+      },
     });
 
     this.logger.log(`Stripe checkout created: ${session.id} for user ${params.userId}`);
     return { url: session.url!, sessionId: session.id };
+  }
+
+  /**
+   * Dispute objects don't carry the charge's metadata directly, so a
+   * `charge.dispute.created` handler needs this to look up the userId that
+   * was set on the original charge/payment_intent.
+   */
+  async retrieveCharge(chargeId: string): Promise<Stripe.Charge | null> {
+    if (!this.configured || !this.stripe) return null;
+    try {
+      return await this.stripe.charges.retrieve(chargeId);
+    } catch (err) {
+      this.logger.error(`Failed to retrieve Stripe charge ${chargeId}: ${err}`);
+      return null;
+    }
   }
 
   verifyWebhookSignature(rawBody: string | Buffer, signature: string): Stripe.Event | null {

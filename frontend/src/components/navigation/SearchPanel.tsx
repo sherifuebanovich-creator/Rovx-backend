@@ -136,6 +136,14 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     setTimeout(() => inputRef.current?.focus(), 100);
   }, []);
 
+  // isBookmarked used to persist across selections — this panel stays
+  // mounted while selectedItem swaps between places (never remounted per
+  // item), so bookmarking one place and then picking a different one kept
+  // showing the filled bookmark icon for a place that was never saved.
+  useEffect(() => {
+    setIsBookmarked(false);
+  }, [selectedItem?.id]);
+
   // Fetch vehicles
   useEffect(() => {
     if (!user) return;
@@ -944,14 +952,14 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
                     <span className="text-[11px] text-gray-500 flex-shrink-0">{formatDistance(item.distance)}</span>
                   )}
                   <div className="flex gap-1 flex-shrink-0">
-                    <span onClick={(e) => { e.stopPropagation(); navigateToSaved(item); }}
+                    <button onClick={(e) => { e.stopPropagation(); navigateToSaved(item); }}
                       className="text-[10px] px-2 py-0.5 rounded bg-primary-600/20 text-primary-400 hover:bg-primary-600/30">
                       {t('searchPanel.navigate')}
-                    </span>
-                    <span onClick={(e) => { e.stopPropagation(); showOnMap(item); }}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); showOnMap(item); }}
                       className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-gray-400 hover:bg-white/20">
                       {t('searchPanel.showOnMap')}
-                    </span>
+                    </button>
                   </div>
                 </button>
               ))}

@@ -13,6 +13,12 @@ COPY backend/tsconfig.json backend/nest-cli.json ./
 COPY backend/src ./src
 RUN npx nest build 2>&1 || (echo "=== nest build failed, falling back to tsc ===" && npx tsc -p tsconfig.json --skipLibCheck --noEmitOnError false)
 
+# Strip devDependencies (TypeScript, @nestjs/cli, ts-node, @types/*, test tooling)
+# before the runner stage copies node_modules wholesale — dist/ is already
+# compiled, so none of this is needed at runtime. `prisma` (the CLI) stays
+# since it's a regular dependency used by entrypoint.sh at container start.
+RUN npm prune --omit=dev
+
 # ── Stage 2: Runner ───────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS runner
 

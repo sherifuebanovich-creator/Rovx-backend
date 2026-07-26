@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 const VEHICLE_TYPES = {
   CAR: 'CAR',
   TRUCK: 'TRUCK',
@@ -8,7 +9,7 @@ type VehicleType = (typeof VEHICLE_TYPES)[keyof typeof VEHICLE_TYPES];
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -58,31 +59,42 @@ export class UsersService {
       updateData.username = data.username;
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        displayName: true,
-        avatar: true,
-        bio: true,
-        role: true,
-        subscription: true,
-        preferredLang: true,
-        preferredVehicle: true,
-        phone: true,
-        city: true,
-        homeAddress: true,
-        homeLat: true,
-        homeLng: true,
-        workAddress: true,
-        workLat: true,
-        workLng: true,
-      },
-    });
-    return updated;
+    // The findUnique-then-update above is check-then-write, not atomic — two
+    // concurrent profile updates racing to take the same new username can
+    // both pass the check, so the loser hits the DB's unique constraint.
+    // Without this, that surfaced as an unhandled Prisma error and a generic
+    // 500 (per http-exception.filter.ts) instead of a clean 409.
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          displayName: true,
+          avatar: true,
+          bio: true,
+          role: true,
+          subscription: true,
+          preferredLang: true,
+          preferredVehicle: true,
+          phone: true,
+          city: true,
+          homeAddress: true,
+          homeLat: true,
+          homeLng: true,
+          workAddress: true,
+          workLat: true,
+          workLng: true,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new ConflictException('Username already taken');
+      }
+      throw err;
+    }
   }
 
   // Was `create: { userId, ...prefs }, update: prefs` with `prefs: any` —
@@ -196,7 +208,19 @@ export class UsersService {
 
   async getLeaderboard(limit = 20) {
     const cappedLimit = Math.min(Math.max(1, limit), 100);
-    return this.prisma.user.findMany({
+
+    // Same top-N rows get re-queried by every client opening the leaderboard
+    // screen, and reputation only moves in small increments (report
+    // confirmations etc) — a short cache turns a per-request sorted scan
+    // over the whole user table into an occasional one without any
+    // user-facing staleness that matters for a leaderboard.
+    const cacheKey = `leaderboard:${cappedLimit}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch {}
+    }
+
+    const result = await this.prisma.user.findMany({
       where: { isActive: true, isBanned: false },
       orderBy: { reputation: 'desc' },
       take: cappedLimit,
@@ -211,6 +235,9 @@ export class UsersService {
         totalDistance: true,
       },
     });
+
+    await this.redis.set(cacheKey, JSON.stringify(result), 60);
+    return result;
   }
 
   async getAchievements(userId: string) {

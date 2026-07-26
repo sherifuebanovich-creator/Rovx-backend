@@ -104,28 +104,33 @@ export default function CreateGroupPage() {
 
           {/* Name */}
           <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.nameLabel')}</label>
-            <input value={name} onChange={e => setName(e.target.value)}
+            <label htmlFor="creategroup-name" className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.nameLabel')}</label>
+            <input id="creategroup-name" value={name} onChange={e => setName(e.target.value)}
               className="input-field text-sm" placeholder={t('createGroup.namePlaceholder')} maxLength={50} />
           </div>
 
           {/* Description */}
           <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.descriptionLabel')}</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)}
+            <label htmlFor="creategroup-description" className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.descriptionLabel')}</label>
+            <textarea id="creategroup-description" value={description} onChange={e => setDescription(e.target.value)}
               className="input-field text-sm resize-none" placeholder={t('createGroup.descriptionPlaceholder')} rows={3} maxLength={200} />
           </div>
 
           {/* City */}
           <div>
-            <label className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.cityLabel')}</label>
-            <input value={city} onChange={e => setCity(e.target.value)}
+            <label htmlFor="creategroup-city" className="text-xs text-gray-400 mb-1.5 block">{t('createGroup.cityLabel')}</label>
+            <input id="creategroup-city" value={city} onChange={e => setCity(e.target.value)}
               className="input-field text-sm" placeholder={t('createGroup.cityPlaceholder')} />
           </div>
 
           {/* Public toggle */}
           <label className="flex items-center gap-3 cursor-pointer">
             <div onClick={() => setIsPublic(!isPublic)}
+              role="switch"
+              aria-checked={isPublic}
+              aria-label={t('createGroup.publicLabel')}
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsPublic(!isPublic); } }}
               className={`w-10 h-6 rounded-full transition-all flex items-center px-0.5 ${isPublic ? 'bg-primary-600 justify-end' : 'bg-white/10 justify-start'}`}>
               <div className="w-5 h-5 rounded-full bg-white" />
             </div>

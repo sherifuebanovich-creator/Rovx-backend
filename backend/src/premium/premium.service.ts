@@ -294,6 +294,36 @@ export class PremiumService {
       }
     }
 
+    // A refund/chargeback must revoke premium — otherwise a refunded user
+    // keeps access until subscriptionEnd naturally lapses. Only revoke if
+    // the refunded transaction still matches the active subscription's
+    // paymentId, so a stale/late refund for a superseded transaction can't
+    // cancel a newer, already-paid subscription.
+    if (notificationType === 'refund' || notificationType === 'chargeback') {
+      const userId = body.user?.id?.value;
+      const transactionId = body.transaction?.id;
+
+      if (!userId) {
+        this.logger.warn(`Xsolla ${notificationType} webhook missing userId`);
+        return { received: true };
+      }
+
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active' && (!transactionId || existingSub.paymentId === transactionId)) {
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.update({
+            where: { userId },
+            data: { status: 'refunded', autoRenew: false },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: 'FREE', subscriptionEnd: null },
+          }),
+        ]);
+        this.logger.warn(`Xsolla ${notificationType}: revoked premium for user ${userId} (transaction ${transactionId})`);
+      }
+    }
+
     return { received: true };
   }
 
@@ -419,6 +449,38 @@ export class PremiumService {
       ]);
 
       this.logger.log(`User ${userId} subscribed to ${tierName} via Lemon Squeezy`);
+      return { received: true };
+    }
+
+    // A refunded order must revoke premium — otherwise a refunded user keeps
+    // access until subscriptionEnd naturally lapses. Only revoke if the
+    // order id still matches the active subscription's paymentId, so a
+    // stale/late refund for a superseded order can't cancel a newer,
+    // already-paid subscription.
+    if (eventName === 'order_refunded') {
+      const customData = orderData?.checkout_data?.custom || {};
+      const userId = customData.user_id;
+      const orderId = body?.data?.id;
+
+      if (!userId) {
+        this.logger.warn('Lemon Squeezy order_refunded webhook missing user_id in custom data');
+        return { received: true };
+      }
+
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active' && orderId && existingSub.paymentId === String(orderId)) {
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.update({
+            where: { userId },
+            data: { status: 'refunded', autoRenew: false },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: 'FREE', subscriptionEnd: null },
+          }),
+        ]);
+        this.logger.warn(`Lemon Squeezy refund: revoked premium for user ${userId} (order ${orderId})`);
+      }
     }
 
     return { received: true };
@@ -472,7 +534,10 @@ export class PremiumService {
       const tier = PREMIUM_TIERS.find(t => t.name === tierName);
       if (!tier) return;
 
-      const paymentId = `stripe_${session.id}`;
+      // Keyed by payment_intent (not session.id) so a later `charge.refunded`
+      // event — which only carries the charge's payment_intent, never the
+      // checkout session id — can be matched back to this same paymentId.
+      const paymentId = session.payment_intent ? `stripe_${session.payment_intent}` : `stripe_${session.id}`;
 
       const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
       if (existingSub?.status === 'active' && existingSub.paymentId === paymentId) {
@@ -518,7 +583,7 @@ export class PremiumService {
         if (adminChat && botToken) {
           const user = await this.prisma.user.findUnique({ where: { id: userId } });
           const msg = `💰 <b>ОПЛАТА (Stripe)</b>\n\n` +
-            `👤 Пользователь: <b>${user?.displayName || user?.email || userId}</b>\n` +
+            `👤 Пользователь: <b>${escapeTelegramHtml(user?.displayName || user?.email || userId)}</b>\n` +
             `💎 Тариф: <b>${tier.label_en}</b>\n` +
             `💵 Сумма: <b>$${tier.price}</b>\n` +
             `📅 Активен до: ${endDate.toLocaleDateString('ru-RU')}`;
@@ -530,6 +595,75 @@ export class PremiumService {
           });
         }
       } catch {}
+      return;
+    }
+
+    // A refund/chargeback on the underlying charge must revoke premium —
+    // otherwise a refunded user keeps access until their subscriptionEnd
+    // naturally lapses. Only revoke if this charge's paymentId still matches
+    // the active subscription, so a stale/late refund notification for a
+    // superseded payment can't cancel a newer, already-paid subscription.
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object;
+      const userId = charge.metadata?.userId;
+      if (!userId) {
+        this.logger.warn(`Stripe charge.refunded ${charge.id} missing userId metadata — cannot revoke premium`);
+        return;
+      }
+
+      const paymentId = `stripe_${charge.payment_intent}`;
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active' && existingSub.paymentId === paymentId) {
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.update({
+            where: { userId },
+            data: { status: 'refunded', autoRenew: false },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: 'FREE', subscriptionEnd: null },
+          }),
+        ]);
+        this.logger.warn(`Stripe refund: revoked premium for user ${userId} (charge ${charge.id})`);
+      }
+      return;
+    }
+
+    // A chargeback (cardholder disputes the charge with their bank) must
+    // revoke premium the same way a refund does — otherwise a disputed
+    // payment keeps access until subscriptionEnd naturally lapses. Dispute
+    // objects don't carry the charge's metadata directly, so the charge has
+    // to be fetched from Stripe to recover the userId.
+    if (event.type === 'charge.dispute.created') {
+      const dispute = event.data.object;
+      const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+      if (!chargeId) {
+        this.logger.warn(`Stripe charge.dispute.created ${dispute.id} missing charge id`);
+        return;
+      }
+
+      const charge = await this.stripeService.retrieveCharge(chargeId);
+      const userId = charge?.metadata?.userId;
+      if (!userId) {
+        this.logger.warn(`Stripe charge.dispute.created ${dispute.id} (charge ${chargeId}) missing userId metadata — cannot revoke premium`);
+        return;
+      }
+
+      const paymentId = `stripe_${charge!.payment_intent}`;
+      const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
+      if (existingSub?.status === 'active' && existingSub.paymentId === paymentId) {
+        await this.prisma.$transaction([
+          this.prisma.premiumSubscription.update({
+            where: { userId },
+            data: { status: 'disputed', autoRenew: false },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: 'FREE', subscriptionEnd: null },
+          }),
+        ]);
+        this.logger.warn(`Stripe chargeback: revoked premium for user ${userId} (charge ${chargeId})`);
+      }
     }
   }
 
@@ -730,6 +864,41 @@ export class PremiumService {
       },
     });
     return user;
+  }
+
+  async deleteUser(userId: string): Promise<{ success: boolean; message: string; email?: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, username: true } });
+    if (!user) return { success: false, message: 'Пользователь не найден' };
+    try {
+      await this.prisma.user.delete({ where: { id: userId } });
+      return { success: true, message: 'Удалён', email: user.email };
+    } catch (err: any) {
+      // Group.ownerId has no onDelete: Cascade — deleting a group owner
+      // throws a raw FK violation (P2003) instead of quietly cascading, so
+      // an admin doesn't accidentally nuke a real group by deleting its owner.
+      if (err?.code === 'P2003') {
+        return { success: false, message: 'Нельзя удалить: пользователь владеет группой (сначала передайте владение или удалите группу)' };
+      }
+      throw err;
+    }
+  }
+
+  async purgeTestUsers(emailSuffix: string): Promise<{ deleted: string[]; failed: Array<{ email: string; reason: string }> }> {
+    const testUsers = await this.prisma.user.findMany({
+      where: { email: { endsWith: emailSuffix, mode: 'insensitive' } },
+      select: { id: true, email: true },
+    });
+    const deleted: string[] = [];
+    const failed: Array<{ email: string; reason: string }> = [];
+    for (const u of testUsers) {
+      const result = await this.deleteUser(u.id);
+      if (result.success) {
+        deleted.push(u.email || u.id);
+      } else {
+        failed.push({ email: u.email || u.id, reason: result.message });
+      }
+    }
+    return { deleted, failed };
   }
 
   async deactivateUser(userId: string) {

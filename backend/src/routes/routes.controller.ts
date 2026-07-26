@@ -56,7 +56,10 @@ export class RoutesController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.routesService.getTrips(userId, page, limit);
+    // Capped like every other bounds-checked list endpoint in the app (see
+    // MapController#getObjects) — otherwise a client can pass an arbitrarily
+    // large `limit` straight through to the Prisma `take`.
+    return this.routesService.getTrips(userId, page, Math.min(limit, 100));
   }
 
   @Post('trips/start')

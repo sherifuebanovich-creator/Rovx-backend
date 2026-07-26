@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Res, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Res, Logger, UseGuards, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TtsService } from './tts.service';
@@ -19,12 +19,18 @@ export class TtsController {
     @Body() body: { text: string; lang?: string },
     @Res() res: Response,
   ) {
+    // Thrown instead of hand-built via res.status().json(): @Res() only
+    // opts this handler out of Nest auto-sending the return value, it does
+    // not bypass the global HttpExceptionFilter — throwing here keeps the
+    // error body in the same { success, statusCode, message, ... } shape
+    // every other endpoint in the API produces, instead of the bespoke
+    // { message } shape this route was returning on its own.
     if (!body.text) {
-      return res.status(400).json({ message: 'Text is required' });
+      throw new BadRequestException('Text is required');
     }
 
     if (body.text.length > 500) {
-      return res.status(400).json({ message: 'Text too long (max 500 characters)' });
+      throw new BadRequestException('Text too long (max 500 characters)');
     }
 
     try {
@@ -38,7 +44,7 @@ export class TtsController {
       return res.send(audioBuffer);
     } catch (error) {
       this.logger.error(`TTS synthesis failed: ${error instanceof Error ? error.message : String(error)}`);
-      return res.status(502).json({ message: 'TTS service unavailable' });
+      throw new ServiceUnavailableException('TTS service unavailable');
     }
   }
 }

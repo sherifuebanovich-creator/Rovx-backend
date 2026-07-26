@@ -177,29 +177,40 @@ export class SocialService {
       );
     }
 
-    const existing = await this.prisma.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
-    if (existing) {
-      throw new ConflictException('Группа с таким именем уже существует');
-    }
+    // Group.name has no @@unique in the schema, so this was a plain
+    // check-then-create: two requests for the same name arriving together
+    // both pass the findFirst check and both create, leaving two groups
+    // with the identical name despite the ConflictException above existing
+    // to prevent exactly that. Advisory lock keyed by the lowercased name
+    // serializes concurrent creates, same pattern as friends.service.ts.
+    const nameLower = String(data.name).toLowerCase();
+    const group = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
 
-    const group = await this.prisma.group.create({
-      data: {
-        name: data.name,
-        description: data.description || '',
-        avatar: data.avatar,
-        region: data.region,
-        city: data.city,
-        ownerId: userId,
-        isPublic: data.isPublic ?? true,
-        inviteToken: generateInviteToken(),
-        members: {
-          create: { userId, isAdmin: true },
+      const existing = await tx.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
+      if (existing) {
+        throw new ConflictException('Группа с таким именем уже существует');
+      }
+
+      return tx.group.create({
+        data: {
+          name: data.name,
+          description: data.description || '',
+          avatar: data.avatar,
+          region: data.region,
+          city: data.city,
+          ownerId: userId,
+          isPublic: data.isPublic ?? true,
+          inviteToken: generateInviteToken(),
+          members: {
+            create: { userId, isAdmin: true },
+          },
+          memberCount: 1,
         },
-        memberCount: 1,
-      },
-      include: {
-        owner: { select: { id: true, displayName: true, avatar: true } },
-      },
+        include: {
+          owner: { select: { id: true, displayName: true, avatar: true } },
+        },
+      });
     });
 
     this.logger.log(`Group created: ${data.name} by user ${userId}`);
@@ -215,22 +226,29 @@ export class SocialService {
     });
     if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Only admin can edit group');
 
-    if (data.name && data.name !== group.name) {
-      const existing = await this.prisma.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
-      if (existing) throw new ConflictException('Это имя группы уже используется');
-    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (data.name && data.name !== group.name) {
+        // Same check-then-write race as createGroup — lock on the target
+        // name before re-checking so a concurrent create/rename can't slip
+        // in between the check and the update.
+        const nameLower = String(data.name).toLowerCase();
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
+        const existing = await tx.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
+        if (existing) throw new ConflictException('Это имя группы уже используется');
+      }
 
-    const updated = await this.prisma.group.update({
-      where: { id: groupId },
-      data: {
-        name: data.name,
-        description: data.description,
-        avatar: data.avatar,
-        region: data.region,
-        city: data.city,
-        isPublic: data.isPublic,
-      },
-      include: { _count: { select: { members: true } } },
+      return tx.group.update({
+        where: { id: groupId },
+        data: {
+          name: data.name,
+          description: data.description,
+          avatar: data.avatar,
+          region: data.region,
+          city: data.city,
+          isPublic: data.isPublic,
+        },
+        include: { _count: { select: { members: true } } },
+      });
     });
 
     // Never broadcast the raw stored `memberCount` — it's a denormalized

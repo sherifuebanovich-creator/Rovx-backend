@@ -74,6 +74,10 @@ model User {
   friendsInitiated  Friend[]         @relation("UserFriends")
   friendsAdded      Friend[]         @relation("FriendOf")
 
+  // getLeaderboard (users.service.ts) sorts the whole table by reputation
+  // desc with a small LIMIT — without this, every request forces a full
+  // table sort since there's no index Postgres can walk in order.
+  @@index([reputation])
   @@map("users")
 }
 
@@ -106,6 +110,13 @@ model Friend {
   user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
   friend User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
   @@unique([userId, friendId])
+  // getFriends/getFriendRequests (friends.service.ts) and the friend-location
+  // broadcast + online-status notify in roadpilot.gateway.ts all query
+  // `friendId: userId` (the reverse direction of the relation) combined with
+  // `status`. The unique index above is (userId, friendId), whose leftmost
+  // column doesn't help a friendId-first lookup — those queries were doing a
+  // full table scan on every location:update from a premium user.
+  @@index([friendId, status])
   @@map("friends")
 }
 
@@ -473,6 +484,12 @@ model GroupMember {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
+  // Convoy broadcast and SOS handlers in roadpilot.gateway.ts query
+  // `where: { userId }` alone (no groupId) to find every group a user is in.
+  // The unique index is (groupId, userId) — userId isn't its leftmost
+  // column, so that lookup couldn't use it and fell back to a full scan on
+  // every location:update from a user with convoy mode active.
+  @@index([userId])
   @@map("group_members")
 }
 

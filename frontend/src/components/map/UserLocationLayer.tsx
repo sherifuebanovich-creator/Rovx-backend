@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import {
@@ -19,7 +19,7 @@ interface Props {
   map: maplibregl.Map | null;
 }
 
-export default function UserLocationLayer({ map }: Props) {
+function UserLocationLayer({ map }: Props) {
   const blueDotRef = useRef<BlueDotElements | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const accuracySourceId = 'user-accuracy-circle';
@@ -44,7 +44,11 @@ export default function UserLocationLayer({ map }: Props) {
   const userSpeed = useMapStore((s) => s.userSpeed);
   const locationError = useMapStore((s) => s.locationError);
   const setFollowUser = useMapStore((s) => s.setFollowUser);
-  const navigation = useMapStore((s) => s.navigation);
+  // Only isNavigating is used here — selecting it directly (instead of the
+  // whole `navigation` object) avoids re-rendering on every unrelated
+  // navigation field change (distanceToManeuver, bearingToManeuver, etc.),
+  // which otherwise fires on nearly every GPS update during a drive.
+  const isNavigating = useMapStore((s) => s.navigation.isNavigating);
   const isNavigatingRef = useRef(false);
   const prevPitchRef = useRef(0);
   const prevBearingRef = useRef(0);
@@ -163,9 +167,9 @@ export default function UserLocationLayer({ map }: Props) {
     if (!map) return;
 
     const wasNavigating = isNavigatingRef.current;
-    isNavigatingRef.current = navigation.isNavigating;
+    isNavigatingRef.current = isNavigating;
 
-    if (navigation.isNavigating && !wasNavigating) {
+    if (isNavigating && !wasNavigating) {
       prevPitchRef.current = map.getPitch();
       prevBearingRef.current = map.getBearing();
 
@@ -174,14 +178,14 @@ export default function UserLocationLayer({ map }: Props) {
       followActiveRef.current = true;
       setFollowActive(true);
       setFollowUser(true);
-    } else if (!navigation.isNavigating && wasNavigating) {
+    } else if (!isNavigating && wasNavigating) {
       map.easeTo({
         pitch: prevPitchRef.current,
         bearing: 0,
         duration: 600,
       });
     }
-  }, [navigation.isNavigating, map, setFollowUser]);
+  }, [isNavigating, map, setFollowUser]);
 
   useEffect(() => {
     if (!map || !userLocation) return;
@@ -324,6 +328,8 @@ export default function UserLocationLayer({ map }: Props) {
     </>
   );
 }
+
+export default memo(UserLocationLayer);
 
 function interpolateHeading(from: number, to: number, t: number): number {
   let diff = to - from;

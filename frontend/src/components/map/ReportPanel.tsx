@@ -360,7 +360,7 @@ export function ReportPanel() {
                       )}
                       <button
                         onClick={() => removePhoto(i)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center touch-target z-10"
+                        className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center z-10"
                       >
                         <FaTimes size={8} className="text-white" />
                       </button>

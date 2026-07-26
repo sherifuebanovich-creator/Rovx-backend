@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { join } from 'path';
-import { unlinkSync, readFileSync } from 'fs';
+import { readFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
 
 const VOICE_MAP: Record<string, string> = {
@@ -90,13 +90,18 @@ export class TtsService {
         this.logger.warn(`edge-tts stderr: ${stderr}`);
       }
 
-      const buffer = readFileSync(tmpFile);
+      const buffer = await readFile(tmpFile);
       return buffer;
     } catch (error) {
       this.logger.error(`Edge TTS failed for lang=${lang} voice=${voice}: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     } finally {
-      try { unlinkSync(tmpFile); } catch {}
+      // Blocking synchronous reads/deletes here stall the entire Node event
+      // loop for every other in-flight request (route calc, location
+      // updates, etc) while this one TTS call's temp file is read/removed —
+      // this handler can run concurrently for multiple users requesting
+      // voice turn-by-turn instructions at once.
+      try { await unlink(tmpFile); } catch {}
     }
   }
 

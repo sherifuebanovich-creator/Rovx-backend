@@ -68,7 +68,17 @@ export class RoutesService {
   ) {}
 
   async calculateRoute(dto: CalculateRouteDto, userId?: string): Promise<RouteResult[]> {
-    const cacheKey = `route:${dto.originLat},${dto.originLng}:${dto.destLat},${dto.destLng}:${dto.routeType || 'fastest'}`;
+    // Must include every parameter that affects computeSingleRoute's output
+    // (waypoints, vehicle profile/exclusions, fuel price) — otherwise two
+    // requests for the same origin/dest/routeType but different vehicle or
+    // toll preferences collide on the same cache entry and one request's
+    // result gets served back to the other for up to 5 minutes.
+    // Also keyed per-user: computeSingleRoute pulls the caller's own default
+    // vehicle for fuelEfficiency, so without userId here one user's fuel
+    // numbers would get served back to a different (or anonymous) caller
+    // requesting the identical route.
+    const waypointsKey = (dto.waypoints || []).map((w) => `${w.lat},${w.lng}`).join(';');
+    const cacheKey = `route:${dto.originLat},${dto.originLng}:${dto.destLat},${dto.destLng}:${dto.routeType || 'fastest'}:${waypointsKey}:${dto.vehicleType || ''}:${dto.avoidTolls ? 1 : 0}:${dto.avoidHighways ? 1 : 0}:${dto.fuelPrice ?? ''}:${dto.vehicleHeight ?? ''}:${dto.vehicleWeight ?? ''}:${userId || 'anon'}`;
     const cached = await this.redis.get(cacheKey);
     if (cached) {
       return JSON.parse(cached);

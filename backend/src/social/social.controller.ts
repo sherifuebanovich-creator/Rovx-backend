@@ -35,11 +35,13 @@ export class SocialController {
   }
 
   @Get('followers')
+  @ApiOperation({ summary: 'Get my followers' })
   async getFollowers(@CurrentUser('id') userId: string, @Query('page') page = 1) {
     return this.socialService.getFollowers(userId, +page);
   }
 
   @Get('following')
+  @ApiOperation({ summary: 'Get users I follow' })
   async getFollowing(@CurrentUser('id') userId: string, @Query('page') page = 1) {
     return this.socialService.getFollowing(userId, +page);
   }
@@ -285,11 +287,13 @@ export class SocialController {
   }
 
   @Post('groups/:groupId/join')
+  @ApiOperation({ summary: 'Join a group' })
   async joinGroup(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
     return this.socialService.joinGroup(userId, groupId);
   }
 
   @Post('groups/:groupId/leave')
+  @ApiOperation({ summary: 'Leave a group' })
   async leaveGroup(@CurrentUser('id') userId: string, @Param('groupId') groupId: string) {
     return this.socialService.leaveGroup(userId, groupId);
   }
@@ -450,11 +454,13 @@ export class SocialController {
 
   // ── Notifications ──
   @Get('notifications')
+  @ApiOperation({ summary: 'Get my notifications' })
   async getNotifications(@CurrentUser('id') userId: string, @Query('page') page = 1) {
     return this.socialService.getNotifications(userId, +page);
   }
 
   @Post('notifications/read')
+  @ApiOperation({ summary: 'Mark all notifications as read' })
   async markRead(@CurrentUser('id') userId: string) {
     return this.socialService.markNotificationsRead(userId);
   }

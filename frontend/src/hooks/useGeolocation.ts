@@ -41,11 +41,22 @@ export function useGeolocation() {
   const [error, setError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt');
 
-  const { setUserLocation, setLocationError, followUser, setMapCenter, navigation, setFollowUser } = useMapStore();
+  // Selecting individual fields (instead of calling useMapStore() with no
+  // selector) matters here specifically because this hook is invoked
+  // directly inside MapApp() — subscribing to the whole store there re-ran
+  // MapApp's render on every map-store change of any kind (search typing,
+  // POI/report loads, friend-location polling, panel toggles), not just the
+  // handful of fields this hook actually reads.
+  const setUserLocation = useMapStore(s => s.setUserLocation);
+  const setLocationError = useMapStore(s => s.setLocationError);
+  const followUser = useMapStore(s => s.followUser);
+  const setMapCenter = useMapStore(s => s.setMapCenter);
+  const setFollowUser = useMapStore(s => s.setFollowUser);
+  const isNavigating = useMapStore(s => s.navigation.isNavigating);
   const followUserRef = useRef(followUser);
   followUserRef.current = followUser;
-  const navRef = useRef(navigation);
-  navRef.current = navigation;
+  const navRef = useRef(isNavigating);
+  navRef.current = isNavigating;
 
   const processPosition = useCallback((position: GeolocationPosition) => {
     if (!isActiveRef.current) return;
@@ -104,7 +115,7 @@ export function useGeolocation() {
       setMapCenter({ lat: latitude, lng: longitude });
     }
 
-    if (navRef.current.isNavigating && smoothSpeedRef.current > AUTO_FOLLOW_SPEED_THRESHOLD && !followUserRef.current) {
+    if (navRef.current && smoothSpeedRef.current > AUTO_FOLLOW_SPEED_THRESHOLD && !followUserRef.current) {
       setFollowUser(true);
     }
   }, [setUserLocation, setLocationError, setMapCenter, setFollowUser]);
@@ -139,6 +150,16 @@ export function useGeolocation() {
       setError('Geolocation is not supported by your browser');
       setLocationError('Geolocation not supported');
       return;
+    }
+
+    // Guard against leaking a watch: if the tab goes hidden while navigating
+    // (watch intentionally kept alive, see onVisibilityChange below) and then
+    // becomes visible again, this used to be called without clearing the
+    // still-running watch first — overwriting watchIdRef with a new watch ID
+    // orphaned the old one, which then ran forever with no way to clear it.
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
 
     const options: PositionOptions = {
@@ -181,7 +202,7 @@ export function useGeolocation() {
         // apps during active turn-by-turn navigation would otherwise kill
         // position updates, off-route detection, and voice guidance until
         // the user unlocks and reopens the app.
-        if (!navRef.current.isNavigating) stopWatching();
+        if (!navRef.current) stopWatching();
       } else {
         isActiveRef.current = true;
         startWatching();

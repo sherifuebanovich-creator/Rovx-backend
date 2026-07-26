@@ -120,8 +120,8 @@ function LoginPageContent() {
 
             {/* Language selector for Google sign-in */}
             <div className="mb-3">
-              <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.language')}</label>
-              <LanguagePicker value={googleLang} onChange={(code) => { setGoogleLang(code); i18n.changeLanguage(code); }} />
+              <label htmlFor="login-lang" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.language')}</label>
+              <LanguagePicker id="login-lang" value={googleLang} onChange={(code) => { setGoogleLang(code); i18n.changeLanguage(code); }} />
             </div>
 
             {/* Google OAuth Button */}
@@ -149,10 +149,11 @@ function LoginPageContent() {
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.emailLabel')}</label>
+                <label htmlFor="login-identifier" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.emailLabel')}</label>
                 <div className="relative">
                   <FaUser size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
+                    id="login-identifier"
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
@@ -164,10 +165,11 @@ function LoginPageContent() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.passwordLabel')}</label>
+                <label htmlFor="login-password" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.login.passwordLabel')}</label>
                 <div className="relative">
                   <FaLock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
+                    id="login-password"
                     type={showPass ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -178,6 +180,7 @@ function LoginPageContent() {
                   <button
                     type="button"
                     onClick={() => setShowPass(!showPass)}
+                    aria-label={t(showPass ? 'common.hidePassword' : 'common.showPassword')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
                   >
                     {showPass ? <FaEyeSlash size={14} /> : <FaEye size={14} />}

@@ -31,8 +31,18 @@ async function syncWithBackend(idToken: string | undefined, displayName: string 
         if (accessToken) return { accessToken };
       }
       // Non-2xx that isn't going to fix itself on retry (e.g. bad token) —
-      // stop instead of burning the remaining attempts.
-      if (res.status >= 400 && res.status < 500) return { error: `BackendSyncFailed:${res.status}` };
+      // stop instead of burning the remaining attempts. Surface the backend's
+      // actual message (e.g. "Account has been banned") when there is one,
+      // instead of collapsing every 4xx into one generic status code the
+      // client has to guess at.
+      if (res.status >= 400 && res.status < 500) {
+        let message: string | undefined;
+        try {
+          const body = await res.json();
+          message = body?.message;
+        } catch {}
+        return { error: message || `BackendSyncFailed:${res.status}` };
+      }
     } catch (err) {
       clearTimeout(timeout);
       console.error(`[NextAuth] Backend sync attempt ${attempt}/${attempts} failed:`, err);

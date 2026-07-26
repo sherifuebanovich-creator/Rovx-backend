@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { mapApi } from '@/lib/api';
@@ -12,7 +12,7 @@ interface Props {
   map: maplibregl.Map | null;
 }
 
-export default function MapFeaturesLayer({ map }: Props) {
+function MapFeaturesLayer({ map }: Props) {
   const sourceId = 'map-features-src';
   const clusterLayerId = 'map-features-clusters';
   const clusterCountId = 'map-features-cluster-count';
@@ -20,6 +20,12 @@ export default function MapFeaturesLayer({ map }: Props) {
   const signalLayerId = 'map-features-signals';
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const lastBoundsRef = useRef<string>('');
+  // Nothing here ordered responses by request — a fetch for an older
+  // viewport that happens to resolve after a newer one's (slow network,
+  // rapid successive pans each clearing the 400ms debounce) would still
+  // overwrite the map with stale cameras/signals for a bbox the user has
+  // already panned away from, with no further pan/zoom to correct it.
+  const requestIdRef = useRef(0);
 
   const cleanup = useCallback(() => {
     if (!map) return;
@@ -33,6 +39,7 @@ export default function MapFeaturesLayer({ map }: Props) {
 
   const loadFeatures = useCallback(async () => {
     if (!map) return;
+    const requestId = ++requestIdRef.current;
     const zoom = map.getZoom();
     if (zoom < MIN_ZOOM) {
       cleanup();
@@ -47,6 +54,7 @@ export default function MapFeaturesLayer({ map }: Props) {
 
     try {
       const res = await mapApi.getFeatures(bbox, 'speed_camera,traffic_signals');
+      if (requestId !== requestIdRef.current) return;
       const features = res.data?.data || res.data || [];
 
       if (!map.isStyleLoaded()) return;
@@ -225,3 +233,5 @@ export default function MapFeaturesLayer({ map }: Props) {
 
   return null;
 }
+
+export default memo(MapFeaturesLayer);

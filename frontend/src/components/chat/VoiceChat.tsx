@@ -33,6 +33,16 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const peerIdRef = useRef<string | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  // Guards the async gap in startCall/acceptCall between invocation and
+  // getUserMedia() resolving — without it, a double-invocation before
+  // isInCall flips true overwrote pcRef/localStreamRef with a second
+  // connection/stream, leaking the first (mic indicator stuck on, orphaned
+  // RTCPeerConnection).
+  const isConnectingRef = useRef(false);
+  // endCall is defined further down (it needs targetUserId/groupId), but
+  // createPeerConnection needs to call it from an ICE state handler — a
+  // ref avoids a circular useCallback dependency.
+  const endCallRef = useRef<() => void>(() => {});
   const ICE_SERVERS: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -60,6 +70,17 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
       }
     };
 
+    // Nothing previously observed connection health — a call across a
+    // strict NAT (no TURN server configured, see comment above) could fail
+    // or drop mid-call while the UI kept showing "connected" indefinitely,
+    // with no path back to endCall().
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+        toast.error('Соединение прервано');
+        endCallRef.current();
+      }
+    };
+
     pcRef.current = pc;
     return pc;
   }, []);
@@ -71,6 +92,8 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   };
 
   const startCall = useCallback(async (targetId: string, targetName: string) => {
+    if (isConnectingRef.current || isInCall) return;
+    isConnectingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -110,8 +133,10 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
       toast.success(`Звонок ${targetName}...`);
     } catch (err) {
       toast.error('Не удалось получить доступ к микрофону');
+    } finally {
+      isConnectingRef.current = false;
     }
-  }, [user, createPeerConnection]);
+  }, [user, createPeerConnection, isInCall]);
 
   const endCall = useCallback(() => {
     const socket = getSocket();
@@ -143,6 +168,7 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     setCallDuration(0);
     durationRef.current = 0;
   }, [targetUserId, groupId]);
+  endCallRef.current = endCall;
 
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
@@ -168,7 +194,15 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail;
-      if (!data || isInCall) return;
+      if (!data) return;
+      if (isInCall) {
+        // Previously just returned — the caller's UI was left showing
+        // "calling..." with a running timer indefinitely, with no signal
+        // telling them the line was busy (mirrors the decline path below,
+        // which does send voice:end).
+        getSocket()?.emit('voice:end', { targetUserId: data.callerId });
+        return;
+      }
 
       toast((t) => (
         <div className="flex flex-col gap-2">
@@ -195,6 +229,8 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     };
 
     const acceptCall = async (data: any) => {
+      if (isConnectingRef.current || isInCall) return;
+      isConnectingRef.current = true;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -220,6 +256,8 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
         });
       } catch {
         toast.error('Не удалось получить доступ к микрофону');
+      } finally {
+        isConnectingRef.current = false;
       }
     };
 
@@ -357,10 +395,14 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
                   <p className="text-xs text-gray-400">{formatDuration(callDuration)}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* A same-shape dot differing only by red/green hue is invisible
+                      to colorblind users — pairing it with the mic/mic-slash
+                      icon shape already used on the mute button below gives a
+                      non-color cue for the same state. */}
                   {isMuted ? (
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <FaMicrophoneSlash size={11} className="text-red-500" aria-hidden="true" />
                   ) : (
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <FaMicrophone size={11} className="text-green-500 animate-pulse" aria-hidden="true" />
                   )}
                 </div>
               </div>

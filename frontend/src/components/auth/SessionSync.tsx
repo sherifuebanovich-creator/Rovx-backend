@@ -31,11 +31,16 @@ export function SessionSync() {
         setTimeout(() => { initAuth(); }, 100);
         erroredRef.current = false;
       } else if (error && !erroredRef.current) {
-        // Google login itself succeeded but our backend never confirmed it
-        // (e.g. it was still waking up) — say so instead of quietly landing
-        // the user on the map as a guest.
+        // Google login itself succeeded but our backend never confirmed it.
+        // `error` is the backend's actual message (e.g. "Account has been
+        // banned") when the sync failed with a 4xx — show that instead of a
+        // one-size-fits-all "try again", which is actively misleading for a
+        // banned/deactivated account since retrying can never help. Only
+        // fall back to the generic copy for the coded `BackendSyncFailed:*`
+        // case (e.g. backend still waking up) where no real message exists.
         erroredRef.current = true;
-        toast.error(t('auth.errors.backendSyncFailed') || 'Не удалось завершить вход. Попробуйте войти через Google ещё раз.');
+        const specific = typeof error === 'string' && !error.startsWith('BackendSyncFailed') ? error : null;
+        toast.error(specific || t('auth.errors.backendSyncFailed') || 'Не удалось завершить вход. Попробуйте войти через Google ещё раз.');
       }
 
       if (!syncedRef.current) {

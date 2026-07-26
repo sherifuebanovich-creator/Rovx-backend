@@ -78,6 +78,19 @@ export function TopBar() {
     checkUnread();
   }, [checkUnread]);
 
+  // map.store's darkMode always boots as `true` regardless of what's
+  // persisted — only settings/page.tsx re-synced it from localStorage, so
+  // landing directly on the map (this component) after choosing light mode
+  // showed the wrong toggle icon and made the first tap a no-op.
+  useEffect(() => {
+    const stored = localStorage.getItem('darkMode');
+    if (stored !== null) {
+      const isDark = stored !== 'false';
+      if (isDark !== darkMode) setDarkMode(isDark);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     const onNotification = () => {
@@ -185,7 +198,7 @@ export function TopBar() {
           <button
             onClick={handleLocateMe}
             disabled={locating}
-            className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all disabled:opacity-60 ${userLocation ? 'text-primary-400' : 'text-gray-600'}`}
+            className={`flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 glass-dark rounded-xl flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all disabled:opacity-60 ${userLocation ? 'text-primary-400' : 'text-gray-400'}`}
             title={t('topbar.myLocation')}
           >
             {locating ? (

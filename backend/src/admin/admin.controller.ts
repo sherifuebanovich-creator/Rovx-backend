@@ -25,6 +25,7 @@ export class AdminController {
 
   // Users
   @Get('users')
+  @ApiOperation({ summary: 'List users (paginated, searchable)' })
   async getUsers(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
@@ -35,21 +36,25 @@ export class AdminController {
   }
 
   @Get('users/:id')
+  @ApiOperation({ summary: 'Get user detail' })
   async getUserDetail(@Param('id') id: string) {
     return this.adminService.getUserDetail(id);
   }
 
   @Post('users/:id/ban')
+  @ApiOperation({ summary: 'Ban a user' })
   async banUser(@Param('id') id: string, @Body('reason') reason: string, @CurrentUser() user: any) {
     return this.adminService.banUser(id, reason, user.id, user.role);
   }
 
   @Post('users/:id/unban')
+  @ApiOperation({ summary: 'Unban a user' })
   async unbanUser(@Param('id') id: string, @CurrentUser() user: any) {
     return this.adminService.unbanUser(id, user.id, user.role);
   }
 
   @Put('users/:id/role')
+  @ApiOperation({ summary: 'Change a user\'s role' })
   async updateRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: any) {
     const validRoles = ['USER', 'MODERATOR', 'ADMIN', 'SUPERADMIN'];
     if (!validRoles.includes(role)) {
@@ -60,6 +65,7 @@ export class AdminController {
 
   // Reports
   @Get('reports')
+  @ApiOperation({ summary: 'List reports for moderation (paginated)' })
   async getReports(
     @Query('page') page = 1,
     @Query('status') status?: string,
@@ -69,27 +75,32 @@ export class AdminController {
   }
 
   @Put('reports/:id/status')
+  @ApiOperation({ summary: 'Moderate a report (change its status)' })
   async moderateReport(@Param('id') id: string, @Body('status') status: string) {
     return this.adminService.moderateReport(id, status);
   }
 
   // Map Objects
   @Get('map-objects')
+  @ApiOperation({ summary: 'List map objects (paginated)' })
   async getMapObjects(@Query('page') page = 1, @Query('category') category?: string) {
     return this.adminService.getMapObjects(+page, 20, category);
   }
 
   @Post('map-objects')
+  @ApiOperation({ summary: 'Create a map object' })
   async createMapObject(@Body() data: any) {
     return this.adminService.createMapObject(data);
   }
 
   @Put('map-objects/:id')
+  @ApiOperation({ summary: 'Update a map object' })
   async updateMapObject(@Param('id') id: string, @Body() data: any) {
     return this.adminService.updateMapObject(id, data);
   }
 
   @Delete('map-objects/:id')
+  @ApiOperation({ summary: 'Delete a map object' })
   async deleteMapObject(@Param('id') id: string) {
     return this.adminService.deleteMapObject(id);
   }
@@ -109,27 +120,32 @@ export class AdminController {
 
   // Analytics
   @Get('analytics/subscriptions')
+  @ApiOperation({ summary: 'Subscription analytics' })
   async getSubscriptionStats() {
     return this.adminService.getSubscriptionStats();
   }
 
   // Ads
   @Get('ads')
+  @ApiOperation({ summary: 'List ads (paginated)' })
   async getAds(@Query('page') page = 1) {
     return this.adminService.getAds(+page);
   }
 
   @Post('ads')
+  @ApiOperation({ summary: 'Create an ad' })
   async createAd(@Body() data: any) {
     return this.adminService.createAd(data);
   }
 
   @Put('ads/:id')
+  @ApiOperation({ summary: 'Update an ad' })
   async updateAd(@Param('id') id: string, @Body() data: any) {
     return this.adminService.updateAd(id, data);
   }
 
   @Post('ads/:id/toggle')
+  @ApiOperation({ summary: 'Toggle ad active state' })
   async toggleAd(@Param('id') id: string) {
     return this.adminService.toggleAd(id);
   }

@@ -7,6 +7,11 @@ import { useMapStore } from '@/store/map.store';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
 
 let socketInstance: Socket | null = null;
+// Socket.IO assigns a fresh server-side session on every reconnect, so any
+// previously joined rooms (e.g. the user's city) are silently dropped by the
+// server. Track the last city joined so it can be rejoined automatically
+// whenever the socket (re)connects, instead of only on the initial mount.
+let lastJoinedCity: string | null = null;
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
@@ -48,6 +53,9 @@ export function useSocket() {
         socketRef.current = null;
         connect();
         return;
+      }
+      if (lastJoinedCity) {
+        socketInstance?.emit('city:join', { city: lastJoinedCity });
       }
     });
 
@@ -128,6 +136,7 @@ export function useSocket() {
   }, []);
 
   const disconnect = useCallback(() => {
+    lastJoinedCity = null;
     if (socketInstance) {
       socketInstance.removeAllListeners();
       socketInstance.disconnect();
@@ -165,6 +174,7 @@ export function useSocket() {
   }, []);
 
   const joinCity = useCallback((city: string) => {
+    lastJoinedCity = city;
     socketInstance?.emit('city:join', { city });
   }, []);
 

@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaWifi } from 'react-icons/fa';
+import { useTranslation } from 'react-i18next';
 
 export function OfflineScreen() {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
@@ -34,8 +36,8 @@ export function OfflineScreen() {
               <FaWifi size={28} className="text-red-400" />
               <div className="absolute w-[calc(100%-8px)] h-0.5 bg-red-400 rotate-45" />
             </div>
-            <p className="text-dark-text font-semibold mb-1">Нет подключения к интернету</p>
-            <p className="text-sm text-gray-400">Проверьте соединение — приложение восстановится автоматически</p>
+            <p className="text-dark-text font-semibold mb-1">{t('offlineScreen.title')}</p>
+            <p className="text-sm text-gray-400">{t('offlineScreen.subtitle')}</p>
           </div>
         </motion.div>
       )}

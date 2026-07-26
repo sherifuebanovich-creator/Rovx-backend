@@ -42,6 +42,8 @@ export default function MapViewGL() {
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
   const trafficSignalsRequestIdRef = useRef(0);
+  const objectsRequestIdRef = useRef(0);
+  const reportsRequestIdRef = useRef(0);
 
   const mapStyle = useMapStore(s => s.mapStyle);
   const mapStyleRef = useRef(mapStyle);
@@ -54,11 +56,15 @@ export default function MapViewGL() {
   const activeCategories = useMapStore(s => s.activeCategories);
   const show3D = useMapStore(s => s.show3D);
 
-  const navigation = useMapStore(s => s.navigation);
-
-  const routeProgress = navigation.routeProgress;
-  const forwardIndex = navigation.forwardIndex;
-  const isWrongWay = navigation.isWrongWay;
+  // Individual field selectors instead of subscribing to the whole
+  // `navigation` object — this component (and everything it renders, none
+  // of which is memoized) would otherwise re-render on every navigation
+  // update during active driving, including fields it never reads
+  // (distanceToManeuver, bearingToManeuver, currentLeg, isArrived, ...).
+  const routeProgress = useMapStore(s => s.navigation.routeProgress);
+  const forwardIndex = useMapStore(s => s.navigation.forwardIndex);
+  const isWrongWay = useMapStore(s => s.navigation.isWrongWay);
+  const isNavigating = useMapStore(s => s.navigation.isNavigating);
 
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
@@ -189,13 +195,13 @@ export default function MapViewGL() {
     cleanupRoute();
 
     const coords = selectedRoute.polyline.map((p) => [p.lng, p.lat]);
-    const isNav = navigation.isNavigating;
+    const isNav = isNavigating;
 
     let splitIdx: number;
     if (isNav && forwardIndex > 0) {
       splitIdx = Math.max(1, Math.min(coords.length - 1, forwardIndex));
     } else {
-      const progress = navigation.routeProgress;
+      const progress = routeProgress;
       splitIdx = Math.max(1, Math.min(coords.length - 1, Math.round(progress * (coords.length - 1))));
     }
 
@@ -244,7 +250,7 @@ export default function MapViewGL() {
         map.fitBounds(bounds, { padding: 60, duration: 500 });
       } catch {}
     }
-  }, [selectedRoute, navigation.isNavigating, routeProgress, forwardIndex, isWrongWay]);
+  }, [selectedRoute, isNavigating, routeProgress, forwardIndex, isWrongWay]);
 
   useEffect(() => {
     drawRoute();
@@ -309,12 +315,14 @@ export default function MapViewGL() {
         // must not be left to fire later and repopulate markers the user
         // just cleared.
         clearTimeout(objectTimerRef.current);
+        objectsRequestIdRef.current++;
         cleanupMarkers(objectMarkersRef.current);
         setVisibleObjects([]);
         return;
       }
 
       clearTimeout(objectTimerRef.current);
+      const requestId = ++objectsRequestIdRef.current;
       objectTimerRef.current = setTimeout(async () => {
         try {
           const res = await mapApi.getObjects({
@@ -326,6 +334,11 @@ export default function MapViewGL() {
             limit: 200,
           });
 
+          // The debounce timer only dedupes scheduling, not the network
+          // requests themselves — an earlier viewport's fetch can still
+          // resolve after a later one on a slow/jittery connection and
+          // stomp the correct markers with stale-bounds ones.
+          if (requestId !== objectsRequestIdRef.current) return;
           const objects: MapObject[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
           setVisibleObjects(objects);
           renderObjectMarkers(objects);
@@ -347,12 +360,14 @@ export default function MapViewGL() {
       const cats = useMapStore.getState().activeCategories;
       if (cats.length === 0) {
         clearTimeout(reportTimerRef.current);
+        reportsRequestIdRef.current++;
         cleanupMarkers(reportMarkersRef.current);
         setReports([]);
         return;
       }
 
       clearTimeout(reportTimerRef.current);
+      const requestId = ++reportsRequestIdRef.current;
       reportTimerRef.current = setTimeout(async () => {
         try {
           const res = await reportsApi.getInArea({
@@ -361,6 +376,10 @@ export default function MapViewGL() {
             minLng: bounds.getWest(),
             maxLng: bounds.getEast(),
           });
+          // Same out-of-order-response risk as the objects loader above —
+          // an earlier viewport's response landing after a later one would
+          // otherwise silently replace correct markers with stale ones.
+          if (requestId !== reportsRequestIdRef.current) return;
           const reports: Report[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
           setReports(reports);
 
@@ -500,12 +519,12 @@ export default function MapViewGL() {
   useEffect(() => {
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
-    if (!navigation.isNavigating) {
+    if (!isNavigating) {
       loadObjectsInBounds(bounds);
       loadTrafficSignals(bounds);
     }
     loadReportsInBounds(bounds);
-  }, [navigation.isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
+  }, [isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
 
   // Inject global map styles once
   useEffect(() => {

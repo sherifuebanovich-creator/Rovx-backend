@@ -64,9 +64,16 @@ export class FriendsController {
   async getLocations(@CurrentUser('id') userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { subscription: true },
+      select: { subscription: true, subscriptionEnd: true },
     });
-    if (!user || !PREMIUM_TIERS_FOR_LOCATIONS.includes(user.subscription)) {
+    // `subscription` alone isn't enough — unlike premium.service.ts's
+    // getUserTier/getMySubscription (which every other premium-gated check
+    // goes through), this never re-checked subscriptionEnd, so a user whose
+    // paid period lapsed without them cancelling (subscription only ever
+    // flips back to FREE on explicit cancel/admin action, not automatically
+    // on expiry) kept this feature forever.
+    const expired = !!user?.subscriptionEnd && user.subscriptionEnd < new Date();
+    if (!user || expired || !PREMIUM_TIERS_FOR_LOCATIONS.includes(user.subscription)) {
       throw new ForbiddenException('Friend locations require Premium Standard or higher');
     }
     return this.friendsService.getFriendsLocations(userId);
