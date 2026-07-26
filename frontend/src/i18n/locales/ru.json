@@ -544,7 +544,12 @@
     "displayNamePlaceholder": "Имя",
     "usernamePlaceholder": "Имя пользователя",
     "bioPlaceholder": "О себе (необязательно)",
-    "avatarTooLarge": "Изображение слишком большое (макс 5МБ)"
+    "phonePlaceholder": "Телефон",
+    "cityPlaceholder": "Город",
+    "homeAddressPlaceholder": "Домашний адрес",
+    "workAddressPlaceholder": "Рабочий адрес",
+    "avatarTooLarge": "Изображение слишком большое (макс 5МБ)",
+    "avatarInvalidType": "Разрешены только JPEG, PNG, WebP, GIF"
   },
   "bookmarks": {
     "loadFailed": "Не удалось загрузить закладки",
@@ -673,6 +678,9 @@
     "login": "Войти",
     "all": "Все группы",
     "my": "Мои группы",
+    "members_one": "{{count}} участник",
+    "members_few": "{{count}} участника",
+    "members_many": "{{count}} участников",
     "namePlaceholder": "Название группы",
     "descriptionPlaceholder": "Описание",
     "cityPlaceholder": "Город",

@@ -11,6 +11,18 @@ type VehicleType = (typeof VEHICLE_TYPES)[keyof typeof VEHICLE_TYPES];
 export class UsersService {
   constructor(private prisma: PrismaService, private redis: RedisService) {}
 
+  // Used only to check for an existing avatar to delete before overwriting
+  // it — deliberately not getProfile(), which joins preferences/vehicles/
+  // counts that have nothing to do with the avatar and can turn an
+  // unrelated schema/data issue on those into an avatar-upload failure.
+  async getAvatarOnly(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true },
+    });
+    return user?.avatar ?? null;
+  }
+
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

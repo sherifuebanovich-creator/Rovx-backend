@@ -27,7 +27,13 @@ export class FriendsService {
     // concurrent sendRequest calls between the same two users.
     const [lockA, lockB] = [userId, friendId].sort();
     const friend = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`friend:${lockA}:${lockB}`})::bigint)`;
+      // pg_advisory_xact_lock returns void — $queryRaw tries to deserialize
+      // the (nonexistent) result column and throws "Failed to deserialize
+      // column of type 'void'" on every call, turning every friend request
+      // into an unconditional 500. $executeRaw doesn't attempt to
+      // deserialize a result set, only reports rows affected, which is all
+      // that's needed here since we only care about the lock's side effect.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`friend:${lockA}:${lockB}`})::bigint)`;
 
       const existing = await tx.friend.findFirst({
         where: {

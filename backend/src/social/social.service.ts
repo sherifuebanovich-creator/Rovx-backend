@@ -205,7 +205,12 @@ export class SocialService {
     // serializes concurrent creates, same pattern as friends.service.ts.
     const nameLower = String(data.name).toLowerCase();
     const group = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
+      // pg_advisory_xact_lock returns void — $queryRaw tries to deserialize
+      // a result column that doesn't exist and throws "Failed to
+      // deserialize column of type 'void'" on every single call, making
+      // this an unconditional 500 rather than a rare race guard.
+      // $executeRaw doesn't attempt to deserialize a result set.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
 
       const existing = await tx.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
       if (existing) {
@@ -252,7 +257,7 @@ export class SocialService {
         // name before re-checking so a concurrent create/rename can't slip
         // in between the check and the update.
         const nameLower = String(data.name).toLowerCase();
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
         const existing = await tx.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' } } });
         if (existing) throw new ConflictException('Это имя группы уже используется');
       }

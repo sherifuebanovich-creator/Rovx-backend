@@ -88,9 +88,9 @@ export class UsersController {
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
 
-    const currentProfile = await this.usersService.getProfile(userId) as any;
-    if (currentProfile?.avatar) {
-      this.deleteOldAvatar(currentProfile.avatar);
+    const currentAvatar = await this.usersService.getAvatarOnly(userId);
+    if (currentAvatar) {
+      this.deleteOldAvatar(currentAvatar);
     }
 
     const avatarUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;

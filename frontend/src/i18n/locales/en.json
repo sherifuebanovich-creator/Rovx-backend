@@ -540,7 +540,12 @@
     "displayNamePlaceholder": "Display name",
     "usernamePlaceholder": "Username",
     "bioPlaceholder": "Bio (optional)",
-    "avatarTooLarge": "Image too large (max 5MB)"
+    "phonePlaceholder": "Phone",
+    "cityPlaceholder": "City",
+    "homeAddressPlaceholder": "Home address",
+    "workAddressPlaceholder": "Work address",
+    "avatarTooLarge": "Image too large (max 5MB)",
+    "avatarInvalidType": "Only JPEG, PNG, WebP, GIF allowed"
   },
   "bookmarks": {
     "loadFailed": "Failed to load bookmarks",
@@ -669,6 +674,8 @@
     "login": "Sign In",
     "all": "All groups",
     "my": "My groups",
+    "members_one": "{{count}} member",
+    "members_other": "{{count}} members",
     "namePlaceholder": "Group name",
     "descriptionPlaceholder": "Description",
     "cityPlaceholder": "City",
