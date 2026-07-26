@@ -598,6 +598,13 @@ export class TelegramController implements OnModuleInit {
           return { ok: true };
         }
 
+        if (data?.startsWith('userinfo_')) {
+          const userId = data.replace('userinfo_', '');
+          await this.telegram.answerCallbackQuery(cbId, '', false);
+          await this.sendUserInfo(chatId, userId);
+          return { ok: true };
+        }
+
         if (data?.startsWith('users_page_')) {
           const page = parseInt(data.replace('users_page_', ''), 10) || 1;
           const messageId = body.callback_query.message?.message_id;
@@ -1081,6 +1088,20 @@ export class TelegramController implements OnModuleInit {
     }
   }
 
+  // Short id shown for readability — the full id (needed by /userinfo,
+  // /grant, /ban, /role, /deleteuser etc.) is never lost, since every row
+  // also gets a "Подробнее" button carrying the full id via callback_data,
+  // so an admin never has to hand-copy/retype a 36-char UUID.
+  private shortId(id: string): string {
+    return id.slice(0, 8);
+  }
+
+  private regMethodLabel(u: { googleId?: string | null; passwordHash?: string | null }): string {
+    if (u.googleId) return '🌐 Google';
+    if (u.passwordHash) return '📧 Email+пароль';
+    return '❓';
+  }
+
   private async buildUsersListPage(page: number): Promise<{ text: string; buttons: Array<{ text: string; callback_data: string }>[] } | null> {
     const { users, total, pages } = await this.premium.getAllUsers(page, 15);
     if (users.length === 0) {
@@ -1088,20 +1109,23 @@ export class TelegramController implements OnModuleInit {
     }
     const start = (page - 1) * 15 + 1;
     let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ (${start}-${start + users.length - 1} из ${total}, стр. ${page}/${pages})</b>\n━━━━━━━━━━━━━━━\n\n`;
+    const rows: Array<{ text: string; callback_data: string }>[] = [];
     for (const u of users) {
       const name = escapeTelegramHtml(u.displayName || u.username || u.email || '—');
       const sub = u.subscription === 'FREE' ? '🆓' : '💎';
       const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
-      msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${u.id}</code>\n\n`;
+      msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   ${this.regMethodLabel(u)}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${this.shortId(u.id)}</code>\n\n`;
+      rows.push([{ text: `👤 ${u.displayName || u.username || u.email || u.id}`, callback_data: `userinfo_${u.id}` }]);
     }
-    msg += `Для поиска: <code>/find имя</code>\nДля удаления: <code>/deleteuser userId</code>`;
+    msg += `Для поиска: <code>/find имя</code>`;
 
     const navRow: Array<{ text: string; callback_data: string }> = [];
     if (page > 1) navRow.push({ text: '◀ Назад', callback_data: `users_page_${page - 1}` });
     navRow.push({ text: `${page}/${pages}`, callback_data: `users_page_${page}` });
     if (page < pages) navRow.push({ text: 'Вперёд ▶', callback_data: `users_page_${page + 1}` });
+    rows.push(navRow);
 
-    return { text: msg, buttons: [navRow] };
+    return { text: msg, buttons: rows };
   }
 
   private async sendUsersList(chatId: number, page = 1) {
@@ -1161,13 +1185,13 @@ export class TelegramController implements OnModuleInit {
       const msg = `👤 <b>${name}</b>\n━━━━━━━━━━━━━━━\n` +
         `📧 ${user.email || '—'}\n` +
         `🏷 Username: ${user.username || '—'}\n` +
+        `${this.regMethodLabel(user)}\n` +
         `💎 Подписка: ${user.subscription}\n` +
         `📅 Действует до: ${subEnd}\n` +
         `📝 Репортов: ${user._count?.reports || 0}\n` +
         `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
-        `🆔 <code>${user.id}</code>\n\n` +
-        `Для подробностей: <code>/userinfo ${user.id}</code>`;
-      await this.telegram.sendMessageToChat(chatId, msg);
+        `🆔 <code>${this.shortId(user.id)}</code>`;
+      await this.telegram.sendMessageToChat(chatId, msg, [{ text: '📋 Подробнее', callback_data: `userinfo_${user.id}` }]);
     } catch (error) {
       this.logger.error('Failed to find user', error instanceof Error ? error.message : String(error));
       await this.telegram.sendMessageToChat(chatId, '❌ Ошибка поиска');

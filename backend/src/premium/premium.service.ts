@@ -835,6 +835,8 @@ export class PremiumService {
           subscription: true,
           subscriptionEnd: true,
           createdAt: true,
+          googleId: true,
+          passwordHash: true,
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -860,6 +862,8 @@ export class PremiumService {
         subscription: true,
         subscriptionEnd: true,
         createdAt: true,
+        googleId: true,
+        passwordHash: true,
         _count: { select: { reports: true } },
       },
     });

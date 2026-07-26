@@ -24,7 +24,9 @@ const CATEGORY_LABEL_KEYS: Record<string, string> = {
   ATTRACTION: 'attraction',
   TIRE_SERVICE: 'tireService', CAR_SERVICE: 'carService', CAR_WASH: 'carWash',
   REST_AREA: 'restArea', TOURIST_ATTRACTION: 'touristAttraction',
-  BORDER_CROSSING: 'borderCrossing',
+  BORDER_CROSSING: 'borderCrossing', WEIGH_STATION: 'weighStation', CUSTOMS: 'customs',
+  SPEED_CAMERA: 'speedCamera', ROAD_WORKS: 'roadWorks', ACCIDENT: 'accident',
+  TRAFFIC_LIGHT: 'trafficLight', POLICE: 'police',
 };
 
 export function ObjectDetailPanel() {

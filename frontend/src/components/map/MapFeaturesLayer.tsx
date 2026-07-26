@@ -17,7 +17,6 @@ function MapFeaturesLayer({ map }: Props) {
   const clusterLayerId = 'map-features-clusters';
   const clusterCountId = 'map-features-cluster-count';
   const cameraLayerId = 'map-features-cameras';
-  const cameraIconLayerId = 'map-features-camera-icon';
   const signalLayerId = 'map-features-signals';
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const lastBoundsRef = useRef<string>('');
@@ -31,12 +30,45 @@ function MapFeaturesLayer({ map }: Props) {
   const cleanup = useCallback(() => {
     if (!map) return;
     try {
-      [clusterLayerId, clusterCountId, cameraLayerId, cameraIconLayerId, signalLayerId].forEach(id => {
+      [clusterLayerId, clusterCountId, cameraLayerId, signalLayerId].forEach(id => {
         if (map.getLayer(id)) map.removeLayer(id);
       });
       if (map.getSource(sourceId)) map.removeSource(sourceId);
     } catch {}
   }, [map]);
+
+  // Draws the camera badge to an offscreen canvas and registers it as a
+  // reusable map image, instead of rendering the emoji via a symbol layer's
+  // `text-field`. Text-field glyphs are rasterized by the *style's* glyph
+  // server (its `glyphs` URL template), and most vector map styles only
+  // ship Latin/Cyrillic ranges there — not emoji — so the glyph silently
+  // failed to resolve depending on which tiles/ranges happened to be
+  // cached, making the icon appear and disappear seemingly at random.
+  // Canvas 2D text rendering instead uses the browser's own font stack,
+  // which resolves emoji via the OS's real emoji font every time.
+  const ensureCameraIcon = useCallback((m: maplibregl.Map) => {
+    const imageId = 'map-features-camera-icon';
+    if (m.hasImage(imageId)) return;
+    const size = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const center = size / 2;
+    ctx.beginPath();
+    ctx.arc(center, center, center - 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ef4444';
+    ctx.stroke();
+    ctx.font = `${Math.round(size * 0.5)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📷', center, center + 1);
+    m.addImage(imageId, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+  }, []);
 
   const loadFeatures = useCallback(async () => {
     if (!map) return;
@@ -61,6 +93,8 @@ function MapFeaturesLayer({ map }: Props) {
       if (!map.isStyleLoaded()) return;
       cleanup();
       if (!features.length) return;
+
+      ensureCameraIcon(map);
 
       const geojson: GeoJSON.FeatureCollection = {
         type: 'FeatureCollection',
@@ -125,32 +159,23 @@ function MapFeaturesLayer({ map }: Props) {
         },
       });
 
-      // Speed cameras — a white "badge" circle so the icon on top reads
-      // clearly against any basemap color, topped with an actual camera
-      // glyph instead of a plain colored dot (which read as an anonymous
-      // point with no indication of what it was until tapped).
+      // Speed cameras — a single self-contained icon (white badge + camera
+      // glyph baked into one canvas image, see ensureCameraIcon) instead of
+      // a plain colored dot that gave no indication of what it was until
+      // tapped. Collision detection is left on its defaults (no
+      // allow-overlap/ignore-placement) so icons crowded close together
+      // hide each other rather than stacking illegibly — the geojson
+      // source's own clustering is what's supposed to handle dense groups,
+      // by collapsing them into a single cluster circle before it ever
+      // reaches this per-point layer.
       map.addLayer({
         id: cameraLayerId,
-        type: 'circle',
-        source: sourceId,
-        filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'type'], 'speed_camera']],
-        paint: {
-          'circle-radius': 10,
-          'circle-color': '#ffffff',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ef4444',
-        },
-      });
-      map.addLayer({
-        id: cameraIconLayerId,
         type: 'symbol',
         source: sourceId,
         filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'type'], 'speed_camera']],
         layout: {
-          'text-field': '📷',
-          'text-size': 13,
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
+          'icon-image': 'map-features-camera-icon',
+          'icon-size': 0.5,
         },
       });
 
@@ -171,7 +196,7 @@ function MapFeaturesLayer({ map }: Props) {
     } catch (err) {
       console.warn('[MapFeaturesLayer] Failed to load features:', err);
     }
-  }, [map, cleanup]);
+  }, [map, cleanup, ensureCameraIcon]);
 
   useEffect(() => {
     if (!map) return;
@@ -230,12 +255,9 @@ function MapFeaturesLayer({ map }: Props) {
     const onLeave = () => { map.getCanvas().style.cursor = ''; };
 
     map.on('click', cameraLayerId, onClick);
-    map.on('click', cameraIconLayerId, onClick);
     map.on('click', signalLayerId, onClick);
     map.on('mouseenter', cameraLayerId, onEnter);
     map.on('mouseleave', cameraLayerId, onLeave);
-    map.on('mouseenter', cameraIconLayerId, onEnter);
-    map.on('mouseleave', cameraIconLayerId, onLeave);
     map.on('mouseenter', signalLayerId, onEnter);
     map.on('mouseleave', signalLayerId, onLeave);
 
@@ -251,12 +273,9 @@ function MapFeaturesLayer({ map }: Props) {
       map.off('zoomend', debouncedLoad);
       map.off('style.load', loadFeatures);
       map.off('click', cameraLayerId, onClick);
-      map.off('click', cameraIconLayerId, onClick);
       map.off('click', signalLayerId, onClick);
       map.off('mouseenter', cameraLayerId, onEnter);
       map.off('mouseleave', cameraLayerId, onLeave);
-      map.off('mouseenter', cameraIconLayerId, onEnter);
-      map.off('mouseleave', cameraIconLayerId, onLeave);
       map.off('mouseenter', signalLayerId, onEnter);
       map.off('mouseleave', signalLayerId, onLeave);
       popup.remove();
