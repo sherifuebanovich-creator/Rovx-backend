@@ -572,7 +572,12 @@ export class ReportsService {
 
   async getReportsForCity(city: string, page = 1, limit = 50) {
     if (!city) return { reports: [], total: 0 };
-    const skip = (page - 1) * limit;
+    // This endpoint is unauthenticated (GET /reports/city/:cityName) — a
+    // non-numeric `page` becomes NaN in the controller's `+page`, which the
+    // existing Math.max(0, ...) clamp (for negative/zero page) doesn't catch.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+    const skip = Math.max(0, (page - 1) * limit);
     const now = new Date();
     const lower = city.toLowerCase();
     const where: any = {
@@ -701,7 +706,12 @@ export class ReportsService {
   }
 
   async getReportsByUser(userId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // The controller already does Math.min(+limit, 100), but a non-numeric
+    // `limit`/`page` becomes NaN, which survives both Math.min and the
+    // Math.max(0, ...) clamp below unchanged.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [reports, total] = await Promise.all([
       this.prisma.report.findMany({
         where: { userId },

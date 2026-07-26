@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { premiumApi } from '@/lib/api';
@@ -53,6 +53,16 @@ function PremiumPage() {
   const [loading, setLoading] = useState(true);
   const [subscribeLoading, setSubscribeLoading] = useState<string | null>(null);
   const [paymentTier, setPaymentTier] = useState<PremiumTier | null>(null);
+  // Synchronous guard — the button's `disabled` attribute only reflects
+  // `subscribeLoading` after React commits the state update, so two clicks
+  // landing in the same event-loop turn (a fast double-tap) can both pass
+  // the disabled check and fire two checkout requests for the same tier.
+  const subscribingRef = useRef<string | null>(null);
+  // pollForActivation's loop has no way to stop itself once started — if the
+  // user navigates away from /premium mid-poll, it kept firing fetchData()
+  // (network calls + a toast) for up to 4*2.5s after the page was gone.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -80,12 +90,15 @@ function PremiumPage() {
   const pollForActivation = async () => {
     for (let i = 0; i < 4; i++) {
       await new Promise(r => setTimeout(r, 2500));
+      if (!mountedRef.current) return;
       const sub = await fetchData();
+      if (!mountedRef.current) return;
       if (sub?.active) {
         toast.success(t('premium.paymentSuccess'));
         return;
       }
     }
+    if (!mountedRef.current) return;
     toast(t('premium.paymentProcessing'), { icon: '⏳' });
   };
 
@@ -101,6 +114,18 @@ function PremiumPage() {
       if (subRes.status === 'fulfilled') {
         const sub = subRes.value.data?.data || subRes.value.data;
         setMySub(sub);
+        // Sidebar/profile's tier badge, groups' create-gating
+        // (user?.subscription !== 'PREMIUM_MAX'), and FriendMarkers' premium
+        // gate all read user.subscription straight from the auth store —
+        // they never see this page's local `mySub` state. Without this, a
+        // just-completed purchase (this poll resolving sub.active) stays
+        // invisible to every other page until the next full /auth/me
+        // refresh (reload/re-login), e.g. blocking group creation right
+        // after buying the tier that's supposed to unlock it.
+        const current = useAuthStore.getState().user;
+        if (sub?.name && current && current.subscription !== sub.name) {
+          setUser({ ...current, subscription: sub.name });
+        }
         return sub;
       }
       return null;
@@ -112,6 +137,8 @@ function PremiumPage() {
   };
 
   const handleSubscribe = async (tier: PremiumTier) => {
+    if (subscribingRef.current) return;
+    subscribingRef.current = tier.name;
     setSubscribeLoading(tier.name);
     try {
       const res = await premiumApi.createCheckout(tier.name, 1);
@@ -127,12 +154,15 @@ function PremiumPage() {
       // request failed outright — fall back to the manual bank-transfer
       // flow instead of leaving the user stuck with just a loading spinner.
       toast.error(t('premium.checkoutError'));
+      subscribingRef.current = null;
       setSubscribeLoading(null);
       setPaymentTier(tier);
     }
   };
 
   const handleManualPay = (tier: PremiumTier) => {
+    if (subscribingRef.current) return;
+    subscribingRef.current = tier.name;
     setSubscribeLoading(tier.name);
     setPaymentTier(tier);
   };
@@ -312,7 +342,7 @@ function PremiumPage() {
             tierName={paymentTier.name}
             tierLabel={paymentTier.label}
             price={getTierPrice(paymentTier)}
-            onClose={() => { setPaymentTier(null); setSubscribeLoading(null); }}
+            onClose={() => { subscribingRef.current = null; setPaymentTier(null); setSubscribeLoading(null); }}
           />
         )}
       </AnimatePresence>

@@ -47,18 +47,27 @@ export class FriendsService {
       });
     });
 
-    const notification = await this.prisma.notification.create({
-      data: {
-        userId: friendId,
-        type: 'friend_request',
-        title: 'Friend request',
-        body: 'You received a friend request',
-        data: JSON.stringify({ userId }),
-      },
-    });
+    // The friend row above is already committed — a failure here (DB blip,
+    // socket error) must not turn into a 500 for an action that actually
+    // succeeded. Without this try/catch, the caller saw an error, assumed
+    // the request wasn't sent, and retrying hit "Request already sent"
+    // instead of just missing the notification.
+    try {
+      const notification = await this.prisma.notification.create({
+        data: {
+          userId: friendId,
+          type: 'friend_request',
+          title: 'Friend request',
+          body: 'You received a friend request',
+          data: JSON.stringify({ userId }),
+        },
+      });
 
-    await this.gateway.sendToUser(friendId, 'notification:new', notification);
-    await this.gateway.sendToUser(friendId, 'friend:request', { userId, status: 'PENDING' });
+      await this.gateway.sendToUser(friendId, 'notification:new', notification);
+      await this.gateway.sendToUser(friendId, 'friend:request', { userId, status: 'PENDING' });
+    } catch (e) {
+      this.logger.error('Failed to notify friend request recipient', e);
+    }
 
     return friend;
   }
@@ -75,18 +84,27 @@ export class FriendsService {
     });
     await this.invalidateFriendsListCache([userId, friendId]);
 
-    const acceptedNotification = await this.prisma.notification.create({
-      data: {
-        userId: friendId,
-        type: 'friend_accepted',
-        title: 'Friend request accepted',
-        body: 'Your friend request was accepted',
-        data: JSON.stringify({ userId }),
-      },
-    });
+    // Same reasoning as sendRequest: the status flip to ACCEPTED above is
+    // already committed, so a notification/socket failure here must not
+    // surface as a request failure — a retry would otherwise hit
+    // "Request not found" (status is no longer PENDING) even though the
+    // accept itself went through.
+    try {
+      const acceptedNotification = await this.prisma.notification.create({
+        data: {
+          userId: friendId,
+          type: 'friend_accepted',
+          title: 'Friend request accepted',
+          body: 'Your friend request was accepted',
+          data: JSON.stringify({ userId }),
+        },
+      });
 
-    await this.gateway.sendToUser(friendId, 'notification:new', acceptedNotification);
-    await this.gateway.sendToUser(friendId, 'friend:accepted', { userId, status: 'ACCEPTED' });
+      await this.gateway.sendToUser(friendId, 'notification:new', acceptedNotification);
+      await this.gateway.sendToUser(friendId, 'friend:accepted', { userId, status: 'ACCEPTED' });
+    } catch (e) {
+      this.logger.error('Failed to notify accepted friend request', e);
+    }
 
     return { accepted: true };
   }
@@ -140,8 +158,8 @@ export class FriendsService {
         status: 'ACCEPTED',
       },
       include: {
-        user: { select: { id: true, username: true, displayName: true, avatar: true, city: true } },
-        friend: { select: { id: true, username: true, displayName: true, avatar: true, city: true } },
+        user: { select: { id: true, username: true, displayName: true, avatar: true, city: true, role: true } },
+        friend: { select: { id: true, username: true, displayName: true, avatar: true, city: true, role: true } },
       },
     });
 
@@ -153,6 +171,7 @@ export class FriendsService {
         displayName: friend.displayName,
         avatar: friend.avatar,
         city: friend.city,
+        role: friend.role,
         since: f.createdAt,
       };
     });
@@ -181,7 +200,7 @@ export class FriendsService {
     const requests = await this.prisma.friend.findMany({
       where: { friendId: userId, status: 'PENDING' },
       include: {
-        user: { select: { id: true, username: true, displayName: true, avatar: true } },
+        user: { select: { id: true, username: true, displayName: true, avatar: true, role: true } },
       },
     });
     return requests.map(r => ({
@@ -212,6 +231,7 @@ export class FriendsService {
         displayName: true,
         avatar: true,
         city: true,
+        role: true,
       },
       take: 20,
     });
@@ -221,15 +241,38 @@ export class FriendsService {
     // keystroke did two redundant online-set lookups (SMEMBERS + MGET)
     // against Redis. Fetching the raw friend list and the online set once
     // each here does the same work in half the round trips.
-    const [rawFriends, onlineUserIds] = await Promise.all([
+    const [rawFriends, onlineUserIds, pendingOutgoing, pendingIncoming] = await Promise.all([
       this.getAcceptedFriendsRaw(currentUserId),
       this.getValidOnlineUserIds(),
+      // Without this, the search result never reflects a request the
+      // current user already sent — the "Add" button kept showing instead
+      // of "Pending" on every subsequent search, and clicking it again hit
+      // the backend's "Request already sent" ConflictException instead of
+      // just showing the pending state up front.
+      this.prisma.friend.findMany({
+        where: { userId: currentUserId, status: 'PENDING' },
+        select: { friendId: true },
+      }),
+      // A PENDING row can also exist in the other direction — the searched
+      // user already sent *us* a request. Without surfacing that distinctly,
+      // they still show up with the "Add" button; clicking it hits
+      // sendRequest's existing-row check (which matches either direction)
+      // and throws "Request already sent" instead of pointing the user to
+      // just accept the request that's already waiting for them.
+      this.prisma.friend.findMany({
+        where: { friendId: currentUserId, status: 'PENDING' },
+        select: { userId: true },
+      }),
     ]);
     const friendIds = rawFriends.map((f: any) => f.id);
+    const pendingIds = pendingOutgoing.map(p => p.friendId);
+    const incomingIds = pendingIncoming.map(p => p.userId);
     return users.map(u => ({
       ...u,
       isFriend: friendIds.includes(u.id),
       isOnline: onlineUserIds.includes(u.id),
+      requestSent: pendingIds.includes(u.id),
+      requestReceived: incomingIds.includes(u.id),
     }));
   }
 

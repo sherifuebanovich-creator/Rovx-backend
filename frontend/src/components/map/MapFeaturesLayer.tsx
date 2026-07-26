@@ -261,9 +261,19 @@ function MapFeaturesLayer({ map }: Props) {
     map.on('mouseenter', signalLayerId, onEnter);
     map.on('mouseleave', signalLayerId, onLeave);
 
+    // A style switch (setStyle) wipes all custom sources/layers just like it
+    // does for the route line in MapViewGL — but unlike that redraw, this one
+    // dedupes by bbox (see loadFeatures), so if the viewport hasn't moved,
+    // that guard would otherwise skip rebuilding and leave the camera/signal
+    // layers gone until the next pan/zoom to a different bbox.
+    const onStyleLoad = () => {
+      lastBoundsRef.current = '';
+      loadFeatures();
+    };
+
     map.on('moveend', debouncedLoad);
     map.on('zoomend', debouncedLoad);
-    map.on('style.load', loadFeatures);
+    map.on('style.load', onStyleLoad);
 
     loadFeatures();
 
@@ -271,7 +281,7 @@ function MapFeaturesLayer({ map }: Props) {
       clearTimeout(debounceRef.current);
       map.off('moveend', debouncedLoad);
       map.off('zoomend', debouncedLoad);
-      map.off('style.load', loadFeatures);
+      map.off('style.load', onStyleLoad);
       map.off('click', cameraLayerId, onClick);
       map.off('click', signalLayerId, onClick);
       map.off('mouseenter', cameraLayerId, onEnter);

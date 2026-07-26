@@ -60,6 +60,14 @@ export function NavigationHUD() {
   // while driving) could otherwise still overlap with a newer one and have
   // its stale response win the race and overwrite the fresher route.
   const isReroutingRef = useRef(false);
+  // Guards against endTrip firing twice for the same trip — arrival
+  // detection (automatic) and the "End trip" button (manual) both call
+  // endTrip(), and the UI that shows the manual button appears as soon as
+  // navigation.isArrived flips, which happens before the automatic call's
+  // await (routesApi.endTrip) has resolved and cleared activeTrip. Without
+  // this lock, a quick tap during that window sends a second end-trip
+  // request for the same tripId.
+  const isEndingTripRef = useRef(false);
   // ETA should read "--" until the trip actually gets moving, then track
   // the current pace — not the route's precomputed average.
   const movementStartedRef = useRef(false);
@@ -90,7 +98,8 @@ export function NavigationHUD() {
   };
 
   const endTrip = useCallback(async () => {
-    if (activeTrip) {
+    if (activeTrip && !isEndingTripRef.current) {
+      isEndingTripRef.current = true;
       try {
         const rem = userLocation && selectedRoute
           ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
@@ -103,6 +112,7 @@ export function NavigationHUD() {
         });
       } catch {}
       setActiveTrip(null);
+      isEndingTripRef.current = false;
     }
   }, [activeTrip, userLocation, selectedRoute, setActiveTrip]);
 

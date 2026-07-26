@@ -400,6 +400,10 @@ export class MapService {
         lat: { gte: Math.max(lat - latDeg, -90), lte: Math.min(lat + latDeg, 90) },
         lng: { gte: Math.max(lng - lngDeg, -180), lte: Math.min(lng + lngDeg, 180) },
       },
+      // Was unbounded — unlike every other bbox query in this file, a large
+      // radius here had no take cap at all, so it could return (and cache)
+      // the entire table in one response.
+      take: 1000,
       select: {
         id: true,
         type: true,
@@ -454,6 +458,8 @@ export class MapService {
         lat: { gte: Math.max(lat - latDeg, -90), lte: Math.min(lat + latDeg, 90) },
         lng: { gte: Math.max(lng - lngDeg, -180), lte: Math.min(lng + lngDeg, 180) },
       },
+      // Same unbounded-take issue as getSpeedCameras above.
+      take: 1000,
       select: {
         id: true,
         lat: true,

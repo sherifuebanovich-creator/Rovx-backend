@@ -17,16 +17,18 @@ export class TelegramService {
     return !!this.botToken && !!this.chatId;
   }
 
-  async sendMessage(text: string, parseMode: 'HTML' | 'Markdown' = 'HTML') {
-    if (!this.isConfigured) return;
+  async sendMessage(text: string, parseMode: 'HTML' | 'Markdown' = 'HTML'): Promise<boolean> {
+    if (!this.isConfigured) return false;
     try {
       await axios.post(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
         chat_id: this.chatId,
         text,
         parse_mode: parseMode,
       }, { timeout: 10000 });
+      return true;
     } catch (error) {
       this.logger.error('Failed to send Telegram message', error instanceof Error ? error.message : String(error));
+      return false;
     }
   }
 

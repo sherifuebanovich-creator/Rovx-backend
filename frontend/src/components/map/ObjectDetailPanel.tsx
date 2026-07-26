@@ -251,6 +251,8 @@ function getCategoryEmoji(category: string): string {
     ATTRACTION: '🏞️',
     TIRE_SERVICE: '🔧', CAR_SERVICE: '🔩', CAR_WASH: '🧽',
     REST_AREA: '🌳', TOURIST_ATTRACTION: '🏞️', BORDER_CROSSING: '🛂',
+    WEIGH_STATION: '⚖️', CUSTOMS: '🛃', SPEED_CAMERA: '📷',
+    ROAD_WORKS: '🚧', ACCIDENT: '🚨', TRAFFIC_LIGHT: '🚦', POLICE: '👮',
   };
   return map[category] || '📍';
 }

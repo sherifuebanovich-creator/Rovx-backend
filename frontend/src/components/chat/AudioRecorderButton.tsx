@@ -21,6 +21,13 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const startTimeRef = useRef(0);
   const touchStartY = useRef(0);
+  // getUserMedia is async and isRecording only flips to true once it
+  // resolves, so onPointerDown (gated on !isRecording) stays wired for the
+  // whole gap — a second quick press/tap before it resolves would call
+  // startRecording() again, opening a second mic stream that overwrites
+  // streamRef/mediaRecorderRef and leaks the first stream (mic stays hot
+  // with no reference left to stop it).
+  const isStartingRef = useRef(false);
 
   const cleanup = useCallback(() => {
     clearInterval(timerRef.current);
@@ -37,6 +44,8 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
   }, [cleanup]);
 
   const startRecording = useCallback(async () => {
+    if (isStartingRef.current) return;
+    isStartingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 },
@@ -66,6 +75,8 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       }, 200);
     } catch {
       toast.error('Микрофон недоступен');
+    } finally {
+      isStartingRef.current = false;
     }
   }, []);
 
@@ -103,6 +114,19 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
       const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
+
+      // Matches the server's Multer fileSize limit for voice messages
+      // (social.controller.ts) — there's no auto-stop timer here like the
+      // video recorder's 60s cap, so a long hold can build a file past the
+      // server limit. Catch it here instead of making the user wait for the
+      // upload to round-trip just to hit a generic error.
+      const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
+      if (file.size > MAX_AUDIO_BYTES) {
+        toast.error('Голосовое сообщение слишком большое, запишите покороче');
+        setIsSending(false);
+        cleanup();
+        return;
+      }
 
       const res = await socialApi.uploadGroupAudio(groupId, file);
       const audioUrl = res.data?.url || res.data?.data?.url;

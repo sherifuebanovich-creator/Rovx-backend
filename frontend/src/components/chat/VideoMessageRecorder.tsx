@@ -23,6 +23,12 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
   const startTimeRef = useRef(0);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const stopRecordingRef = useRef<(send: boolean) => void>(() => {});
+  // getUserMedia is async and the idle "record" button stays rendered (and
+  // clickable) until isRecording flips true, so a fast double-tap before it
+  // resolves would call startRecording() twice — opening a second
+  // camera/mic stream that overwrites streamRef/mediaRecorderRef and leaks
+  // the first one (camera stays on with no reference left to stop it).
+  const isStartingRef = useRef(false);
 
   const cleanup = useCallback(() => {
     clearInterval(timerRef.current);
@@ -43,6 +49,8 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
   }, []);
 
   const startRecording = useCallback(async () => {
+    if (isStartingRef.current) return;
+    isStartingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 480, height: 480, facingMode: 'user' },
@@ -85,6 +93,8 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
       }, 200);
     } catch {
       toast.error('Камера недоступна');
+    } finally {
+      isStartingRef.current = false;
     }
   }, []);
 

@@ -45,6 +45,17 @@ export function RoutePanel() {
   const { user } = useAuthStore();
 
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isStartingNav, setIsStartingNav] = useState(false);
+  // Synchronous guard against a double-tap firing startNavigation twice
+  // before React re-renders with the disabled button — state alone isn't
+  // enough here since both taps can land in the same event-loop turn,
+  // before the first setIsStartingNav(true) has painted.
+  const isStartingNavRef = useRef(false);
+  // Same class of race as isStartingNavRef below — the Calculate button is
+  // only disabled once isCalculating re-renders, so two taps landing in the
+  // same event-loop turn both pass the `isCalculating` check and each fire
+  // their own full Promise.all of routesApi.calculate() requests.
+  const isCalculatingRef = useRef(false);
   const [selectedTypes, setSelectedTypes] = useState<RouteType[]>(['FASTEST', 'SAFEST', 'ECONOMICAL']);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -106,6 +117,8 @@ export function RoutePanel() {
       toast.error(t('routePanel.setOriginDest'));
       return;
     }
+    if (isCalculatingRef.current) return;
+    isCalculatingRef.current = true;
 
     setIsCalculating(true);
     try {
@@ -150,11 +163,15 @@ export function RoutePanel() {
       toast.error(t('routePanel.routeCalcFailed'));
     } finally {
       setIsCalculating(false);
+      isCalculatingRef.current = false;
     }
   };
 
   const startNavigation = async () => {
     if (!selectedRoute || !origin || !destination) return;
+    if (isStartingNavRef.current) return;
+    isStartingNavRef.current = true;
+    setIsStartingNav(true);
 
     try {
       const res = await routesApi.startTrip({
@@ -175,6 +192,9 @@ export function RoutePanel() {
       toast.success(t('routePanel.navigationStarted'));
     } catch {
       toast.error(t('routePanel.navStartFailed'));
+    } finally {
+      isStartingNavRef.current = false;
+      setIsStartingNav(false);
     }
   };
 
@@ -403,9 +423,14 @@ export function RoutePanel() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     onClick={startNavigation}
-                    className="w-full btn-primary py-4 flex items-center justify-center gap-2 text-base font-semibold"
+                    disabled={isStartingNav}
+                    className="w-full btn-primary py-4 flex items-center justify-center gap-2 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <FaCompass size={20} />
+                    {isStartingNav ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <FaCompass size={20} />
+                    )}
                     {t('routePanel.startNavigation')}
                   </motion.button>
                 )}

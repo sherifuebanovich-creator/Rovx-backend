@@ -85,7 +85,13 @@ export class MapController {
     const cats = categories
       ? (categories.split(',') as MapObjectCategory[])
       : undefined;
-    const cappedLimit = Math.min(limit ? +limit : 200, 500);
+    // A non-numeric limit (e.g. "abc") made `+limit` NaN, which survived
+    // Math.min(NaN, 500) as NaN and was then passed straight through as
+    // Prisma's `take: NaN`. A negative limit similarly passed through
+    // unclamped. Both are guarded against here the same way the coordinate
+    // params above are.
+    const rawLimit = limit !== undefined ? +limit : 200;
+    const cappedLimit = Math.min(Math.max(isFinite(rawLimit) ? rawLimit : 200, 1), 500);
 
     return this.mapService.getObjectsInBounds({
       minLat: nMinLat,
@@ -105,7 +111,15 @@ export class MapController {
     @Query('radius') radius = 5,
     @Query('category') category?: MapObjectCategory,
   ) {
-    return this.mapService.getNearby(+lat, +lng, +radius, category);
+    const nLat = +lat, nLng = +lng, nRadius = +radius;
+    // Unlike getObjects/getTraffic/getSpeedCameras/getTrafficSignals, this had
+    // no coordinate/radius validation at all — a non-numeric or out-of-range
+    // lat/lng propagates as NaN into the bbox math and then into Prisma's
+    // gte/lte filters, and an unclamped radius is only incidentally bounded
+    // by the lat/lng clamping downstream, not validated here.
+    if (![nLat, nLng, nRadius].every(isFinite)) throw new BadRequestException('Invalid coordinates');
+    if (nLat < -90 || nLat > 90 || nLng < -180 || nLng > 180) throw new BadRequestException('Coordinates out of range');
+    return this.mapService.getNearby(nLat, nLng, Math.min(Math.max(nRadius, 0.1), 100), category);
   }
 
   @Get('objects/:id')
@@ -145,7 +159,13 @@ export class MapController {
     @Query('lng') lng: number,
     @Query('radius') radius = 10,
   ) {
-    return this.mapService.getSpeedCameras(+lat, +lng, +radius);
+    const nLat = +lat, nLng = +lng, nRadius = +radius;
+    if (![nLat, nLng, nRadius].every(isFinite)) throw new BadRequestException('Invalid coordinates');
+    if (nLat < -90 || nLat > 90 || nLng < -180 || nLng > 180) throw new BadRequestException('Coordinates out of range');
+    // Unlike getObjects/getTraffic, this had no radius cap at all — the
+    // resulting bbox feeds an uncapped findMany in the service, so an
+    // absurd/negative radius could scan (and return) the entire table.
+    return this.mapService.getSpeedCameras(nLat, nLng, Math.min(Math.max(nRadius, 0.1), 100));
   }
 
   @Get('traffic-signals')
@@ -155,7 +175,10 @@ export class MapController {
     @Query('lng') lng: number,
     @Query('radius') radius = 2,
   ) {
-    return this.mapService.getTrafficSignals(+lat, +lng, +radius);
+    const nLat = +lat, nLng = +lng, nRadius = +radius;
+    if (![nLat, nLng, nRadius].every(isFinite)) throw new BadRequestException('Invalid coordinates');
+    if (nLat < -90 || nLat > 90 || nLng < -180 || nLng > 180) throw new BadRequestException('Coordinates out of range');
+    return this.mapService.getTrafficSignals(nLat, nLng, Math.min(Math.max(nRadius, 0.1), 100));
   }
 
   @Get('search')
@@ -192,7 +215,14 @@ export class MapController {
     @Query('lat') lat: number,
     @Query('lng') lng: number,
   ) {
-    return this.mapService.reverseGeocode(+lat, +lng);
+    // Was passing raw +lat/+lng straight through with no validation — a
+    // non-numeric value became NaN in the cache key and in Prisma's gte/lte
+    // filters below, unlike every other coordinate-taking endpoint in this
+    // controller which validates first.
+    const nLat = +lat, nLng = +lng;
+    if (![nLat, nLng].every(isFinite)) throw new BadRequestException('Invalid coordinates');
+    if (nLat < -90 || nLat > 90 || nLng < -180 || nLng > 180) throw new BadRequestException('Coordinates out of range');
+    return this.mapService.reverseGeocode(nLat, nLng);
   }
 
   @Post('bookmarks')

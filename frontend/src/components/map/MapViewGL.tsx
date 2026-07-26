@@ -9,6 +9,7 @@ import {
   createCategoryMarker,
   createReportMarker,
   createPopupContent,
+  createReportPopupContent,
   createTrafficSignalMarker,
 } from '@/lib/maplibreIcons';
 import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
@@ -39,6 +40,10 @@ export default function MapViewGL() {
   // per viewport, a full remove+recreate was a visible, janky pop-in burst
   // of synchronous DOM/Marker work even when most POIs hadn't changed.
   const objectMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  // Last-seen data per marker id, so a re-render can tell whether the object
+  // behind an unchanged id (name/rating/position edited server-side) needs
+  // its marker rebuilt instead of being skipped as "already on the map".
+  const objectDataRef = useRef<Map<string, MapObject>>(new Map());
   const reportMarkersRef = useRef<maplibregl.Marker[]>([]);
   const trafficMarkersRef = useRef<maplibregl.Marker[]>([]);
   const routeSourceRef = useRef<string | null>(null);
@@ -148,6 +153,7 @@ export default function MapViewGL() {
       clearTimeout(objectTimerRef.current);
       clearTimeout(reportTimerRef.current);
       cleanupMarkerMap(objectMarkersRef.current);
+      objectDataRef.current.clear();
       cleanupMarkers(reportMarkersRef.current);
       cleanupMarkers(trafficMarkersRef.current);
       map.remove();
@@ -284,16 +290,32 @@ export default function MapViewGL() {
       const existing = objectMarkersRef.current;
       const nextIds = new Set(objects.map(obj => String(obj.id)));
 
+      const prevData = objectDataRef.current;
+
       for (const [id, marker] of existing) {
         if (!nextIds.has(id)) {
           marker.remove();
           existing.delete(id);
+          prevData.delete(id);
         }
       }
 
       objects.forEach((obj) => {
         const id = String(obj.id);
-        if (existing.has(id)) return;
+        const prev = prevData.get(id);
+        if (existing.has(id)) {
+          const unchanged = prev
+            && prev.lat === obj.lat && prev.lng === obj.lng
+            && prev.name === obj.name && prev.category === obj.category
+            && prev.rating === obj.rating && prev.address === obj.address
+            && prev.distance === obj.distance;
+          if (unchanged) return;
+          // Same id, but the underlying data changed (name/rating/position/etc.
+          // edited server-side) — rebuild this one marker instead of leaving
+          // it permanently stale.
+          existing.get(id)!.remove();
+          existing.delete(id);
+        }
 
         const el = createCategoryMarker(obj.category, obj.name);
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
@@ -325,6 +347,7 @@ export default function MapViewGL() {
         });
 
         existing.set(id, marker);
+        prevData.set(id, obj);
       });
     },
     [setSelectedObject],
@@ -345,6 +368,7 @@ export default function MapViewGL() {
         clearTimeout(objectTimerRef.current);
         objectsRequestIdRef.current++;
         cleanupMarkerMap(objectMarkersRef.current);
+        objectDataRef.current.clear();
         setVisibleObjects([]);
         return;
       }
@@ -419,8 +443,24 @@ export default function MapViewGL() {
               .setLngLat([r.lng, r.lat])
               .addTo(mapRef.current!);
 
+            // Previously just called setSelectedReport(r) with nothing in the
+            // app ever reading that value back out — a tap on a report
+            // marker (including its description, the whole point of writing
+            // one in ReportPanel) produced no visible feedback at all.
+            let popup: maplibregl.Popup | null = null;
             el.addEventListener('click', (e) => {
               e.stopPropagation();
+              if (!popup) {
+                const popupHtml = createReportPopupContent(r.type, r.severity, r.description, r.address);
+                popup = new maplibregl.Popup({
+                  offset: [0, -10],
+                  closeButton: true,
+                  closeOnClick: false,
+                  className: 'mapboxgl-popup-custom',
+                }).setHTML(popupHtml);
+                marker.setPopup(popup);
+              }
+              marker.togglePopup();
               setSelectedReport(r);
             });
 

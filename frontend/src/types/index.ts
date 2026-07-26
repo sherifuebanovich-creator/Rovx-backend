@@ -205,13 +205,14 @@ export interface Friend {
   displayName: string;
   avatar?: string;
   city?: string;
+  role?: string | null;
   isOnline: boolean;
   since: string;
 }
 
 export interface FriendRequest {
   id: string;
-  user: { id: string; username: string; displayName: string; avatar?: string };
+  user: { id: string; username: string; displayName: string; avatar?: string; role?: string | null };
   createdAt: string;
 }
 

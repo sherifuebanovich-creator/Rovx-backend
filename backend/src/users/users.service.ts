@@ -202,12 +202,27 @@ export class UsersService {
   }
 
   async deleteVehicle(id: string, userId: string) {
-    await this.prisma.vehicle.deleteMany({ where: { id, userId } });
+    try {
+      await this.prisma.vehicle.deleteMany({ where: { id, userId } });
+    } catch (err: any) {
+      // Trip.vehicleId/FuelLog.vehicleId have no onDelete: Cascade or SetNull
+      // — deleting a vehicle that's referenced by past trips/fuel logs throws
+      // a raw FK violation (P2003) that would otherwise surface to the user
+      // as a bare "Internal server error" with no indication why.
+      if (err?.code === 'P2003') {
+        throw new BadRequestException('Нельзя удалить: автомобиль используется в поездках или записях топлива');
+      }
+      throw err;
+    }
     return { deleted: true };
   }
 
   async getLeaderboard(limit = 20) {
-    const cappedLimit = Math.min(Math.max(1, limit), 100);
+    // A non-numeric `limit` query param becomes NaN in the controller's
+    // `+limit`, and Math.max/Math.min propagate NaN straight through instead
+    // of clamping it, so it used to reach Prisma's `take` as NaN.
+    const safeLimit = Number.isFinite(limit) ? limit : 20;
+    const cappedLimit = Math.min(Math.max(1, safeLimit), 100);
 
     // Same top-N rows get re-queried by every client opening the leaderboard
     // screen, and reputation only moves in small increments (report

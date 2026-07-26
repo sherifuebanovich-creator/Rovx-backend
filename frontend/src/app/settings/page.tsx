@@ -243,7 +243,7 @@ export default function SettingsPage() {
     {
       title: t('settings.account'),
       items: [
-        { icon: <FaShieldAlt size={16} className="text-primary-400" />, label: t('settings.privacy'), right: <FaChevronRight size={12} className="text-gray-600" />, onClick: () => {} },
+        { icon: <FaShieldAlt size={16} className="text-primary-400" />, label: t('settings.privacy'), right: <FaChevronRight size={12} className="text-gray-600" />, onClick: () => toast(t('settings.privacyComingSoon')) },
       ]
     },
   ];

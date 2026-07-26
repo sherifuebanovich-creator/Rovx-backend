@@ -24,6 +24,10 @@ export default function GroupsPage() {
   const searchFetchId = useRef(0);
   const [joinByName, setJoinByName] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+  // The input's onKeyDown (Enter) and the button's onClick both call this —
+  // pressing Enter then immediately clicking (or Enter-repeat) before React
+  // commits `joinLoading` fired joinGroupByName twice with the same name.
+  const joiningRef = useRef(false);
   const [tab, setTab] = useState<'all' | 'my' | 'fav'>('all');
 
   useEffect(() => {
@@ -57,7 +61,9 @@ export default function GroupsPage() {
   };
 
   const handleJoinByName = async () => {
+    if (joiningRef.current) return;
     if (!joinByName.trim()) { toast.error(t('groups.enterName')); return; }
+    joiningRef.current = true;
     setJoinLoading(true);
     try {
       const res = await socialApi.joinGroupByName(joinByName.trim());
@@ -73,6 +79,7 @@ export default function GroupsPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message || t('groups.notFound'));
     } finally {
+      joiningRef.current = false;
       setJoinLoading(false);
     }
   };

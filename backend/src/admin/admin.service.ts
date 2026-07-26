@@ -19,7 +19,14 @@ export class AdminService {
   // ─── USERS ────────────────────────────────────────────────────────────────
 
   async getUsers(page = 1, limit = 20, search?: string, role?: string) {
-    const skip = (page - 1) * limit;
+    // `page`/`limit` come straight from `+query` in the controller — a
+    // non-numeric value makes them NaN, which the existing Math.max(0, ...)
+    // clamp (added for negative/zero page) doesn't catch since NaN survives
+    // Math.max unchanged and would reach Prisma's skip/take as NaN. `limit`
+    // was also completely unbounded, unlike every other capped list endpoint.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const where: any = {};
     if (search) {
       where.OR = [
@@ -119,7 +126,10 @@ export class AdminService {
   // ─── REPORTS ──────────────────────────────────────────────────────────────
 
   async getReports(page = 1, limit = 20, status?: string, type?: string) {
-    const skip = (page - 1) * limit;
+    // See getUsers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const where: any = {};
     if (status) where.status = status;
     if (type) where.type = type;
@@ -156,7 +166,10 @@ export class AdminService {
   // ─── MAP OBJECTS ──────────────────────────────────────────────────────────
 
   async getMapObjects(page = 1, limit = 20, category?: string) {
-    const skip = (page - 1) * limit;
+    // See getUsers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const where: any = {};
     if (category) where.category = category;
 
@@ -179,7 +192,19 @@ export class AdminService {
   }
 
   async deleteMapObject(id: string) {
-    await this.prisma.mapObject.delete({ where: { id } });
+    try {
+      await this.prisma.mapObject.delete({ where: { id } });
+    } catch (err: any) {
+      // Bookmark.mapObjectId/Review.mapObjectId have no onDelete: Cascade —
+      // deleting an object users have bookmarked/reviewed throws a raw FK
+      // violation (P2003) that the global filter would render as a bare
+      // "Internal server error", giving the admin no clue why the delete
+      // silently failed.
+      if (err?.code === 'P2003') {
+        throw new BadRequestException('Нельзя удалить: объект используется в закладках или отзывах пользователей');
+      }
+      throw err;
+    }
     return { deleted: true };
   }
 
@@ -324,7 +349,10 @@ export class AdminService {
   // ─── ADS ──────────────────────────────────────────────────────────────────
 
   async getAds(page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // See getUsers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [ads, total] = await Promise.all([
       this.prisma.advertisement.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
       this.prisma.advertisement.count(),

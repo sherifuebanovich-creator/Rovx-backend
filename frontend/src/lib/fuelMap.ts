@@ -55,7 +55,16 @@ export function getFuelType(make: string, model: string): FuelType {
   }
 
   for (const prefix of EV_MODEL_PREFIXES) {
-    if (modelUpper.startsWith(prefix) || modelUpper.includes(prefix)) {
+    // 'ev' is a bare 2-letter token meant to catch suffix/prefix model names
+    // like "EV6" or "Niro EV" — matched with plain .includes() it also fires
+    // on any model whose name merely contains those two letters in sequence
+    // (Ford Everest, Maserati Levante, Cadillac Seville, Honda Elevate),
+    // misclassifying ordinary petrol/diesel vehicles as ELECTRIC. Require it
+    // to appear as a standalone token instead of a raw substring.
+    const matches = prefix === 'ev'
+      ? /(^|[^a-z])ev([^a-z]|$)/.test(modelUpper)
+      : modelUpper.startsWith(prefix) || modelUpper.includes(prefix);
+    if (matches) {
       if (makeUpper === 'bmw' && prefix === 'i3' && !modelUpper.startsWith('i3')) continue;
       if (makeUpper === 'bmw' && prefix === 'i5' && !modelUpper.startsWith('i5')) continue;
       return 'ELECTRIC';

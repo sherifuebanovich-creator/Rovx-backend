@@ -7,6 +7,9 @@ const TRAFFIC_SOURCE = 'traffic-jam-source';
 const TRAFFIC_HEATMAP = 'traffic-jam-heatmap';
 const TRAFFIC_CIRCLES = 'traffic-jam-circles';
 const TRAFFIC_LABELS = 'traffic-jam-labels';
+// Matches MapFeaturesLayer's cameraLayerId — kept as a literal there too, so
+// this is just the same id, not an import (no shared module owns it).
+const CAMERA_LAYER_ID = 'map-features-cameras';
 
 function severityToColor(severity: number): string {
   if (severity >= 4) return '#ef4444';
@@ -70,6 +73,17 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
       data: geojson,
     });
 
+    // Anchor below MapFeaturesLayer's camera layer when it actually exists —
+    // but that layer is added asynchronously (after its own network fetch)
+    // and only when the current viewport has at least one camera/signal
+    // feature, so it's frequently missing exactly when this runs (every
+    // mount, every style.load). addLayer(layer, before) with a non-existent
+    // `before` id doesn't throw — maplibre-gl fires a silent 'error' event
+    // and skips adding the layer entirely — so without this check the whole
+    // heatmap/circles/labels stack would just never appear, with nothing to
+    // ever retry it since renderTraffic's dataKey memo still gets set.
+    const beforeId = map.getLayer(CAMERA_LAYER_ID) ? CAMERA_LAYER_ID : undefined;
+
     // Heatmap layer (Yandex-style glow)
     map.addLayer({
       id: TRAFFIC_HEATMAP,
@@ -113,7 +127,7 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
           16, 0.9,
         ],
       },
-    }, 'map-features-cameras');
+    }, beforeId);
 
     // Circle layer (individual points with severity color)
     map.addLayer({
@@ -138,7 +152,7 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
         'circle-stroke-width': 1,
         'circle-opacity': 0.85,
       },
-    }, 'map-features-cameras');
+    }, beforeId);
 
     // Label layer
     map.addLayer({
@@ -153,7 +167,7 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
       paint: {
         'text-opacity': 0.9,
       },
-    }, 'map-features-cameras');
+    }, beforeId);
 
   }, [map, reports]);
 

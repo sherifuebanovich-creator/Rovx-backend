@@ -56,7 +56,7 @@ export default function RoutesPage() {
   };
 
   const handleSelectRoute = (route: any) => {
-    if (!route.originLat || !route.destLat) {
+    if (route.originLat == null || route.destLat == null) {
       // If it's a fallback route, we don't have lat/lng, so redirect to map
       router.push('/');
       return;

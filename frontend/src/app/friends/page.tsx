@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { friendsApi } from '@/lib/api';
@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import { FaArrowLeft, FaUserPlus, FaUser, FaUserCheck, FaUserTimes, FaSearch, FaCircle, FaTimes } from 'react-icons/fa';
 import toast from 'react-hot-toast';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 
 export default function FriendsPage() {
   const { t } = useTranslation();
@@ -21,17 +22,42 @@ export default function FriendsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [tab, setTab] = useState<'friends' | 'requests' | 'search'>('friends');
   const searchFetchId = useRef(0);
+  // sendRequest has no disabled/loading state on its button at all — a
+  // double-tap before the row re-renders with requestSent:true fired
+  // friendsApi.sendRequest twice for the same target, creating duplicate
+  // pending requests.
+  const sendingRequestRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!user) return;
-    Promise.all([
+  const refetchFriendsAndRequests = useCallback(() => {
+    return Promise.all([
       friendsApi.getFriends(),
       friendsApi.getRequests(),
     ]).then(([fRes, rRes]) => {
       setFriends(fRes.data?.data || fRes.data || []);
       setRequests(rRes.data?.data || rRes.data || []);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [user]);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    refetchFriendsAndRequests().finally(() => setLoading(false));
+  }, [user, refetchFriendsAndRequests]);
+
+  // Live-update the requests/friends lists on incoming friend-request socket
+  // events — without this, a request the recipient gets while already on
+  // this page (or an acceptance the sender gets back) only ever shows up
+  // after a manual refresh, since both lists are otherwise fetched once on
+  // mount only.
+  useEffect(() => {
+    if (!user) return;
+    const onFriendEvent = () => { refetchFriendsAndRequests(); };
+    window.addEventListener('rovx:friend-request', onFriendEvent);
+    window.addEventListener('rovx:friend-accepted', onFriendEvent);
+    return () => {
+      window.removeEventListener('rovx:friend-request', onFriendEvent);
+      window.removeEventListener('rovx:friend-accepted', onFriendEvent);
+    };
+  }, [user, refetchFriendsAndRequests]);
 
   const handleSearch = async (q: string) => {
     setSearchQuery(q);
@@ -50,12 +76,16 @@ export default function FriendsPage() {
   };
 
   const sendRequest = async (userId: string) => {
+    if (sendingRequestRef.current.has(userId)) return;
+    sendingRequestRef.current.add(userId);
     try {
       await friendsApi.sendRequest(userId);
       toast.success(t('friends.requestSent'));
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, requestSent: true } : u));
     } catch (err: any) {
       toast.error(err?.response?.data?.message || t('friends.error'));
+    } finally {
+      sendingRequestRef.current.delete(userId);
     }
   };
 
@@ -64,6 +94,7 @@ export default function FriendsPage() {
       await friendsApi.acceptRequest(userId);
       toast.success(t('friends.requestAccepted'));
       setRequests(prev => prev.filter(r => r.user.id !== userId));
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFriend: true, requestReceived: false } : u));
     } catch { toast.error(t('friends.error')); }
   };
 
@@ -140,11 +171,16 @@ export default function FriendsPage() {
                     {(u.displayName?.[0] || '?').toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{u.displayName}</p>
+                    <p className="text-white text-sm font-medium truncate flex items-center gap-1">{u.displayName}<RoleBadge role={u.role} /></p>
                     <p className="text-xs text-gray-500">@{u.username}{u.city ? ` · ${u.city}` : ''}</p>
                   </div>
                   {u.isFriend ? (
                     <span className="text-xs text-green-400 flex items-center gap-1"><FaUserCheck size={10} /> {t('friends.friend')}</span>
+                  ) : u.requestReceived ? (
+                    <button onClick={() => acceptRequest(u.id)}
+                      className="px-3 py-1.5 flex items-center gap-1.5 rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 text-xs font-medium">
+                      <FaUserCheck size={10} /> {t('friends.accept')}
+                    </button>
                   ) : u.requestSent ? (
                     <span className="text-xs text-yellow-400">{t('friends.pending')}</span>
                   ) : (
@@ -175,7 +211,7 @@ export default function FriendsPage() {
                   {(r.user.displayName?.[0] || '?').toUpperCase()}
                 </div>
                 <div className="flex-1">
-                  <p className="text-white text-sm font-medium">{r.user.displayName}</p>
+                  <p className="text-white text-sm font-medium flex items-center gap-1">{r.user.displayName}<RoleBadge role={r.user.role} /></p>
                   <p className="text-xs text-gray-500">@{r.user.username}</p>
                 </div>
                 <button onClick={() => acceptRequest(r.user.id)}
@@ -214,7 +250,7 @@ export default function FriendsPage() {
                   <FaCircle size={8} className={`absolute -top-0.5 -right-0.5 ${f.isOnline ? 'text-green-400' : 'text-gray-600'}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{f.displayName}</p>
+                  <p className="text-white text-sm font-medium truncate flex items-center gap-1">{f.displayName}<RoleBadge role={f.role} /></p>
                   <p className="text-xs text-gray-500">{f.isOnline ? t('friends.online') : t('friends.offline')}{f.city ? ` · ${f.city}` : ''}</p>
                 </div>
                 <button onClick={() => removeFriend(f.id)}

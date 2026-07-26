@@ -38,13 +38,13 @@ const CATEGORY_CONFIG: Record<string, { emoji: string; color: string; label: str
   CAR_WASH:           { emoji: '🧽', color: '#0369a1', label: 'Автомойка' },
   WEIGH_STATION:      { emoji: '⚖️', color: '#78716c', label: 'Вес' },
   BORDER_CROSSING:    { emoji: '🛂', color: '#dc2626', label: 'Граница' },
-  CUSTOMS:            { emoji: '🏛️', color: '#b91c1c', label: 'Таможня' },
+  CUSTOMS:            { emoji: '🛃', color: '#b91c1c', label: 'Таможня' },
   REST_AREA:          { emoji: '🌳', color: '#16a34a', label: 'Отдых' },
   SPEED_CAMERA:       { emoji: '📷', color: '#ef4444', label: 'Камера' },
   ROAD_WORKS:         { emoji: '🚧', color: '#f59e0b', label: 'Работы' },
-  ACCIDENT:           { emoji: '💥', color: '#dc2626', label: 'ДТП' },
+  ACCIDENT:           { emoji: '🚨', color: '#dc2626', label: 'ДТП' },
   TRAFFIC_LIGHT:      { emoji: '🚦', color: '#ef4444', label: 'Светофор' },
-  POLICE:             { emoji: '🚔', color: '#3b82f6', label: 'Полиция' },
+  POLICE:             { emoji: '👮', color: '#3b82f6', label: 'Полиция' },
 };
 
 const REPORT_CONFIG: Record<string, { emoji: string; color: string }> = {
@@ -343,6 +343,31 @@ export function createPopupContent(
       ${ratingHtml ? `<div style="margin-bottom:2px;">${ratingHtml}</div>` : ''}
       ${address ? `<p style="font-size:11px;color:#9ca3af;margin:2px 0;">${escapeAttr(address)}</p>` : ''}
       ${distanceHtml ? `<p style="margin:2px 0;">${distanceHtml}</p>` : ''}
+    </div>
+  `;
+}
+
+// Report markers (createReportMarker below) had no popup at all — tapping
+// one called setSelectedReport() but nothing in the app ever reads that
+// value for display (ObjectDetailPanel only renders selectedObject), so the
+// description a reporter wrote when submitting (see ReportPanel) could never
+// actually be read by anyone it was meant to warn. Mirrors createPopupContent
+// above, just fed from Report's fields instead of MapObject's.
+export function createReportPopupContent(
+  type: ReportType,
+  severity: number,
+  description?: string,
+  address?: string,
+): string {
+  const config = REPORT_CONFIG[type] || { emoji: '⚠️', color: '#f97316' };
+  return `
+    <div style="min-width:140px;max-width:220px;font-family:system-ui,sans-serif;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span style="font-size:18px;">${config.emoji}</span>
+        <span style="font-size:12px;font-weight:700;color:${config.color};">${severity}/5</span>
+      </div>
+      ${address ? `<p style="font-size:11px;color:#9ca3af;margin:2px 0;">${escapeAttr(address)}</p>` : ''}
+      ${description ? `<p style="font-size:12px;color:white;margin:2px 0;">${escapeAttr(description)}</p>` : ''}
     </div>
   `;
 }

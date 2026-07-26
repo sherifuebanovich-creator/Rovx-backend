@@ -43,17 +43,26 @@ export class SocialService {
       data: { followerId, followingId },
     });
 
-    const notification = await this.prisma.notification.create({
-      data: {
-        userId: followingId,
-        type: 'new_follower',
-        title: 'New follower',
-        body: 'Someone started following you',
-        data: JSON.stringify({ followerId }),
-      },
-    });
+    // The follow row above is already committed — a notification/socket
+    // failure here must not report as a failed follow. Without this
+    // try/catch, the caller saw a 500 despite the follow succeeding, and
+    // retrying would hit "Already following" instead of just missing the
+    // notification.
+    try {
+      const notification = await this.prisma.notification.create({
+        data: {
+          userId: followingId,
+          type: 'new_follower',
+          title: 'New follower',
+          body: 'Someone started following you',
+          data: JSON.stringify({ followerId }),
+        },
+      });
 
-    await this.gateway.sendToUser(followingId, 'notification:new', notification);
+      await this.gateway.sendToUser(followingId, 'notification:new', notification);
+    } catch (e) {
+      this.logger.error('Failed to notify new follower', e);
+    }
 
     return follow;
   }
@@ -64,7 +73,12 @@ export class SocialService {
   }
 
   async getFollowers(userId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // `page` comes straight from `+query` in the controller — a non-numeric
+    // value becomes NaN, which the existing Math.max(0, ...) clamp (for
+    // negative/zero page) doesn't catch since NaN survives Math.max unchanged.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [followers, total] = await Promise.all([
       this.prisma.follow.findMany({
         where: { followingId: userId },
@@ -82,7 +96,10 @@ export class SocialService {
   }
 
   async getFollowing(userId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [following, total] = await Promise.all([
       this.prisma.follow.findMany({
         where: { followerId: userId },
@@ -136,7 +153,10 @@ export class SocialService {
   }
 
   async getMessages(userId: string, partnerId: string, page = 1, limit = 50) {
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+    const skip = Math.max(0, (page - 1) * limit);
     const [messages, total] = await Promise.all([
       this.prisma.message.findMany({
         where: {
@@ -416,6 +436,13 @@ export class SocialService {
         }),
         this.prisma.groupRequest.deleteMany({ where: { groupId, userId } }),
       ]);
+      // banMember/kickMember both evict the socket from the group's room via
+      // forceLeaveGroup; a voluntary leave was missing the same call, so a
+      // user who left mid-session kept their existing socket in
+      // `group:${groupId}` and went on receiving group:message,
+      // convoy:location, sos:alert, group:reaction etc. for a group they'd
+      // already left, until they happened to disconnect and reconnect.
+      await this.gateway.forceLeaveGroup(userId, groupId);
     }
     return { left: true };
   }
@@ -744,7 +771,10 @@ export class SocialService {
   }
 
   async getGroups(page = 1, limit = 20, region?: string, city?: string, search?: string, userId?: string) {
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const where: any = userId
       ? {
           OR: [
@@ -825,7 +855,10 @@ export class SocialService {
     if (!member) return { messages: [], total: 0, isMember: false };
     if (member.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
 
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+    const skip = Math.max(0, (page - 1) * limit);
     const [messages, total] = await Promise.all([
       this.prisma.groupMessage.findMany({
         where: { groupId, isDeleted: false },
@@ -872,7 +905,10 @@ export class SocialService {
 
   async getCityMessages(city: string, page = 1, limit = 50) {
     if (!city) return { messages: [], total: 0 };
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+    const skip = Math.max(0, (page - 1) * limit);
     const lower = city.toLowerCase();
     const [messages, total] = await Promise.all([
       this.prisma.cityChatMessage.findMany({
@@ -909,7 +945,10 @@ export class SocialService {
   // ── Notifications ───────────────────────────────────────
 
   async getNotifications(userId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // See getFollowers above — NaN page/limit isn't caught by Math.max(0, ...).
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId },

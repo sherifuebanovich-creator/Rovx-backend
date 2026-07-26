@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi } from '@/lib/api';
@@ -20,6 +20,21 @@ export default function CreateGroupPage() {
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // handleCreate only had the JSX `disabled` prop guarding it — a
+  // double-tap in the same task, before React re-renders, called
+  // createGroup twice and could create two identical groups.
+  const creatingRef = useRef(false);
+  // If the user selects a photo then leaves the page without submitting
+  // (the "back" button, or the premium-gate early return below swapping
+  // this whole tree out), the preview blob URL was never revoked — nothing
+  // here handled unmount, only the "pick a different photo" replace path.
+  const avatarRef = useRef('');
+  useEffect(() => { avatarRef.current = avatar; }, [avatar]);
+  useEffect(() => {
+    return () => {
+      if (avatarRef.current) URL.revokeObjectURL(avatarRef.current);
+    };
+  }, []);
 
   const isMax = user?.subscription === 'PREMIUM_MAX';
 
@@ -42,8 +57,10 @@ export default function CreateGroupPage() {
   };
 
   const handleCreate = async () => {
+    if (creatingRef.current) return;
     if (!name.trim()) { toast.error(t('createGroup.enterName')); return; }
     if (!isMax) { toast.error(t('createGroup.premiumRequired')); return; }
+    creatingRef.current = true;
     setLoading(true);
     try {
       const res = await socialApi.createGroup({ name: name.trim(), description: description.trim(), city: city.trim() || undefined, isPublic });
@@ -61,6 +78,7 @@ export default function CreateGroupPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message || t('createGroup.createFailed'));
     } finally {
+      creatingRef.current = false;
       setLoading(false);
     }
   };

@@ -24,18 +24,23 @@ export default function JoinGroupPage() {
 
   useEffect(() => {
     if (!user || !token) return;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
     socialApi.joinByToken(token).then(res => {
       const data = res.data?.data || res.data;
       setGroupName(data.group?.name || '');
       setStatus('joined');
       toast.success('Вы вступили в группу!');
-      setTimeout(() => {
+      redirectTimer = setTimeout(() => {
         router.push(`/groups/${data.group?.id || ''}`);
       }, 1500);
     }).catch(err => {
       setStatus('error');
       toast.error(err?.response?.data?.message || 'Ошибка вступления');
     });
+    // Without this, navigating away within the 1.5s window (back button,
+    // another link) still gets yanked to the group page a moment later —
+    // the timer outlives the page that scheduled it.
+    return () => clearTimeout(redirectTimer);
   }, [user, token, router]);
 
   if (!isInitDone || !user) {

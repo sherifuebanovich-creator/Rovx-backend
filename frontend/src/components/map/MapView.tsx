@@ -51,6 +51,8 @@ export default function MapView() {
   const loadTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const loadObjectsRef = useRef<(bounds: L.LatLngBounds) => void>();
   const loadReportsRef = useRef<(bounds: L.LatLngBounds) => void>();
+  const objectsRequestIdRef = useRef(0);
+  const reportsRequestIdRef = useRef(0);
 
 
   const mapCenter = useMapStore(s => s.mapCenter);
@@ -266,12 +268,18 @@ export default function MapView() {
 
       const cats = useMapStore.getState().activeCategories;
       if (cats.length === 0) {
+        // A pending debounced fetch scheduled while categories were active
+        // must not be left to fire later and repopulate markers the user
+        // just cleared.
+        clearTimeout(loadTimerRef.current);
+        objectsRequestIdRef.current++;
         objectMarkersRef.current?.clearLayers();
         setVisibleObjects([]);
         return;
       }
 
       clearTimeout(loadTimerRef.current);
+      const requestId = ++objectsRequestIdRef.current;
       loadTimerRef.current = setTimeout(async () => {
         try {
           const res = await mapApi.getObjects({
@@ -283,6 +291,11 @@ export default function MapView() {
             limit: 150,
           });
 
+          // The debounce timer only dedupes scheduling, not the network
+          // requests themselves — an earlier viewport's fetch can still
+          // resolve after a later one on a slow/jittery connection and
+          // stomp the correct markers with stale-bounds ones.
+          if (requestId !== objectsRequestIdRef.current) return;
           const objects: MapObject[] = res.data.data || res.data || [];
           setVisibleObjects(objects);
           renderObjectMarkers(objects);
@@ -307,6 +320,7 @@ export default function MapView() {
   const cleanReports = useCallback(
     async (bounds: L.LatLngBounds) => {
       if (mapRef.current && mapRef.current.getZoom() < 13) return;
+      const requestId = ++reportsRequestIdRef.current;
       try {
         const res = await reportsApi.getInArea({
           minLat: bounds.getSouth(),
@@ -314,14 +328,31 @@ export default function MapView() {
           minLng: bounds.getWest(),
           maxLng: bounds.getEast(),
         });
+        // An earlier viewport's response can resolve after a later one on a
+        // slow/jittery connection and stomp the correct markers with
+        // stale-bounds ones.
+        if (requestId !== reportsRequestIdRef.current) return;
         const reports: Report[] = res.data.data || res.data || [];
         setReports(reports);
 
         if (!reportMarkersRef.current) return;
         reportMarkersRef.current.clearLayers();
         reports.forEach((r) => {
-          const icon = getReportIcon(r.type);
+          const icon = getReportIcon(r.type, r.severity);
           const marker = L.marker([r.lat, r.lng], { icon });
+
+          const popupContent = `<div style="min-width:160px">
+            <p style="font-weight:600;margin:0 0 4px;font-size:13px">${escapeHtml(r.type)}</p>
+            ${r.description ? `<p style="font-size:11px;color:#9ca3af;margin:2px 0">${escapeHtml(r.description)}</p>` : ''}
+            ${r.address ? `<p style="font-size:11px;color:#6b7280;margin:2px 0">${escapeHtml(r.address)}</p>` : ''}
+          </div>`;
+
+          marker.bindPopup(popupContent, {
+            className: 'custom-popup',
+            closeButton: true,
+            offset: [0, -10],
+          });
+
           marker.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
             setSelectedReport(r);

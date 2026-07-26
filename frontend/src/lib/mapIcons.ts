@@ -36,14 +36,14 @@ const CATEGORY_CONFIG: Record<string, { emoji: string; color: string }> = {
   CAR_WASH:           { emoji: '🧽', color: '#0369a1' },
   WEIGH_STATION:      { emoji: '⚖️', color: '#78716c' },
   BORDER_CROSSING:    { emoji: '🛂', color: '#dc2626' },
-  CUSTOMS:            { emoji: '🏛️', color: '#b91c1c' },
+  CUSTOMS:            { emoji: '🛃', color: '#b91c1c' },
   REST_AREA:          { emoji: '🌳', color: '#16a34a' },
   TOURIST_ATTRACTION: { emoji: '🏞️', color: '#d97706' },
   SPEED_CAMERA:       { emoji: '📷', color: '#ef4444' },
   ROAD_WORKS:         { emoji: '🚧', color: '#f59e0b' },
-  ACCIDENT:           { emoji: '💥', color: '#dc2626' },
+  ACCIDENT:           { emoji: '🚨', color: '#dc2626' },
   TRAFFIC_LIGHT:      { emoji: '🚦', color: '#ef4444' },
-  POLICE:             { emoji: '🚔', color: '#3b82f6' },
+  POLICE:             { emoji: '👮', color: '#3b82f6' },
 };
 
 const REPORT_CONFIG: Record<string, { emoji: string; color: string }> = {

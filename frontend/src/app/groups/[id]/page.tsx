@@ -93,6 +93,11 @@ export default function GroupChatPage() {
   // messages sent while disconnected.
   const isMemberForConnectRef = useRef(false);
   const readSentRef = useRef<Set<string>>(new Set());
+  // Enter-key-spam or a double-click on Send both invoke this before React
+  // re-renders with the cleared input — without a synchronous guard, both
+  // calls read the same still-populated `input`/`pendingImages` closure and
+  // emit the identical message twice.
+  const sendingRef = useRef(false);
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🙏'];
 
   // Socket connection
@@ -103,7 +108,10 @@ export default function GroupChatPage() {
       setSocketReady(true);
       joinedRef.current = false;
     };
-    const onDisconnect = () => setSocketReady(false);
+    // If the connection drops mid-send, the ack this depends on to clear
+    // the guard will never arrive — without resetting here, sendMessage
+    // would stay permanently locked out after any disconnect.
+    const onDisconnect = () => { setSocketReady(false); sendingRef.current = false; };
     setSocketReady(ws.connected);
     ws.on('connect', onConnect);
     ws.on('disconnect', onDisconnect);
@@ -411,9 +419,27 @@ export default function GroupChatPage() {
   // Upload media
   const handleFileUpload = async (files: FileList | null) => {
     if (!files?.length) return;
+    const fileArr = Array.from(files);
+
+    // Mirrors the server's Multer config for this endpoint
+    // (social.controller.ts: FilesInterceptor('files', 5, { fileSize: 10MB }))
+    // — without this, a selection failed only after the full multipart
+    // upload round-trip instead of before it started, unlike
+    // AudioRecorderButton/VideoMessageRecorder which already check client-side.
+    const MAX_FILES = 5;
+    const MAX_FILE_BYTES = 10 * 1024 * 1024;
+    if (fileArr.length > MAX_FILES) {
+      toast.error(`Можно отправить не более ${MAX_FILES} файлов за раз`);
+      return;
+    }
+    if (fileArr.some(f => f.size > MAX_FILE_BYTES)) {
+      toast.error('Один из файлов слишком большой (макс. 10 МБ)');
+      return;
+    }
+
     setUploading(true);
     try {
-      const res = await socialApi.uploadGroupMedia(groupId, Array.from(files));
+      const res = await socialApi.uploadGroupMedia(groupId, fileArr);
       const urls = res.data?.urls || res.data?.data?.urls || [];
       setPendingImages(prev => [...prev, ...urls]);
     } catch {
@@ -425,6 +451,7 @@ export default function GroupChatPage() {
 
   // Send message
   const sendMessage = useCallback(() => {
+    if (sendingRef.current) return;
     const hasContent = input.trim().length > 0;
     const hasImages = pendingImages.length > 0;
     if (!hasContent && !hasImages) return;
@@ -434,11 +461,13 @@ export default function GroupChatPage() {
       toast.error(t('groupDetails.noConnection'));
       return;
     }
+    sendingRef.current = true;
     const trimmed = input.trim();
     const images = pendingImages.length > 0 ? pendingImages : undefined;
     setInput('');
     setPendingImages([]);
     ws.emit('group:message', { groupId, content: trimmed, images }, (ack: any) => {
+      sendingRef.current = false;
       if (ack?.error) {
         toast.error('Не удалось отправить сообщение');
         // Only restore the failed text/images if the box is still empty —
@@ -1141,7 +1170,7 @@ export default function GroupChatPage() {
                         </div>
                       </div>
                     ) : (
-                      <button onClick={fetchInviteLink}
+                      <button onClick={regenerateInviteLink}
                         className="w-full py-2 text-xs rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 flex items-center justify-center gap-1 transition-colors">
                         <FaLink size={10} /> Создать ссылку
                       </button>

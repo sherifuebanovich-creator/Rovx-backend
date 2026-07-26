@@ -276,6 +276,11 @@ export class PremiumService {
               tier: tier.tier,
               levelName: tierName,
               endDate,
+              // A renewal or tier change (e.g. after the prior subscription
+              // expired) hits this `update` branch, not `create` — without
+              // refreshing `price` here it stays stuck at whatever the last
+              // tier/provider wrote, skewing getAdminStats' totalRevenue sum.
+              price: body.purchase?.checkout?.amount || tier.price,
               paymentId: transactionId,
             },
           }),
@@ -309,7 +314,12 @@ export class PremiumService {
       }
 
       const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-      if (existingSub?.status === 'active' && (!transactionId || existingSub.paymentId === transactionId)) {
+      // Must require an actual transactionId match here — `!transactionId ||`
+      // would revoke ANY active subscription for this userId whenever the
+      // webhook happens to omit transaction.id, contradicting the comment
+      // above and unlike the matching Stripe/Lemon Squeezy revoke checks
+      // just below, which always require the id to match before revoking.
+      if (existingSub?.status === 'active' && transactionId && existingSub.paymentId === transactionId) {
         await this.prisma.$transaction([
           this.prisma.premiumSubscription.update({
             where: { userId },
@@ -428,7 +438,11 @@ export class PremiumService {
             tier: tier.tier,
             levelName: tierName,
             endDate,
-            price: orderData?.total || tier.price,
+            // `orderData.total` is in cents (see paidAmount above) — unlike
+            // Xsolla/Stripe, which store the dollar amount in `price`, this
+            // was storing the raw cents value, inflating admin's
+            // getAdminStats totalRevenue sum 100x for Lemon Squeezy subs.
+            price: orderData?.total ? orderData.total / 100 : tier.price,
             currency: 'USD',
             status: 'active',
             paymentId: orderId,
@@ -439,6 +453,11 @@ export class PremiumService {
             tier: tier.tier,
             levelName: tierName,
             endDate,
+            // Same reasoning as the Xsolla handler above: a renewal or tier
+            // change hits `update`, not `create` — refresh `price` here too
+            // or it stays stuck at whatever the last tier/provider wrote,
+            // skewing getAdminStats' totalRevenue sum.
+            price: orderData?.total ? orderData.total / 100 : tier.price,
             paymentId: orderId,
           },
         }),
@@ -566,6 +585,17 @@ export class PremiumService {
             tier: tier.tier,
             levelName: tier.name,
             endDate,
+            // Stripe has no pre-webhook "pending" write (unlike Xsolla/Lemon
+            // Squeezy's createCheckoutSession/createLemonSqueezyCheckout,
+            // which upsert `price` at checkout-initiation time) — this
+            // `update` branch is the ONLY place a Stripe payment ever
+            // touches this row when one already exists (e.g. renewing after
+            // the prior subscription expired, or switching tiers), so
+            // without refreshing `price` here it stays stuck at whatever
+            // tier/provider last wrote it, skewing getAdminStats'
+            // totalRevenue sum by the stale amount instead of what was
+            // actually charged this time.
+            price: tier.price,
             paymentId,
           },
         }),
@@ -698,7 +728,13 @@ export class PremiumService {
     if (!user) throw new NotFoundException('User not found');
 
     const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    if (existingSub?.status === 'active') {
+    // `premiumSubscription.status` never flips off 'active' when a subscription
+    // naturally lapses (only an explicit refund/dispute/cancel changes it), so
+    // trusting it here — like createStripeCheckout's equivalent guard already
+    // documents — would permanently block a user from ever submitting a bank
+    // transfer renewal again once their premium expires. `user.subscriptionEnd`
+    // is the reliable "currently entitled until" signal.
+    if (user.subscriptionEnd && user.subscriptionEnd > new Date()) {
       return { success: true, message: 'Already active', status: 'active' };
     }
 
@@ -822,7 +858,12 @@ export class PremiumService {
   }
 
   async getAllUsers(page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // Same class of gap as the other paginated services: NaN page/limit
+    // (e.g. a non-numeric value) survives Math.max(0, ...) unchanged and
+    // would reach Prisma's skip/take as NaN.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         skip,

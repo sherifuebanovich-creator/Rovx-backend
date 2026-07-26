@@ -66,6 +66,11 @@ export function ReportPanel() {
   const photoIdsRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // `isSubmitting` state alone isn't enough — a second invocation fired in
+  // the same task (duplicate click/touch events) reads the same stale
+  // pre-render closure value and sails past a state check. A ref updates
+  // immediately, so it's the only thing that actually blocks it.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     reportsApi.getLimit().then(res => {
@@ -170,11 +175,7 @@ export function ReportPanel() {
   }, [submitted]);
 
   const handleSubmit = async () => {
-    // The disabled prop on the Submit button is the only guard against a
-    // double-fire — nothing here stopped a second invocation (duplicate
-    // click/touch events in the same task) from slipping through before
-    // React commits the disabled state, creating a duplicate report.
-    if (isSubmitting) return;
+    if (submittingRef.current) return;
     if (!selectedType || !userLocation) {
       toast.error(t('reportPanel.needLocation'));
       return;
@@ -185,6 +186,7 @@ export function ReportPanel() {
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const validatedFiles = photoFiles.filter((_, i) => photoValidated[i]);
@@ -219,6 +221,7 @@ export function ReportPanel() {
       const msg = err?.response?.data?.message || t('reportPanel.submitFailed');
       toast.error(msg);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

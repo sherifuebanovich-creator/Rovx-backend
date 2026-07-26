@@ -340,7 +340,12 @@ export class RoutesService {
   }
 
   async getTrips(userId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    // Same class of gap as the other paginated services — guarded here too
+    // in case this is ever called with something other than the
+    // ParseIntPipe-validated controller input.
+    page = Number.isFinite(page) && page > 0 ? page : 1;
+    limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const skip = Math.max(0, (page - 1) * limit);
     const [trips, total] = await Promise.all([
       this.prisma.trip.findMany({
         where: { userId },
@@ -354,23 +359,45 @@ export class RoutesService {
   }
 
   async startTrip(userId: string, data: Partial<any>) {
-    return this.prisma.trip.create({
-      data: {
-        userId,
-        originName: data.originName || 'Current location',
-        originLat: data.originLat,
-        originLng: data.originLng,
-        destName: data.destName,
-        destLat: data.destLat,
-        destLng: data.destLng,
-        routeType: data.routeType || RouteType.FASTEST,
-        plannedDuration: data.duration,
-        distance: data.distance,
-        polyline: data.polyline,
-        status: 'active',
-        startedAt: new Date(),
-      },
-    });
+    // Unlike createReport, this had no guard at all against a double-submit
+    // or network-retry firing trips/start twice in quick succession — each
+    // call unconditionally creates a new "active" trip row, and endTrip has
+    // no way to know a duplicate exists (it only ever ends the tripId it's
+    // given). Two dangling active trips both later ended would double-count
+    // totalTrips/totalDistance on the user. Same short-lived per-user Redis
+    // lock pattern as reports.service.ts#createReport.
+    const lockKey = `trip:start:lock:${userId}`;
+    let locked = true;
+    try {
+      locked = await this.redis.setnx(lockKey, '1', 5);
+    } catch (e) {
+      this.logger.warn(`Redis unavailable for trip-start lock, proceeding without it: ${(e as Error).message}`);
+    }
+    if (!locked) {
+      throw new BadRequestException('Trip already being started, try again');
+    }
+
+    try {
+      return await this.prisma.trip.create({
+        data: {
+          userId,
+          originName: data.originName || 'Current location',
+          originLat: data.originLat,
+          originLng: data.originLng,
+          destName: data.destName,
+          destLat: data.destLat,
+          destLng: data.destLng,
+          routeType: data.routeType || RouteType.FASTEST,
+          plannedDuration: data.duration,
+          distance: data.distance,
+          polyline: data.polyline,
+          status: 'active',
+          startedAt: new Date(),
+        },
+      });
+    } finally {
+      await this.redis.del(lockKey);
+    }
   }
 
   async endTrip(tripId: string, userId: string, stats: Partial<any>) {
@@ -378,9 +405,18 @@ export class RoutesService {
     if (!trip) throw new NotFoundException('Trip not found');
     if (trip.status !== 'active') throw new BadRequestException('Trip is not active');
 
+    // The findFirst status check above is a plain read, not a lock — a
+    // double-tap on "end trip" or a network retry can fire two endTrip
+    // calls for the same tripId close enough together that both read
+    // status: 'active' before either write lands, then both proceed to
+    // increment totalTrips/totalDistance on the user. Guarding the actual
+    // write with updateMany's WHERE (status still 'active') makes the
+    // transition itself atomic: only the request that wins the race
+    // flips the row, the loser sees count 0 and is rejected instead of
+    // double-applying stats.
     return this.prisma.$transaction(async (tx) => {
-      await tx.trip.update({
-        where: { id: tripId },
+      const updated = await tx.trip.updateMany({
+        where: { id: tripId, userId, status: 'active' },
         data: {
           status: 'completed',
           endedAt: new Date(),
@@ -390,6 +426,10 @@ export class RoutesService {
           maxSpeed: stats.maxSpeed,
         },
       });
+
+      if (updated.count === 0) {
+        throw new BadRequestException('Trip is not active');
+      }
 
       await tx.user.update({
         where: { id: userId },

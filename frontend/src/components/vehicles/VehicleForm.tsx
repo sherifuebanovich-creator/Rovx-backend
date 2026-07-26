@@ -47,6 +47,10 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
 
   const fuelType = getFuelType(selectedMake, selectedModel);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // handleSubmit previously relied solely on the JSX `disabled` prop, which
+  // isn't updated until React re-renders — a double-tap/double-click fired
+  // in the same task called onSubmit (addVehicle) twice before that commit.
+  const submittingRef = useRef(false);
 
   const makesForType = type === 'TRUCK' ? TRUCK_MAKES : CAR_MAKES;
 
@@ -69,7 +73,9 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
   }, []);
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
     if (!selectedMake || !selectedModel) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -83,6 +89,7 @@ export function VehicleForm({ onSubmit, onCancel }: VehicleFormProps) {
       setSelectedModel('');
       setYear(new Date().getFullYear());
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

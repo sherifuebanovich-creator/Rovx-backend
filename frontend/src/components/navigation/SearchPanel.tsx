@@ -118,6 +118,11 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const [isGoing, setIsGoing] = useState(false);
   const isGoingRef = useRef(false);
   useEffect(() => { isGoingRef.current = isGoing; }, [isGoing]);
+  // calculateMultiRoutes only checked the `isGoing` state, which (like the
+  // isGoingRef comment on navigateToPlace explains) doesn't flip in time to
+  // stop a second tap landing in the same event-loop turn — that second tap
+  // would fire its own full Promise.all of routesApi.calculate() requests.
+  const isCalculatingMultiRef = useRef(false);
   const [inputMode, setInputMode] = useState<'search' | 'origin' | 'destination'>('search');
   const [selectedTypes, setSelectedTypes] = useState<RouteType[]>([activeRouteType || 'FASTEST']);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -331,12 +336,14 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   }, [userLocation, setMapCenter, setZoom]);
 
   const calculateMultiRoutes = async () => {
-    if (!selectedItem || selectedTypes.length === 0 || isGoing) return;
+    if (!selectedItem || selectedTypes.length === 0 || isGoing || isCalculatingMultiRef.current) return;
+    isCalculatingMultiRef.current = true;
     setIsGoing(true);
     const loc = origin || userLocation;
     if (!loc) {
       toast(t('searchPanel.enableGeolocation'), { icon: '📍' });
       setIsGoing(false);
+      isCalculatingMultiRef.current = false;
       return;
     }
     if (!origin) setOrigin({ ...loc, name: t('searchPanel.myLocation') });
@@ -364,6 +371,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       toast.error(t('searchPanel.routeCalcFailed'));
     } finally {
       setIsGoing(false);
+      isCalculatingMultiRef.current = false;
     }
   };
 
@@ -535,11 +543,18 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   };
 
   const navigateToPlace = useCallback(async (name: string, lat: number, lng: number, label: string) => {
+    // isGoingRef must be set synchronously here, not left to the effect that
+    // mirrors it from `isGoing` state — that effect only runs after React
+    // commits, so two taps landing in the same tick (a fast double-tap)
+    // would both read the ref before it flips, both pass this guard, and
+    // both fire routesApi.startTrip below.
     if (isGoingRef.current) return;
+    isGoingRef.current = true;
     setIsGoing(true);
     const loc = origin || userLocation;
     if (!loc) {
       toast(t('searchPanel.enableGeolocation'), { icon: '📍' });
+      isGoingRef.current = false;
       setIsGoing(false);
       return;
     }
@@ -553,7 +568,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         vehicleType: selectedVehicle?.type || vehicleMode,
       });
       const route = res.data.data?.[0];
-      if (!route) { toast.error(t('searchPanel.routesNotFound')); setIsGoing(false); return; }
+      if (!route) { toast.error(t('searchPanel.routesNotFound')); isGoingRef.current = false; setIsGoing(false); return; }
       setCalculatedRoutes([route]);
       setSelectedRoute(route);
       resetRerouteCooldown();
@@ -571,6 +586,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         : `${Math.round(route.distance * 1000)} ${t('navigationHud.m')}`;
       speak(t('searchPanel.routeBuilt', { dist, mins }), true);
     } catch { toast.error(t('searchPanel.routeBuildFailed')); }
+    isGoingRef.current = false;
     setIsGoing(false);
     toggleSearch();
     onClose?.();

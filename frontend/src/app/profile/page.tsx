@@ -45,6 +45,26 @@ export default function ProfilePage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  // Both handlers below only had their `disabled` JSX prop and a state flag
+  // guarding re-entrancy — a double-tap firing in the same task, before
+  // React re-renders, read the same stale (false) state and ran the submit
+  // twice (duplicate vehicle / duplicate avatar upload + profile update).
+  const addVehicleRef = useRef(false);
+  const saveProfileRef = useRef(false);
+  // select/cancel/save all revoke the outgoing preview, but none of that
+  // runs if the user leaves mid-edit some other way (the unconditional
+  // "back" button above the edit panel, a tab close, a Link elsewhere) —
+  // the blob URL then leaks for the rest of the session. Kept in a ref
+  // (not just relying on the `avatarPreview` closure) so the unmount
+  // cleanup below always revokes whatever is CURRENTLY set, not whatever
+  // was set when the effect last ran.
+  const avatarPreviewRef = useRef<string | null>(null);
+  useEffect(() => { avatarPreviewRef.current = avatarPreview; }, [avatarPreview]);
+  useEffect(() => {
+    return () => {
+      if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -100,10 +120,12 @@ export default function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
+    if (saveProfileRef.current) return;
     if (!editForm.displayName.trim()) {
       toast.error(t('profile.displayNameRequired'));
       return;
     }
+    saveProfileRef.current = true;
     setEditLoading(true);
     try {
       let avatarUrl = user?.avatar;
@@ -144,12 +166,15 @@ export default function ProfilePage() {
       const msg = err?.response?.data?.message || 'Failed to update profile';
       toast.error(msg);
     } finally {
+      saveProfileRef.current = false;
       setEditLoading(false);
     }
   };
 
   const handleAddVehicle = async () => {
+    if (addVehicleRef.current) return;
     if (!addForm.make || !addForm.model) {       toast.error(t('profile.selectMakeModel')); return; }
+    addVehicleRef.current = true;
     setAddLoading(true);
     try {
       const fuelType = getFuelType(addForm.make, addForm.model);
@@ -162,6 +187,7 @@ export default function ProfilePage() {
     } catch {
       toast.error(t('profile.vehicleAddFailed'));
     } finally {
+      addVehicleRef.current = false;
       setAddLoading(false);
     }
   };

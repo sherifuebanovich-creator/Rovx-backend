@@ -107,6 +107,18 @@ export function useSocket() {
       }
     });
 
+    socketInstance.on('friend:request', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:friend-request', { detail: data }));
+      }
+    });
+
+    socketInstance.on('friend:accepted', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:friend-accepted', { detail: data }));
+      }
+    });
+
     socketInstance.on('report:new', (data: any) => {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('rovx:report-new', { detail: data }));
