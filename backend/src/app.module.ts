@@ -23,6 +23,7 @@ import { FuelModule } from './fuel/fuel.module';
 import { FriendsModule } from './friends/friends.module';
 import { TasksModule } from './tasks/tasks.module';
 import { SupportModule } from './support/support.module';
+import { VoiceRoomsModule } from './voice-rooms/voice-rooms.module';
 
 @Module({
   controllers: [HealthController],
@@ -78,6 +79,7 @@ import { SupportModule } from './support/support.module';
     FriendsModule,
     TasksModule,
     SupportModule,
+    VoiceRoomsModule,
   ],
 })
 export class AppModule {}

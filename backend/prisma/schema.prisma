@@ -69,6 +69,7 @@ model User {
   fuelCalculations  FuelCalculation[]
   premiumSubscriptions PremiumSubscription[]
   ownedGroups       Group[]          @relation("GroupOwner")
+  ownedVoiceRooms   VoiceRoom[]      @relation("VoiceRoomOwner")
   groupFavorites    GroupFavorite[]
   cityChatMessages  CityChatMessage[]
   friendsInitiated  Friend[]         @relation("UserFriends")
@@ -650,6 +651,27 @@ model MapFeature {
   @@index([countryCode])
   @@index([type])
   @@map("map_features")
+}
+
+// Zello-style push-to-talk voice room. Live participant/speaking state is
+// deliberately NOT persisted here — it's ephemeral, tracked in-memory by
+// VoiceRoomsGateway/Service while sockets are connected, same as the
+// online-presence tracking already done for the main websocket gateway.
+// This row is just the durable "room exists and can be discovered/joined"
+// record.
+model VoiceRoom {
+  id              String   @id @default(uuid())
+  name            String
+  ownerId         String
+  isActive        Boolean  @default(true)
+  maxParticipants Int      @default(20)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner User @relation("VoiceRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+  @@map("voice_rooms")
 }
 
 model TruckRestStop {

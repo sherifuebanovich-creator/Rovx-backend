@@ -378,6 +378,14 @@ export const premiumApi = {
   canCreateGroup: () => api.get('/premium/can-create-group'),
 };
 
+export const voiceRoomsApi = {
+  list: () => api.get('/voice-rooms'),
+  get: (roomId: string) => api.get(`/voice-rooms/${roomId}`),
+  create: (name: string, maxParticipants?: number) => api.post('/voice-rooms', { name, maxParticipants }),
+  close: (roomId: string) => api.delete(`/voice-rooms/${roomId}`),
+  getIceServers: () => api.get('/voice-rooms/ice-servers'),
+};
+
 export const supportApi = {
   send: (message: string) => api.post('/support', { message }),
 };

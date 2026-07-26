@@ -325,3 +325,15 @@ export interface UserPreferences {
   mapStyle: string;
   defaultRouteType: RouteType;
 }
+
+export interface VoiceRoom {
+  id: string;
+  name: string;
+  ownerId: string;
+  isActive: boolean;
+  maxParticipants: number;
+  participantCount: number;
+  createdAt: string;
+  updatedAt: string;
+  owner: { id: string; displayName: string; avatar?: string | null };
+}
