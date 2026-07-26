@@ -2,17 +2,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { getSocket } from '@/hooks/useSocket';
 import { useAuthStore } from '@/store/auth.store';
-import { FaMicrophone, FaMicrophoneSlash, FaPhone, FaPhoneSlash, FaVolumeUp, FaVolumeMute } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaPhoneSlash, FaVolumeUp, FaVolumeMute } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-interface VoiceChatProps {
-  targetUserId?: string;
-  targetUserName?: string;
-  groupId?: string;
-}
-
-export default function VoiceChat({ targetUserId, targetUserName, groupId }: VoiceChatProps) {
+// Mounted once, globally (see Providers.tsx) as the sole receiver/UI for
+// calls app-wide. It has no per-target props — any page starts a call by
+// dispatching 'rovx:voice-start-call' (see FriendsPage) rather than
+// rendering its own instance, which would double up incoming-call listeners.
+export default function VoiceChat() {
   const { user } = useAuthStore();
   const [isInCall, setIsInCall] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -140,9 +138,9 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
 
   const endCall = useCallback(() => {
     const socket = getSocket();
-    const targetId = peerIdRef.current || targetUserId || groupId;
+    const targetId = peerIdRef.current;
     if (targetId) {
-      socket?.emit('voice:end', { targetUserId: targetId, groupId });
+      socket?.emit('voice:end', { targetUserId: targetId });
     }
 
     pcRef.current?.close();
@@ -167,7 +165,7 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     setRemoteUser(null);
     setCallDuration(0);
     durationRef.current = 0;
-  }, [targetUserId, groupId]);
+  }, []);
   endCallRef.current = endCall;
 
   const toggleMute = useCallback(() => {
@@ -265,6 +263,21 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
     return () => window.removeEventListener('rovx:voice-call', handler);
   }, [isInCall, createPeerConnection]);
 
+  // VoiceChat is mounted once, globally (see Providers.tsx), so it has no
+  // per-page targetUserId prop to render a call button for. Any page that
+  // wants to initiate a call (e.g. the Friends list) dispatches this event
+  // instead of needing its own VoiceChat instance — avoiding duplicate
+  // receivers that would each pop their own "incoming call" toast.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      if (!data?.targetUserId) return;
+      startCall(data.targetUserId, data.targetUserName || 'User');
+    };
+    window.addEventListener('rovx:voice-start-call', handler);
+    return () => window.removeEventListener('rovx:voice-start-call', handler);
+  }, [startCall]);
+
   // Listen for voice signals (SDP offer/answer + ICE candidates)
   useEffect(() => {
     const handler = async (e: Event) => {
@@ -359,24 +372,11 @@ export default function VoiceChat({ targetUserId, targetUserName, groupId }: Voi
   }, []);
 
   // Always render the <audio> element so incoming calls have somewhere to
-  // attach their remote track (see pc.ontrack above) — this component is
-  // mounted globally with no props on the map page specifically to receive
-  // calls, so bailing out here left remoteAudioRef permanently null and
-  // every accepted call silent.
+  // attach their remote track (see pc.ontrack above) — bailing out here
+  // left remoteAudioRef permanently null and every accepted call silent.
   return (
     <>
       <audio ref={remoteAudioRef} autoPlay playsInline />
-
-      {/* Call button */}
-      {!isInCall && targetUserId && (
-        <button
-          onClick={() => startCall(targetUserId, targetUserName || 'User')}
-          className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-all"
-          title="Голосовой звонок"
-        >
-          <FaPhone size={14} />
-        </button>
-      )}
 
       {/* Active call UI */}
       <AnimatePresence>

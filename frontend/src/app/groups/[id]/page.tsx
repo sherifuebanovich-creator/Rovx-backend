@@ -23,7 +23,6 @@ import AudioRecorderButton from '@/components/chat/AudioRecorderButton';
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
 import VideoMessageRecorder from '@/components/chat/VideoMessageRecorder';
 import VideoMessagePlayer from '@/components/chat/VideoMessagePlayer';
-import VoiceChat from '@/components/chat/VoiceChat';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace('/api/v1', '');
 
@@ -51,6 +50,23 @@ const STICKER_PACKS = [
     '☕','🍵','🥤','🍺','🍷','🥃','🍸','🍹','🧃','🥛',
   ]},
 ];
+
+// GroupMessage.reactions is stored as a raw JSON string in Postgres
+// (String @default("{}")) and the REST/initial-load payloads send it through
+// unparsed — but the live 'group:reaction' socket event replaces it with an
+// already-parsed object (see the onReaction handler below). Object.entries()
+// on the still-a-string case doesn't throw, it just iterates the string's
+// characters ("{}" -> [['0','{'],['1','}']]), rendering two bogus "0"/"1"
+// reaction pills with a count of 1 on every message that has zero real
+// reactions. Normalizing both shapes here, once, at the read site is safer
+// than patching every fetch/socket call site that sets `messages`.
+function parseReactions(raw: unknown): Record<string, string[]> {
+  if (raw && typeof raw === 'object') return raw as Record<string, string[]>;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw || '{}'); } catch { return {}; }
+  }
+  return {};
+}
 
 export default function GroupChatPage() {
   const router = useRouter();
@@ -665,9 +681,6 @@ export default function GroupChatPage() {
             {showMembers ? t('groupDetails.chat') : t('groupDetails.members')}
           </button>
         )}
-        {isMember && (
-          <VoiceChat groupId={groupId} />
-        )}
         {isOwner && (
           <div className="flex gap-1">
             <button onClick={() => { setEditing(!editing); setEditForm({ name: group.name, description: group.description || '', city: group.city || '' }); }}
@@ -776,7 +789,7 @@ export default function GroupChatPage() {
               const showDelete = isAdmin || msg.senderId === user.id;
               const isOwn = msg.senderId === user.id;
               const readByArr = msg.readBy || [];
-              const reactions = msg.reactions || {};
+              const reactions = parseReactions(msg.reactions);
               const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
               const memberCount = group?.members?.length || 0;
               const allRead = readByArr.length >= 1;
@@ -889,9 +902,13 @@ export default function GroupChatPage() {
                     </div>
                   )}
 
-                  {/* Reaction picker popup */}
+                  {/* Reaction picker popup — rendered below the bubble
+                      rather than above it. Above collided with the chat's
+                      sticky header for any message near the top of the
+                      scroll area, leaving the picker visually present but
+                      unclickable (covered by the header's stacking context). */}
                   {reactionPickerMsgId === msg.id && (
-                    <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} -top-10 z-20 flex gap-1 bg-dark-card/95 backdrop-blur-xl rounded-xl px-2 py-1.5 border border-white/10 shadow-xl`}
+                    <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-full mt-2 z-20 flex gap-1 bg-dark-card/95 backdrop-blur-xl rounded-xl px-2 py-1.5 border border-white/10 shadow-xl`}
                       onClick={(e) => e.stopPropagation()}>
                       {QUICK_REACTIONS.map(emoji => (
                         <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)}

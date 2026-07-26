@@ -120,7 +120,14 @@ export default function VideoMessageRecorder({ groupId, onSent }: Props) {
 
     setIsSending(true);
     try {
-      const mimeType = mr.mimeType || 'video/webm';
+      // MediaRecorder.mimeType includes codec parameters (e.g.
+      // "video/webm;codecs=vp8,opus") — sent verbatim as the multipart part's
+      // Content-Type, the unquoted comma inside "vp8,opus" isn't valid per
+      // RFC 2045 and the server's multipart parser (busboy) fails to parse
+      // it, silently reporting the file's mimetype as "text/plain" instead
+      // of "video/*" and getting it rejected by the upload's fileFilter. The
+      // server has no use for codec info anyway, so just drop it here.
+      const mimeType = (mr.mimeType || 'video/webm').split(';')[0].trim() || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
       const file = new File([blob], `videomsg-${Date.now()}.${ext}`, { type: mimeType });

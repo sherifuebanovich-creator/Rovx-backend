@@ -6,7 +6,7 @@ import { friendsApi } from '@/lib/api';
 import { Friend, FriendRequest } from '@/types';
 import { useTranslation } from 'react-i18next';
 
-import { FaArrowLeft, FaUserPlus, FaUser, FaUserCheck, FaUserTimes, FaSearch, FaCircle, FaTimes } from 'react-icons/fa';
+import { FaArrowLeft, FaUserPlus, FaUser, FaUserCheck, FaUserTimes, FaSearch, FaCircle, FaTimes, FaPhone } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 
@@ -103,6 +103,13 @@ export default function FriendsPage() {
       await friendsApi.rejectRequest(userId);
       setRequests(prev => prev.filter(r => r.user.id !== userId));
     } catch { toast.error(t('friends.error')); }
+  };
+
+  // VoiceChat is mounted once, globally (Providers.tsx) — it has no
+  // targetUserId prop here to render its own call button, so starting a
+  // call from this page just dispatches the event it listens for instead.
+  const callFriend = (targetUserId: string, targetUserName: string) => {
+    window.dispatchEvent(new CustomEvent('rovx:voice-start-call', { detail: { targetUserId, targetUserName } }));
   };
 
   const removeFriend = async (userId: string) => {
@@ -253,6 +260,11 @@ export default function FriendsPage() {
                   <p className="text-white text-sm font-medium truncate flex items-center gap-1">{f.displayName}<RoleBadge role={f.role} /></p>
                   <p className="text-xs text-gray-500">{f.isOnline ? t('friends.online') : t('friends.offline')}{f.city ? ` · ${f.city}` : ''}</p>
                 </div>
+                <button onClick={() => callFriend(f.id, f.displayName)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-600/10 text-green-400 hover:bg-green-600/20"
+                  title={t('friends.call')}>
+                  <FaPhone size={12} />
+                </button>
                 <button onClick={() => removeFriend(f.id)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20">
                   <FaTimes size={10} />

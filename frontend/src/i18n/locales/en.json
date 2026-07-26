@@ -692,6 +692,7 @@
     "error": "Error",
     "requestAccepted": "Request accepted",
     "friendRemoved": "Friend removed",
+    "call": "Call",
     "loginRequired": "Sign in to your account",
     "signIn": "Sign In",
     "back": "Back",

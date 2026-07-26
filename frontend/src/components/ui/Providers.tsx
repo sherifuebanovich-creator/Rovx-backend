@@ -10,6 +10,14 @@ import { OfflineScreen } from '@/components/ui/OfflineScreen';
 import dynamic from 'next/dynamic';
 
 const SessionSyncLazy = dynamic(() => import('@/components/auth/SessionSync').then(m => ({ default: m.SessionSync })), { ssr: false });
+// Previously mounted only on the map page (MapApp) and, separately, inside
+// a group's chat page — so an incoming call could only ever be received
+// while sitting on one of those two specific screens, and neither mount
+// point rendered a way to actually start a call (both omitted the
+// targetUserId prop the button requires). Mounting it once here, globally,
+// makes calls receivable from anywhere; see FriendsPage for the button that
+// now actually starts one via the rovx:voice-start-call event.
+const VoiceChatLazy = dynamic(() => import('@/components/chat/VoiceChat'), { ssr: false });
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -113,6 +121,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <I18nInitializer />
         <SocketInitializer />
         <OfflineScreen />
+        <VoiceChatLazy />
         {children}
         <Toaster
           position="top-center"

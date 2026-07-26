@@ -110,7 +110,11 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
 
     setIsSending(true);
     try {
-      const mimeType = mr.mimeType || 'audio/webm';
+      // Strip codec parameters (e.g. "audio/webm;codecs=opus") before this
+      // becomes the multipart part's Content-Type — see the identical fix
+      // in VideoMessageRecorder.tsx for why an unquoted comma inside a
+      // codecs value there broke the server's multipart parser.
+      const mimeType = (mr.mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
       const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });

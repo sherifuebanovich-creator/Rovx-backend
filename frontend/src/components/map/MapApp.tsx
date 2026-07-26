@@ -14,7 +14,6 @@ import { NavigationHUD } from '@/components/navigation/NavigationHUD';
 import { ObjectDetailPanel } from '@/components/map/ObjectDetailPanel';
 import { ReportPanel } from '@/components/map/ReportPanel';
 import { FriendLocation, Report } from '@/types';
-import VoiceChat from '@/components/chat/VoiceChat';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -130,8 +129,6 @@ export default function MapApp() {
       {selectedObject && <ObjectDetailPanel />}
       {isReportPanelOpen && <ReportPanel />}
       {isSidebarOpen && <Sidebar />}
-      <VoiceChat />
-
 
     </div>
   );
