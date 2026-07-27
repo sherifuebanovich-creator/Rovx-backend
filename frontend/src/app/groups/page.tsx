@@ -29,9 +29,12 @@ export default function GroupsPage() {
   // commits `joinLoading` fired joinGroupByName twice with the same name.
   const joiningRef = useRef(false);
   const [tab, setTab] = useState<'all' | 'my' | 'fav'>('all');
+  const [loadError, setLoadError] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  useEffect(() => {
+  const loadGroups = () => {
     if (!user) return;
+    setLoadError(false);
     Promise.all([
       socialApi.getGroups(1, undefined, undefined, ''),
       socialApi.getMyGroups(),
@@ -43,21 +46,45 @@ export default function GroupsPage() {
       setGroups(gData?.groups || gData || []);
       setMyGroups(mData || []);
       setFavGroups(fData || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err: any) => {
+      // Was a bare catch(() => {}) — a failed load (cold start, a transient
+      // 5xx) silently left `groups` at whatever it was before (empty on
+      // first load), with no error shown and no way to retry short of a
+      // full page reload. That's exactly what read as "groups appear then
+      // disappear": the list would only ever populate on whichever load
+      // happened to succeed.
+      console.error('[Groups] Failed to load groups:', err?.response?.status, err?.response?.data || err?.message);
+      setLoadError(true);
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const handleSearch = async (q: string) => {
+  const handleSearch = (q: string) => {
     setSearchQuery(q);
+    clearTimeout(searchDebounceRef.current);
     if (!q.trim()) { setSearchResults([]); return; }
-    const thisFetch = ++searchFetchId.current;
-    try {
-      const res = await socialApi.searchGroups(q);
-      if (thisFetch !== searchFetchId.current) return;
-      setSearchResults(res.data?.data || res.data || []);
-    } catch {
-      if (thisFetch === searchFetchId.current) setSearchResults([]);
-      toast.error(t('groups.searchError'));
-    }
+    // Was firing a request on every keystroke with no debounce — on a
+    // flaky connection, out-of-order/slow responses (each individually
+    // guarded by searchFetchId below, but still arriving whenever they
+    // arrive) made results flicker between a stale list and empty while
+    // typing. 400ms matches the debounce already used for map search.
+    searchDebounceRef.current = setTimeout(async () => {
+      const thisFetch = ++searchFetchId.current;
+      try {
+        const res = await socialApi.searchGroups(q);
+        if (thisFetch !== searchFetchId.current) return;
+        setSearchResults(res.data?.data || res.data || []);
+      } catch (err: any) {
+        console.error('[Groups] Search failed:', err?.response?.status, err?.response?.data || err?.message);
+        if (thisFetch === searchFetchId.current) setSearchResults([]);
+        toast.error(t('groups.searchError'));
+      }
+    }, 400);
   };
 
   const handleJoinByName = async () => {
@@ -181,6 +208,14 @@ export default function GroupsPage() {
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="card p-6 text-center">
+            <p className="text-sm text-red-400 mb-3">{t('groups.loadError')}</p>
+            <button onClick={() => { setLoading(true); loadGroups(); }}
+              className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-500">
+              {t('groups.retry')}
+            </button>
           </div>
         ) : (
           <div className="space-y-2">

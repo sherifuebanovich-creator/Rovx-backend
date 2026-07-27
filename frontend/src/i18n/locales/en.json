@@ -668,6 +668,8 @@
     "back": "Back",
     "search": "Search groups",
     "searchError": "Search failed",
+    "loadError": "Failed to load groups",
+    "retry": "Retry",
     "create": "Create",
     "createGroup": "Create Group",
     "created": "Group created",
