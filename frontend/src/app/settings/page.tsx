@@ -88,9 +88,13 @@ export default function SettingsPage() {
     setVehiclesError(false);
     usersApi.getVehicles().then(res => {
       setVehicles(res.data.data || res.data || []);
-    }).catch(() => {
+    }).catch((err: any) => {
+      // Was a bare catch(() => ...) — swallowed the real backend/network
+      // error completely, so every failure (cold start, a genuine 500,
+      // an expired token) looked identical and undiagnosable from the UI.
+      console.error('[Settings] Failed to load vehicles:', err?.response?.status, err?.response?.data || err?.message);
       setVehiclesError(true);
-      toast.error(t('settings.vehiclesLoadFailed'));
+      toast.error(err?.response?.data?.message || t('settings.vehiclesLoadFailed'));
     }).finally(() => setVehiclesLoading(false));
   }, [user]);
 
@@ -128,8 +132,9 @@ export default function SettingsPage() {
         if (requestId !== addressRequestIdRef.current[field]) return;
         setUser({ ...useAuthStore.getState().user!, ...patch });
         lastSavedAddressRef.current[field] = { address: '', lat: null, lng: null };
-      } catch {
-        toast.error(t('settings.saveFailed'));
+      } catch (err: any) {
+        console.error('[Settings] Failed to clear address:', err?.response?.status, err?.response?.data || err?.message);
+        toast.error(err?.response?.data?.message || t('settings.saveFailed'));
         revertOnFailure(requestId);
       }
       return;
@@ -150,8 +155,9 @@ export default function SettingsPage() {
       setUser({ ...useAuthStore.getState().user!, ...patch });
       lastSavedAddressRef.current[field] = { address: value, lat: patch[latKey], lng: patch[lngKey] };
       if (!match) toast.error(t('settings.addressNotFound'));
-    } catch {
-      toast.error(t('settings.saveFailed'));
+    } catch (err: any) {
+      console.error('[Settings] Failed to save address:', err?.response?.status, err?.response?.data || err?.message);
+      toast.error(err?.response?.data?.message || t('settings.saveFailed'));
       revertOnFailure(requestId);
     }
   };
@@ -168,8 +174,9 @@ export default function SettingsPage() {
       // Was fire-and-forget with only a toast on failure — the language
       // selector, i18n, and user.preferredLang stayed on the new (unsaved)
       // value forever with no re-sync to what the server actually has.
-      usersApi.updateProfile({ preferredLang: code }).catch(() => {
-        toast.error(t('settings.saveFailed'));
+      usersApi.updateProfile({ preferredLang: code }).catch((err: any) => {
+        console.error('[Settings] Failed to save language:', err?.response?.status, err?.response?.data || err?.message);
+        toast.error(err?.response?.data?.message || t('settings.saveFailed'));
         setLang(prevLang);
         i18n.changeLanguage(prevLang);
         setUser(prevUser);
@@ -189,8 +196,9 @@ export default function SettingsPage() {
       // sound toggles, since the effect above re-syncs them from it — same
       // fix as language above: a failed save used to leave the toggle
       // showing the new (unsaved) state forever.
-      usersApi.updatePreferences({ [key]: value }).catch(() => {
-        toast.error(t('settings.saveFailed'));
+      usersApi.updatePreferences({ [key]: value }).catch((err: any) => {
+        console.error('[Settings] Failed to save preference:', key, err?.response?.status, err?.response?.data || err?.message);
+        toast.error(err?.response?.data?.message || t('settings.saveFailed'));
         setPreferences(prevPreferences as any);
       });
     } else {

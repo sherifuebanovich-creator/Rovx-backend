@@ -80,6 +80,7 @@ export default function CreateGroupPage() {
       toast.success(t('createGroup.created'));
       router.push(`/groups/${group.id}`);
     } catch (err: any) {
+      console.error('[CreateGroup] Failed to create group:', err?.response?.status, err?.response?.data || err?.message);
       toast.error(err?.response?.data?.message || t('createGroup.createFailed'));
     } finally {
       creatingRef.current = false;
