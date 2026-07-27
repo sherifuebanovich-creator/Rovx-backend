@@ -128,24 +128,35 @@ api.interceptors.response.use(
           };
         };
 
+        // This call bypasses the `api` instance (and its cold-start retry
+        // logic above) on purpose — it's the one request that must never be
+        // queued behind the 401-refresh flow it IS. But that meant it only
+        // ever got a single retry after a flat 1.5s, nowhere near enough for
+        // Render's 30-60s cold-start window — every OTHER request already
+        // got a generous multi-attempt retry, but the most critical one
+        // (every subsequent authenticated call depends on this succeeding)
+        // gave up almost immediately. A cold backend during this specific
+        // call is also what surfaced in the browser as a misleading CORS
+        // error (Access-Control-Allow-Origin missing) — Render's proxy
+        // returns a bare failure with no headers at all while the app is
+        // still booting, which Chrome reports as a CORS block instead of
+        // "no response" even though the backend's actual CORS config
+        // (verified directly) is fine once it's up.
+        const REFRESH_RETRY_DELAYS_MS = [1500, 3000, 5000, 8000, 12000];
         let res;
-        try {
-          res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
-            withCredentials: true,
-            headers: getRefreshHeaders(),
-          });
-        } catch (firstErr: any) {
-          // Retry once — Render cold start, transient backend error, or a
-          // 409 from a concurrent refresh already rotating this token
-          // (backend redis lock) that just needs a moment to land.
-          if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
-            await new Promise(r => setTimeout(r, 1500));
+        for (let attempt = 0; ; attempt++) {
+          try {
             res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
               withCredentials: true,
               headers: getRefreshHeaders(),
             });
-          } else {
-            throw firstErr;
+            break;
+          } catch (err: any) {
+            // A real auth rejection (400/401/403 with a response) means the
+            // refresh token itself is invalid — retrying won't fix that.
+            const isRetryable = err?.response?.status >= 500 || err?.response?.status === 409 || !err?.response;
+            if (!isRetryable || attempt >= REFRESH_RETRY_DELAYS_MS.length) throw err;
+            await new Promise((r) => setTimeout(r, REFRESH_RETRY_DELAYS_MS[attempt]));
           }
         }
 
