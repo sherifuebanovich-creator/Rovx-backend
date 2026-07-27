@@ -2,11 +2,14 @@
 import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
+import { useAuthStore } from '@/store/auth.store';
 import { mapApi } from '@/lib/api';
 import { escapeAttr } from '@/lib/maplibreIcons';
+import { haversineDist } from '@/lib/geo';
 
 const MIN_ZOOM = 8;
 const DEBOUNCE_MS = 400;
+const SIGNAL_RADIUS_M = 1000;
 
 interface Props {
   map: maplibregl.Map | null;
@@ -18,6 +21,17 @@ function MapFeaturesLayer({ map }: Props) {
   const clusterCountId = 'map-features-cluster-count';
   const cameraLayerId = 'map-features-cameras';
   const signalLayerId = 'map-features-signals';
+  // Off by default (matches UserPreference.limitTrafficSignalsRadius) — read
+  // via refs, not deps on loadFeatures, so a GPS tick or a settings toggle
+  // doesn't recreate the callback (and its moveend/zoomend listeners) on
+  // every update; the next fetch (pan/zoom, or the toggle handler below)
+  // just picks up the latest ref value.
+  const userLocation = useMapStore((s) => s.userLocation);
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
+  const limitSignalsRadius = useAuthStore((s) => s.preferences?.limitTrafficSignalsRadius ?? false);
+  const limitSignalsRadiusRef = useRef(limitSignalsRadius);
+  limitSignalsRadiusRef.current = limitSignalsRadius;
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const lastBoundsRef = useRef<string>('');
   // Nothing here ordered responses by request — a fetch for an older
@@ -88,7 +102,16 @@ function MapFeaturesLayer({ map }: Props) {
     try {
       const res = await mapApi.getFeatures(bbox, 'speed_camera,traffic_signals');
       if (requestId !== requestIdRef.current) return;
-      const features = res.data?.data || res.data || [];
+      const rawFeatures = res.data?.data || res.data || [];
+
+      // User-opt-in setting: only traffic_signals get distance-limited —
+      // speed cameras and any other feature type always show, regardless
+      // of this toggle, exactly as before it existed.
+      const loc = userLocationRef.current;
+      const features = (limitSignalsRadiusRef.current && loc)
+        ? rawFeatures.filter((f: any) => f.type !== 'traffic_signals'
+            || haversineDist(loc.lat, loc.lng, f.lat, f.lng) <= SIGNAL_RADIUS_M)
+        : rawFeatures;
 
       if (!map.isStyleLoaded()) return;
       cleanup();
@@ -198,6 +221,16 @@ function MapFeaturesLayer({ map }: Props) {
     }
   }, [map, cleanup, ensureCameraIcon]);
 
+  // loadFeatures dedupes by bbox (see lastBoundsRef above) — without this,
+  // flipping the "limit traffic signals to 1km" toggle while the viewport
+  // hasn't moved would silently do nothing until the next pan/zoom, since
+  // the bbox guard would skip the refetch entirely.
+  useEffect(() => {
+    if (!map) return;
+    lastBoundsRef.current = '';
+    loadFeatures();
+  }, [map, limitSignalsRadius, loadFeatures]);
+
   useEffect(() => {
     if (!map) return;
 
@@ -266,9 +299,24 @@ function MapFeaturesLayer({ map }: Props) {
     // dedupes by bbox (see loadFeatures), so if the viewport hasn't moved,
     // that guard would otherwise skip rebuilding and leave the camera/signal
     // layers gone until the next pan/zoom to a different bbox.
+    //
+    // Switching to the dark/night style (mapStyle -> 'night') is the one
+    // path that actually fires this handler after initial load, and
+    // `map.isStyleLoaded()` can still read false for a tick right when
+    // `style.load` fires (maplibre's own internal bookkeeping lags the
+    // event by a frame) — loadFeatures()'s own `!map.isStyleLoaded()` guard
+    // then bails silently with nothing left to retry it, so every icon
+    // this layer draws (traffic signals, speed cameras) stayed gone after
+    // switching to dark mode until the user happened to pan/zoom. Falling
+    // back to a one-time 'idle' wait (fires once rendering has actually
+    // settled) instead of calling straight through closes that gap.
     const onStyleLoad = () => {
       lastBoundsRef.current = '';
-      loadFeatures();
+      if (map.isStyleLoaded()) {
+        loadFeatures();
+      } else {
+        map.once('idle', loadFeatures);
+      }
     };
 
     map.on('moveend', debouncedLoad);

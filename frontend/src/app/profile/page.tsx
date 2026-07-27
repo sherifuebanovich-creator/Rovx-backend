@@ -163,7 +163,7 @@ export default function ProfilePage() {
       setAvatarPreview(null);
       toast.success(t('profile.profileUpdated'));
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to update profile';
+      const msg = err?.response?.data?.message || t('profile.updateFailed');
       toast.error(msg);
     } finally {
       saveProfileRef.current = false;

@@ -310,6 +310,7 @@ export interface GroupMessage {
 export interface UserPreferences {
   avoidTolls: boolean;
   avoidHighways: boolean;
+  avoidFerries: boolean;
   preferScenicRoutes: boolean;
   nightMode: boolean;
   voiceEnabled: boolean;
@@ -324,6 +325,7 @@ export interface UserPreferences {
   units: 'metric' | 'imperial';
   mapStyle: string;
   defaultRouteType: RouteType;
+  limitTrafficSignalsRadius: boolean;
 }
 
 export interface VoiceRoom {

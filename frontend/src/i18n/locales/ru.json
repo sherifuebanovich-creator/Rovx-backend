@@ -512,7 +512,8 @@
     "mapMode": "Режим карты",
     "streets": "Обычная (2D)",
     "satellite": "Спутник",
-    "3dBuildings": "3D Здания"
+    "3dBuildings": "3D Здания",
+    "limitTrafficSignals": "Светофоры только рядом (1 км)"
   },
   "profile": {
     "selectMakeModel": "Выберите марку и модель",
@@ -542,6 +543,7 @@
     "editProfileFull": "Настройки профиля",
     "displayNameRequired": "Имя обязательно",
     "profileUpdated": "Профиль обновлён",
+    "updateFailed": "Не удалось обновить профиль",
     "displayNamePlaceholder": "Имя",
     "usernamePlaceholder": "Имя пользователя",
     "bioPlaceholder": "О себе (необязательно)",

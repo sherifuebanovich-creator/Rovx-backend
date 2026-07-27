@@ -21,6 +21,10 @@ export default function SettingsPage() {
   const { darkMode, setDarkMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
   const [notifications, setNotifications] = useState(preferences?.trafficAlerts ?? true);
   const [sound, setSound] = useState(preferences?.voiceEnabled ?? true);
+  // Off by default — out of the box every traffic-signal icon shows,
+  // regardless of distance; other icon types (cameras, hazards) are never
+  // affected by this setting either way.
+  const [limitSignals, setLimitSignals] = useState(preferences?.limitTrafficSignalsRadius ?? false);
   const [lang, setLang] = useState(user?.preferredLang || i18n.language || 'ru');
   const [langSearch, setLangSearch] = useState('');
   const [showLangPicker, setShowLangPicker] = useState(false);
@@ -52,6 +56,7 @@ export default function SettingsPage() {
     if (preferences) {
       setNotifications(preferences.trafficAlerts ?? true);
       setSound(preferences.voiceEnabled ?? true);
+      setLimitSignals(preferences.limitTrafficSignalsRadius ?? false);
     }
   }, [preferences]);
 
@@ -209,7 +214,18 @@ export default function SettingsPage() {
       items: [
         { icon: <FaBell size={16} className="text-yellow-400" />, label: t('settings.notifications'), right: <Toggle value={notifications} onChange={() => { const v = !notifications; setNotifications(v); updatePreference('trafficAlerts', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.sound'), right: <Toggle value={sound} onChange={() => { const v = !sound; setSound(v); updatePreference('voiceEnabled', v); }} /> },
-        { icon: <FaMoon size={16} className="text-purple-400" />, label: t('settings.darkMode'), right: <Toggle value={darkMode} onChange={() => { useMapStore.getState().setDarkMode(!darkMode); const v = !darkMode; document.documentElement.classList.toggle('dark', v); localStorage.setItem('darkMode', String(v)); }} /> },
+        { icon: <FaMoon size={16} className="text-purple-400" />, label: t('settings.darkMode'), right: <Toggle value={darkMode} onChange={() => {
+          // Mirrors TopBar.tsx's dark-mode toggle: this used to only flip the
+          // app UI theme, leaving the map tiles on whatever style was active
+          // (usually the light 'streets' style) — toggling dark mode here and
+          // via TopBar gave two different results for the same setting.
+          const v = !darkMode;
+          useMapStore.getState().setDarkMode(v);
+          document.documentElement.classList.toggle('dark', v);
+          localStorage.setItem('darkMode', String(v));
+          if (v && mapStyle === 'streets') setMapStyle('night');
+          else if (!v && mapStyle === 'night') setMapStyle('streets');
+        }} /> },
         { icon: <FaGlobe size={16} className="text-green-400" />, label: t('settings.language'),
           right: (
             <button onClick={() => setShowLangPicker(true)}
@@ -237,6 +253,9 @@ export default function SettingsPage() {
         },
         { icon: <FaCube size={16} className="text-purple-400" />, label: t('settings.3dBuildings'),
           right: <Toggle value={show3D} onChange={() => { setShow3D(!show3D); }} />,
+        },
+        { icon: <FaRoad size={16} className="text-amber-400" />, label: t('settings.limitTrafficSignals'),
+          right: <Toggle value={limitSignals} onChange={() => { const v = !limitSignals; setLimitSignals(v); updatePreference('limitTrafficSignalsRadius', v); }} />,
         },
       ],
     },

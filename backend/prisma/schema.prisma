@@ -195,6 +195,11 @@ model UserPreference {
   units              String  @default("metric")
   mapStyle           String  @default("streets")
   defaultRouteType   String  @default("fastest")
+  // Off by default — out of the box, all traffic-signal icons show
+  // regardless of distance, same as before this field existed. When on,
+  // the map only draws traffic-signal icons within 1km of the user;
+  // other icon types (speed cameras, hazards, etc.) are unaffected.
+  limitTrafficSignalsRadius Boolean @default(false)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("user_preferences")
 }

@@ -56,10 +56,23 @@ api.interceptors.response.use(
     // whose write actually landed server-side but whose response didn't make
     // it back in time got blindly replayed, creating a duplicate trip/report.
     const method = (originalRequest?.method || 'get').toLowerCase();
-    const isIdempotentMethod = ['get', 'head', 'options'].includes(method);
+    // PUT/DELETE are idempotent by HTTP definition — replaying an identical
+    // update or delete after a cold-start timeout lands in the same end
+    // state, so they're as safe to retry as GET. This is what was behind
+    // "Failed to update profile": PUT /users/me got excluded from the retry
+    // above (only GET/HEAD/OPTIONS qualified), so a cold-start timeout on
+    // profile save surfaced as a hard failure instead of a silent retry,
+    // even though the save itself is perfectly safe to replay.
+    // POST stays excluded by default (a blind replay could double-create),
+    // but an individual POST call that's proven safe server-side (e.g.
+    // createGroup's unique-name advisory lock, which turns a duplicate
+    // replay into a clean 409 instead of a second group) can opt in
+    // per-request via `retryOnColdStart: true` in its axios config.
+    const isSafeToRetry = ['get', 'head', 'options', 'put', 'delete'].includes(method)
+      || originalRequest?.retryOnColdStart === true;
     if (
       originalRequest &&
-      isIdempotentMethod &&
+      isSafeToRetry &&
       !originalRequest._coldStartRetry &&
       (!error.response || [502, 503, 504].includes(error.response.status))
     ) {
@@ -304,7 +317,11 @@ export const socialApi = {
   getConversations: () => api.get('/social/messages'),
   getMessages: (partnerId: string, page = 1) =>
     api.get(`/social/messages/${partnerId}?page=${page}`),
-  createGroup: (data: any) => api.post('/social/groups', data),
+  // retryOnColdStart is safe here specifically: createGroup is guarded
+  // server-side by an advisory lock on the lowercased name (social.service.ts),
+  // so a replayed request either creates the group once or gets a clean 409
+  // "already exists" — never a second group.
+  createGroup: (data: any) => api.post('/social/groups', data, { retryOnColdStart: true } as any),
   updateGroup: (groupId: string, data: any) => api.put(`/social/groups/${groupId}`, data),
   deleteGroup: (groupId: string) => api.delete(`/social/groups/${groupId}`),
   uploadGroupAvatar: (groupId: string, file: File) => {

@@ -177,7 +177,19 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
 
   useEffect(() => {
     if (!map) return;
-    const onStyleLoad = () => renderTraffic(true);
+    // Same race as MapFeaturesLayer's style.load handler: map.isStyleLoaded()
+    // can still read false for a tick right when 'style.load' fires (e.g.
+    // switching to the dark/night style), and renderTraffic's own
+    // `!map.isStyleLoaded()` guard then bails with nothing to retry it —
+    // leaving traffic markers gone after a dark-mode switch until the next
+    // report update. Fall back to a one-time 'idle' wait when that happens.
+    const onStyleLoad = () => {
+      if (map.isStyleLoaded()) {
+        renderTraffic(true);
+      } else {
+        map.once('idle', () => renderTraffic(true));
+      }
+    };
     map.on('style.load', onStyleLoad);
     return () => { map.off('style.load', onStyleLoad); };
   }, [map, renderTraffic]);
