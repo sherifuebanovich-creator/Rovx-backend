@@ -29,10 +29,13 @@ export class AdminService {
     const skip = Math.max(0, (page - 1) * limit);
     const where: any = {};
     if (search) {
+      // Every other search in the app (groups, group search, join-by-name)
+      // is case-insensitive — this one wasn't, so an admin looking up
+      // "Ivan" got zero results for a user stored as "ivan".
       where.OR = [
-        { email: { contains: search } },
-        { username: { contains: search } },
-        { displayName: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { username: { contains: search, mode: 'insensitive' } },
+        { displayName: { contains: search, mode: 'insensitive' } },
       ];
     }
     if (role) where.role = role;
