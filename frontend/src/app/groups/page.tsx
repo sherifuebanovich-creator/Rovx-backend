@@ -85,16 +85,21 @@ export default function GroupsPage() {
   };
 
   const canCreateGroup = async () => {
-    if (user?.subscription !== 'PREMIUM_MAX') {
-      toast.error(t('groups.premiumRequired'));
-      router.push('/premium');
-      return;
-    }
+    // Which tier unlocks group creation is decided server-side
+    // (premium.service.ts PREMIUM_TIERS) — a hardcoded 'PREMIUM_MAX' check
+    // here used to require Max even after Standard was granted the
+    // feature, so defer entirely to the backend's answer instead of
+    // duplicating the tier list on the frontend.
     try {
       const res = await premiumApi.canCreateGroup();
       const data = res.data?.data || res.data;
       if (!data.allowed) {
-        toast.error(t('groups.limitExceeded', { current: data.currentGroups, max: data.maxGroups }));
+        if (data.currentGroups === 0 && data.maxGroups === 0) {
+          toast.error(t('groups.premiumRequired'));
+        } else {
+          toast.error(t('groups.limitExceeded', { current: data.currentGroups, max: data.maxGroups }));
+        }
+        router.push('/premium');
       } else {
         router.push('/chats/create-group');
       }

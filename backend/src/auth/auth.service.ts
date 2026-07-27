@@ -412,17 +412,26 @@ export class AuthService {
           throw err;
         }
       }
-    } else if (!user.googleId) {
-      // Link Google to existing account
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { googleId, avatar: avatar || user.avatar },
-      });
-      await this.prisma.userPreference.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id },
-        update: {},
-      }).catch(() => {});
+    } else {
+      const isFirstGoogleLink = !user.googleId;
+      // Keep the avatar synced with Google on every login, not just the
+      // first — previously this whole block (including the avatar write)
+      // only ran once, when googleId was first linked. If Google's picture
+      // claim was empty that one time, or the user changed their photo on
+      // Google afterward, the app avatar stayed stuck forever.
+      const updateData: { googleId?: string; avatar?: string } = {};
+      if (isFirstGoogleLink) updateData.googleId = googleId;
+      if (avatar && avatar !== user.avatar) updateData.avatar = avatar;
+      if (Object.keys(updateData).length) {
+        user = await this.prisma.user.update({ where: { id: user.id }, data: updateData });
+      }
+      if (isFirstGoogleLink) {
+        await this.prisma.userPreference.upsert({
+          where: { userId: user.id },
+          create: { userId: user.id },
+          update: {},
+        }).catch(() => {});
+      }
     }
 
     // Unlike login(), this path issued tokens straight away — a banned or

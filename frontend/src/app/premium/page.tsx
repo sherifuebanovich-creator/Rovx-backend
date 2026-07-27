@@ -114,9 +114,9 @@ function PremiumPage() {
       if (subRes.status === 'fulfilled') {
         const sub = subRes.value.data?.data || subRes.value.data;
         setMySub(sub);
-        // Sidebar/profile's tier badge, groups' create-gating
-        // (user?.subscription !== 'PREMIUM_MAX'), and FriendMarkers' premium
-        // gate all read user.subscription straight from the auth store —
+        // Sidebar/profile's tier badge, groups' create-gating (Standard/Max
+        // check in chats/create-group), and FriendMarkers' premium gate all
+        // read user.subscription straight from the auth store —
         // they never see this page's local `mySub` state. Without this, a
         // just-completed purchase (this poll resolving sub.active) stays
         // invisible to every other page until the next full /auth/me

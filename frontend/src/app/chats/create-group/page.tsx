@@ -36,7 +36,11 @@ export default function CreateGroupPage() {
     };
   }, []);
 
-  const isMax = user?.subscription === 'PREMIUM_MAX';
+  // Kept in sync with premium.service.ts PREMIUM_TIERS.canCreateGroups —
+  // this used to hardcode 'PREMIUM_MAX' only, blocking Standard users the
+  // backend now allows. The backend's own check on create is still the
+  // real gate; this is just the page-level guard for direct navigation.
+  const canCreate = user?.subscription === 'PREMIUM_STANDARD' || user?.subscription === 'PREMIUM_MAX';
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,7 +63,7 @@ export default function CreateGroupPage() {
   const handleCreate = async () => {
     if (creatingRef.current) return;
     if (!name.trim()) { toast.error(t('createGroup.enterName')); return; }
-    if (!isMax) { toast.error(t('createGroup.premiumRequired')); return; }
+    if (!canCreate) { toast.error(t('createGroup.premiumRequired')); return; }
     creatingRef.current = true;
     setLoading(true);
     try {
@@ -83,7 +87,7 @@ export default function CreateGroupPage() {
     }
   };
 
-  if (!isMax) {
+  if (!canCreate) {
     return (
       <div className="min-h-dvh bg-dark-bg flex flex-col items-center justify-center gap-4 px-6">
         <FaCrown size={48} className="text-yellow-400" />

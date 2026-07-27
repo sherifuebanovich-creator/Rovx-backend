@@ -23,7 +23,7 @@ export const PREMIUM_TIERS = [
   },
   {
     tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3, priceRub: 899, priceKzt: 4490, priceUzs: 99900, supportLimit: 5,
-    canCreateGroups: false, canReceiveReports: true,
+    canCreateGroups: true, canReceiveReports: true,
     label_en: 'Premium Standard', label_ru: 'Премиум Стандарт',
     desc_en: 'Everything in Basic, plus city group chats and groups',
     desc_ru: 'Всё из Базового, плюс городские чаты и группы',
@@ -119,13 +119,16 @@ export class PremiumService {
 
   async canCreateGroup(userId: string): Promise<{ allowed: boolean; currentGroups: number; maxGroups: number; tier: number; tierRequired: string }> {
     const tier = await this.getUserTier(userId);
-    const maxTier = PREMIUM_TIERS[PREMIUM_TIERS.length - 1];
+    // Lowest tier that actually grants group creation — was hardcoded to
+    // the top tier (Max), so the error message told Standard users they
+    // needed Max even after Standard gained canCreateGroups.
+    const requiredTier = PREMIUM_TIERS.find(t => t.canCreateGroups) ?? PREMIUM_TIERS[PREMIUM_TIERS.length - 1];
     if (!tier.canCreateGroups) {
-      return { allowed: false, currentGroups: 0, maxGroups: 0, tier: tier.tier, tierRequired: maxTier.label_en };
+      return { allowed: false, currentGroups: 0, maxGroups: 0, tier: tier.tier, tierRequired: requiredTier.label_en };
     }
     const groupCount = await this.prisma.group.count({ where: { ownerId: userId } });
     const allowed = groupCount < tier.maxGroups;
-    return { allowed, currentGroups: groupCount, maxGroups: tier.maxGroups, tier: tier.tier, tierRequired: maxTier.label_en };
+    return { allowed, currentGroups: groupCount, maxGroups: tier.maxGroups, tier: tier.tier, tierRequired: requiredTier.label_en };
   }
 
   async createCheckoutSession(userId: string, tierName: string, months: number = 1, lang: string = 'ru'): Promise<{ url: string; paymentId: string }> {
