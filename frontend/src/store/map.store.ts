@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Coordinates, MapObject, Report, RouteResult, RouteType, SearchSuggestion, FriendLocation, Vehicle } from '@/types';
+import { ThemeMode, getStoredThemeMode, resolveIsDark, setStoredThemeMode, applyThemeClass } from '@/lib/theme';
 
 interface NavigationState {
   isNavigating: boolean;
@@ -74,6 +75,7 @@ interface MapState {
   vehicleMode: 'CAR';
   selectedVehicle: Vehicle | null;
   darkMode: boolean;
+  themeMode: ThemeMode;
 
   // Actions
   setUserLocation: (loc: Coordinates, heading?: number, speed?: number, accuracy?: number, timestamp?: number) => void;
@@ -112,6 +114,7 @@ interface MapState {
   setVehicleMode: (mode: 'CAR') => void;
   setSelectedVehicle: (vehicle: Vehicle | null) => void;
   setDarkMode: (dark: boolean) => void;
+  setThemeMode: (mode: ThemeMode) => void;
   setShow3D: (show: boolean) => void;
   toggle3D: () => void;
   clearRoute: () => void;
@@ -201,7 +204,13 @@ export const useMapStore = create<MapState>((set) => ({
   isSidebarOpen: false,
   vehicleMode: 'CAR',
   selectedVehicle: null,
-  darkMode: true,
+  // Resolved at store-creation time from the stored preference (falls back
+  // to 'system' / OS prefers-color-scheme) — this used to hardcode `true`
+  // regardless of what was stored, which is why every screen except
+  // Settings (and, separately, TopBar via its own mount-sync effect) could
+  // briefly or permanently show the wrong theme.
+  darkMode: resolveIsDark(getStoredThemeMode()),
+  themeMode: getStoredThemeMode(),
 
   // Actions
   setUserLocation: (loc, heading = 0, speed = 0, accuracy = 0, timestamp) =>
@@ -296,6 +305,12 @@ export const useMapStore = create<MapState>((set) => ({
   setSelectedVehicle: (selectedVehicle) => set({ selectedVehicle }),
 
   setDarkMode: (darkMode) => set({ darkMode }),
+  setThemeMode: (mode) => {
+    const isDark = resolveIsDark(mode);
+    setStoredThemeMode(mode);
+    applyThemeClass(isDark);
+    set({ themeMode: mode, darkMode: isDark });
+  },
 
   setShow3D: (show3D) => set({ show3D }),
 

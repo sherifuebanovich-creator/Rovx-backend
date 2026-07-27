@@ -461,7 +461,12 @@
     "preferences": "Preferences",
     "notifications": "Notifications",
     "sound": "Sound",
-    "darkMode": "Dark Mode",
+    "darkMode": "Theme",
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
     "language": "Language",
     "account": "Account",
     "privacy": "Privacy & Security",

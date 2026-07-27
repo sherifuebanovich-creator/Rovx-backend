@@ -13,12 +13,13 @@ import { LANGUAGES, getLanguageConfig } from '@/config/languages';
 import { useMapStore } from '@/store/map.store';
 import { VehicleForm } from '@/components/vehicles/VehicleForm';
 import { Vehicle } from '@/types';
+import { getStoredThemeMode, resolveIsDark } from '@/lib/theme';
 
 export default function SettingsPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, setUser, preferences, setPreferences } = useAuthStore();
-  const { darkMode, setDarkMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
+  const { themeMode, setDarkMode, setThemeMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
   const [notifications, setNotifications] = useState(preferences?.trafficAlerts ?? true);
   const [sound, setSound] = useState(preferences?.voiceEnabled ?? true);
   // Off by default — out of the box every traffic-signal icon shows,
@@ -60,16 +61,26 @@ export default function SettingsPage() {
     }
   }, [preferences]);
 
+  // map.store resolves themeMode/darkMode from storage at creation time —
+  // this only needs to catch a 'system' preference actually changing live
+  // (OS switches) or another tab picking a different mode while this page
+  // is open.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('darkMode');
-      if (stored !== null) {
-        const isDark = stored !== 'false';
-        setDarkMode(isDark);
-        document.documentElement.classList.toggle('dark', isDark);
-      }
-    }
-  }, []);
+    const sync = () => {
+      const mode = getStoredThemeMode();
+      const isDark = resolveIsDark(mode);
+      const state = useMapStore.getState();
+      if (mode !== state.themeMode) useMapStore.setState({ themeMode: mode });
+      if (isDark !== state.darkMode) setDarkMode(isDark);
+    };
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    mq?.addEventListener('change', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      mq?.removeEventListener('change', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, [setDarkMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -214,18 +225,27 @@ export default function SettingsPage() {
       items: [
         { icon: <FaBell size={16} className="text-yellow-400" />, label: t('settings.notifications'), right: <Toggle value={notifications} onChange={() => { const v = !notifications; setNotifications(v); updatePreference('trafficAlerts', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.sound'), right: <Toggle value={sound} onChange={() => { const v = !sound; setSound(v); updatePreference('voiceEnabled', v); }} /> },
-        { icon: <FaMoon size={16} className="text-purple-400" />, label: t('settings.darkMode'), right: <Toggle value={darkMode} onChange={() => {
-          // Mirrors TopBar.tsx's dark-mode toggle: this used to only flip the
-          // app UI theme, leaving the map tiles on whatever style was active
-          // (usually the light 'streets' style) — toggling dark mode here and
-          // via TopBar gave two different results for the same setting.
-          const v = !darkMode;
-          useMapStore.getState().setDarkMode(v);
-          document.documentElement.classList.toggle('dark', v);
-          localStorage.setItem('darkMode', String(v));
-          if (v && mapStyle === 'streets') setMapStyle('night');
-          else if (!v && mapStyle === 'night') setMapStyle('streets');
-        }} /> },
+        { icon: <FaMoon size={16} className="text-purple-400" />, label: t('settings.darkMode'),
+          right: (
+            <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
+              {(['light', 'system', 'dark'] as const).map((m) => (
+                <button key={m} onClick={() => {
+                  // Mirrors TopBar.tsx's quick toggle, but as an explicit
+                  // 3-way choice — 'system' follows the OS's own light/dark
+                  // preference (and updates live if it changes) instead of
+                  // this app defaulting to a hardcoded light or dark theme.
+                  setThemeMode(m);
+                  const v = resolveIsDark(m);
+                  if (v && mapStyle === 'streets') setMapStyle('night');
+                  else if (!v && mapStyle === 'night') setMapStyle('streets');
+                }}
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${themeMode === m ? 'bg-primary-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  {t(`settings.theme.${m}`)}
+                </button>
+              ))}
+            </div>
+          ),
+        },
         { icon: <FaGlobe size={16} className="text-green-400" />, label: t('settings.language'),
           right: (
             <button onClick={() => setShowLangPicker(true)}

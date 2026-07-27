@@ -70,14 +70,24 @@ api.interceptors.response.use(
     // per-request via `retryOnColdStart: true` in its axios config.
     const isSafeToRetry = ['get', 'head', 'options', 'put', 'delete'].includes(method)
       || originalRequest?.retryOnColdStart === true;
+    // A single retry after a flat 3s wait was nowhere near enough: Render's
+    // free tier can take up to 30-60s to finish booting from cold, and one
+    // 3s-delayed attempt just re-hits the still-booting instance and fails
+    // again — visibly *slower* than failing immediately, for the same
+    // end result. Retry up to 5 times with increasing backoff (covers
+    // ~45s of deliberate waiting, on top of however long each attempt
+    // itself took) before finally giving up.
+    const MAX_COLD_START_RETRIES = 5;
+    const COLD_START_DELAYS_MS = [2000, 4000, 6000, 9000, 12000];
+    const retryCount = originalRequest?._coldStartRetryCount || 0;
     if (
       originalRequest &&
       isSafeToRetry &&
-      !originalRequest._coldStartRetry &&
+      retryCount < MAX_COLD_START_RETRIES &&
       (!error.response || [502, 503, 504].includes(error.response.status))
     ) {
-      originalRequest._coldStartRetry = true;
-      await new Promise((r) => setTimeout(r, 3000));
+      originalRequest._coldStartRetryCount = retryCount + 1;
+      await new Promise((r) => setTimeout(r, COLD_START_DELAYS_MS[retryCount]));
       return api(originalRequest);
     }
 

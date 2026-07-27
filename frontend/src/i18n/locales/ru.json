@@ -465,7 +465,12 @@
     "preferences": "Настройки",
     "notifications": "Уведомления",
     "sound": "Звук",
-    "darkMode": "Тёмная тема",
+    "darkMode": "Тема",
+    "theme": {
+      "light": "Светлая",
+      "dark": "Тёмная",
+      "system": "Системная"
+    },
     "language": "Язык",
     "account": "Аккаунт",
     "privacy": "Приватность и безопасность",

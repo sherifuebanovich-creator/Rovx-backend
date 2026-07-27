@@ -9,6 +9,7 @@ import { socialApi } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import { getSocket } from '@/hooks/useSocket';
 import toast from 'react-hot-toast';
+import { getStoredThemeMode, resolveIsDark, systemPrefersDark } from '@/lib/theme';
 
 
 export function TopBar() {
@@ -21,6 +22,7 @@ export function TopBar() {
   const setMapStyle = useMapStore(s => s.setMapStyle);
   const darkMode = useMapStore(s => s.darkMode);
   const setDarkMode = useMapStore(s => s.setDarkMode);
+  const setThemeMode = useMapStore(s => s.setThemeMode);
   const userLocation = useMapStore(s => s.userLocation);
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setFollowUser = useMapStore(s => s.setFollowUser);
@@ -78,16 +80,26 @@ export function TopBar() {
     checkUnread();
   }, [checkUnread]);
 
-  // map.store's darkMode always boots as `true` regardless of what's
-  // persisted — only settings/page.tsx re-synced it from localStorage, so
-  // landing directly on the map (this component) after choosing light mode
-  // showed the wrong toggle icon and made the first tap a no-op.
+  // map.store now resolves darkMode from storage at creation time (see
+  // map.store.ts), but this component can still mount with a stale value if
+  // a *different* tab/window changed the theme in the meantime — and when
+  // the stored preference is 'system', the actual answer can change on its
+  // own (OS switches at sunset, etc.) without any storage write at all, so
+  // it needs a live matchMedia listener, not just a one-time read.
   useEffect(() => {
-    const stored = localStorage.getItem('darkMode');
-    if (stored !== null) {
-      const isDark = stored !== 'false';
-      if (isDark !== darkMode) setDarkMode(isDark);
-    }
+    const sync = () => {
+      const mode = getStoredThemeMode();
+      const isDark = resolveIsDark(mode);
+      if (isDark !== useMapStore.getState().darkMode) setDarkMode(isDark);
+    };
+    sync();
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    mq?.addEventListener('change', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      mq?.removeEventListener('change', sync);
+      window.removeEventListener('storage', sync);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -210,13 +222,14 @@ export function TopBar() {
             )}
           </button>
 
-          {/* Theme toggle */}
+          {/* Theme toggle — a quick tap always sets an explicit light/dark
+              choice (flipping the current resolved state), same as before;
+              picking 'system' is a deliberate Settings action, not
+              something a single icon tap should land you in or out of. */}
           <button
             onClick={() => {
               const next = !darkMode;
-              setDarkMode(next);
-              document.documentElement.classList.toggle('dark', next);
-              localStorage.setItem('darkMode', String(next));
+              setThemeMode(next ? 'dark' : 'light');
               if (next && mapStyle === 'streets') setMapStyle('night');
               else if (!next && mapStyle === 'night') setMapStyle('streets');
             }}

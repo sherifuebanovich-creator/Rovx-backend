@@ -94,9 +94,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             try {
               var lang = localStorage.getItem('preferred_lang');
               if (lang) document.documentElement.lang = lang;
-              var dark = localStorage.getItem('darkMode');
-              if (dark === 'false') document.documentElement.classList.remove('dark');
-              else document.documentElement.classList.add('dark');
+              var mode = localStorage.getItem('themeMode');
+              if (mode !== 'light' && mode !== 'dark' && mode !== 'system') {
+                var legacy = localStorage.getItem('darkMode');
+                mode = legacy === null ? 'system' : (legacy === 'false' ? 'light' : 'dark');
+              }
+              var isDark = mode === 'system'
+                ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+                : mode === 'dark';
+              document.documentElement.classList.toggle('dark', !!isDark);
             } catch(e) {}
           `,
         }} />
