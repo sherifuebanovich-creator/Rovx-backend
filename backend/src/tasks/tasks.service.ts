@@ -35,29 +35,33 @@ export class TasksService {
     }
   }
 
-  @Cron('0 * * * *', { timeZone: 'Asia/Tashkent' })
+  // Was '0 * * * *' (every hour) — user asked to space reports out to
+  // every 3 hours instead. Only firing at hours divisible by 3 keeps it
+  // aligned to fixed clock times (00:00, 03:00, ...) rather than drifting.
+  @Cron('0 */3 * * *', { timeZone: 'Asia/Tashkent' })
   async sendHourlyReport() {
     const chatId = this.config.get('TELEGRAM_CHAT_ID');
     if (!chatId) return;
 
     const now = new Date();
-    const tashkentHour = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent', hour: '2-digit', hour12: false });
     const hourKey = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false });
 
     // A per-process in-memory flag can't prevent a duplicate send when two
     // instances briefly overlap during a redeploy (or the platform scales to
     // multiple replicas) — both start with a clean flag and both fire at the
-    // same :00 tick. Redis SETNX makes the "already sent this hour" check
+    // same :00 tick. Redis SETNX makes the "already sent this run" check
     // shared across every instance. If Redis is unreachable, fail open (send
-    // anyway) rather than silently going quiet for the hour.
+    // anyway) rather than silently going quiet for the run. TTL covers the
+    // full 3h gap between runs so a late/retried tick within the same
+    // window still dedupes.
     try {
-      const acquired = await this.redis.setnx(`hourly-report:sent:${hourKey}`, '1', 3600);
+      const acquired = await this.redis.setnx(`hourly-report:sent:${hourKey}`, '1', 3 * 3600);
       if (!acquired) {
-        this.logger.debug(`Skipping hourly report — already sent for ${hourKey}`);
+        this.logger.debug(`Skipping report — already sent for ${hourKey}`);
         return;
       }
     } catch (error) {
-      this.logger.warn(`Hourly report dedup check failed, sending anyway: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(`Report dedup check failed, sending anyway: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     try {
@@ -68,7 +72,7 @@ export class TasksService {
         timeZoneName: 'short',
       });
 
-      let msg = `📊 <b>ЕЖЕЧАСНЫЙ ОТЧЁТ</b>\n🕐 ${timeStr}\n━━━━━━━━━━━━━━━\n`;
+      let msg = `📊 <b>ОТЧЁТ (раз в 3 часа)</b>\n🕐 ${timeStr}\n━━━━━━━━━━━━━━━\n`;
       msg += `📋 <b>РЕПОРТЫ</b>\n`;
       msg += `За час: ${stats.reports.hour}\n`;
       msg += `За день: ${stats.reports.day}\n`;
@@ -92,9 +96,9 @@ export class TasksService {
       msg += `RAM: ${stats.server.memory}%\n`;
 
       await this.telegram.sendMessageToChat(+chatId, msg);
-      this.logger.log(`Hourly report sent (${timeStr})`);
+      this.logger.log(`Report sent (${timeStr})`);
     } catch (error) {
-      this.logger.error('Failed to send hourly report', error instanceof Error ? error.message : String(error));
+      this.logger.error('Failed to send report', error instanceof Error ? error.message : String(error));
     }
   }
 }
