@@ -795,6 +795,8 @@
     "currencyPerLiter": "₽/л"
   },
   "groupDetails": {
+    "call": "Позвонить",
+    "callFailed": "Не удалось начать звонок",
     "notFound": "Группа не найдена",
     "noConnection": "Нет подключения к серверу",
     "nameRequired": "Имя не может быть пустым",

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
-import { socialApi } from '@/lib/api';
+import { socialApi, voiceRoomsApi } from '@/lib/api';
 import { mediaUrl } from '@/lib/media';
 import { useSocket, getSocket } from '@/hooks/useSocket';
 import { Group, GroupMessage, GroupMember, GroupRequest } from '@/types';
@@ -14,7 +14,7 @@ import {
   FaImage, FaSmile, FaInfoCircle, FaMapMarkerAlt, FaCrown, FaShieldAlt,
   FaSignOutAlt, FaCalendarAlt, FaGlobe, FaLock, FaChevronRight, FaHeart,
   FaStar, FaSignInAlt, FaLink, FaCopy, FaUserShield, FaUserMinus, FaUserSlash,
-  FaUserCheck, FaRegCommentDots, FaBullhorn,
+  FaUserCheck, FaRegCommentDots, FaBullhorn, FaPhone,
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
@@ -397,6 +397,35 @@ export default function GroupChatPage() {
     }
   };
 
+  // Group call — this app's 1-on-1 VoiceChat (see FriendsPage's phone
+  // button) only ever signals between exactly two peers, so it can't be
+  // reused for a group; voice-rooms is the actual multi-party mechanism.
+  // Creating a room and dropping a chat message with its name is a
+  // deliberately lightweight "ring the group" — every member already has
+  // Voice Rooms one tap away in the sidebar, so this doesn't need its own
+  // notification/deep-link plumbing to be usable.
+  const [startingCall, setStartingCall] = useState(false);
+  const startGroupCall = useCallback(async () => {
+    if (!group || startingCall) return;
+    setStartingCall(true);
+    try {
+      const roomName = `${group.name} — звонок`;
+      const res = await voiceRoomsApi.create(roomName, Math.max(group.memberCount, 2));
+      const room = res.data?.data || res.data;
+      const ws = getSocket();
+      ws?.emit('group:message', {
+        groupId,
+        content: `📞 ${user?.displayName || 'Кто-то'} начал(а) групповой звонок «${roomName}». Открой «Голосовые комнаты» в меню, чтобы присоединиться.`,
+      });
+      router.push(`/voice-rooms/${room.id}`);
+    } catch (err: any) {
+      console.error('[GroupChat] Failed to start call:', err?.response?.status, err?.response?.data || err?.message);
+      toast.error(err?.response?.data?.message || t('groupDetails.callFailed'));
+    } finally {
+      setStartingCall(false);
+    }
+  }, [group, groupId, user, router, t, startingCall]);
+
   // Send reaction
   const toggleReaction = useCallback((messageId: string, emoji: string) => {
     const ws = getSocket();
@@ -669,6 +698,15 @@ export default function GroupChatPage() {
           </div>
           <FaChevronRight size={12} className="text-gray-500 flex-shrink-0" />
         </button>
+        {isMember && (
+          <button onClick={startGroupCall} disabled={startingCall}
+            title={t('groupDetails.call')}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-green-400 hover:bg-green-500/10 transition-all disabled:opacity-50">
+            {startingCall
+              ? <div className="w-3.5 h-3.5 border-2 border-green-400/30 border-t-green-400 rounded-full animate-spin" />
+              : <FaPhone size={15} />}
+          </button>
+        )}
         <button onClick={handleToggleFavorite}
           className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${
             group.isFavorited ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'

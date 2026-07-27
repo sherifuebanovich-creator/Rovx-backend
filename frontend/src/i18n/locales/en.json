@@ -790,6 +790,8 @@
     "currencyPerLiter": "$/L"
   },
   "groupDetails": {
+    "call": "Call",
+    "callFailed": "Failed to start call",
     "notFound": "Group not found",
     "noConnection": "No connection to server",
     "nameRequired": "Name cannot be empty",
