@@ -18,7 +18,7 @@ export function SessionSync() {
     sessionRef.current = session;
 
     if (status === 'authenticated' && session) {
-      const { accessToken: sessionToken, error } = session as any;
+      const { accessToken: sessionToken, refreshToken: sessionRefreshToken, error } = session as any;
 
       // Compare against the store's own token, not cookie *presence* — a
       // leftover access_token cookie from a previous/different session
@@ -26,7 +26,13 @@ export function SessionSync() {
       // this sync forever and leave the app running on the wrong token
       // after a fresh Google sign-in.
       if (sessionToken && sessionToken !== accessToken) {
-        setTokens(sessionToken, '');
+        // Was hardcoded '' — the backend's /auth/google response does
+        // return a refreshToken (route.ts now forwards it through the
+        // NextAuth JWT/session), but this discarded it unconditionally, so
+        // every Google-authenticated session lost the ability to refresh
+        // the moment the 15-minute access token expired, with no way to
+        // recover short of logging in again.
+        setTokens(sessionToken, sessionRefreshToken || '');
         // AuthInit may have already bailed — re-trigger initAuth to fetch /auth/me
         setTimeout(() => { initAuth(); }, 100);
         erroredRef.current = false;

@@ -28,7 +28,15 @@ async function syncWithBackend(idToken: string | undefined, displayName: string 
         const payload = raw?.data ?? raw;
         const inner = payload?.data ?? payload;
         const accessToken = payload?.accessToken || payload?.access_token || inner?.accessToken || inner?.access_token;
-        if (accessToken) return { accessToken };
+        // /auth/google's response includes a refreshToken alongside
+        // accessToken (same shape as /auth/login), but this only ever
+        // extracted accessToken — SessionSync then had nothing to pass
+        // through and hardcoded '' instead, so every Google-authenticated
+        // session silently lost the ability to refresh the moment the
+        // 15-minute access token expired, with no way to recover short of
+        // logging in again.
+        const refreshToken = payload?.refreshToken || payload?.refresh_token || inner?.refreshToken || inner?.refresh_token;
+        if (accessToken) return { accessToken, refreshToken };
       }
       // Non-2xx that isn't going to fix itself on retry (e.g. bad token) —
       // stop instead of burning the remaining attempts. Surface the backend's
@@ -86,6 +94,7 @@ const authOptions: NextAuthOptions = {
         const result = await syncWithBackend(account.id_token, user.name, user.image);
         if (result.accessToken) {
           token.accessToken = result.accessToken;
+          token.refreshToken = result.refreshToken;
           delete token.error;
         } else {
           token.error = result.error;
@@ -95,6 +104,7 @@ const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken;
+      session.refreshToken = token.refreshToken as string | undefined;
       session.error = token.error as string | undefined;
       return session;
     },

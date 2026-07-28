@@ -212,7 +212,18 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'rovx-auth',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated, preferences: state.preferences, refreshToken: state.refreshToken }),
+      // `user.avatar` can be a multi-hundred-KB base64 data: URI (self-hosted
+      // avatars are stored inline, see users.controller.ts) — persisting the
+      // full user object wrote that into localStorage on every change,
+      // bloating it for no benefit: initAuth() re-fetches the full profile
+      // (avatar included) from /auth/me on every load anyway, so nothing
+      // actually reads the persisted copy before it's overwritten.
+      partialize: (state) => ({
+        user: state.user ? { ...state.user, avatar: undefined } : state.user,
+        isAuthenticated: state.isAuthenticated,
+        preferences: state.preferences,
+        refreshToken: state.refreshToken,
+      }),
     },
   ),
 );
