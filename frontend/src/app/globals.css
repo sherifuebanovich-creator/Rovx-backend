@@ -27,10 +27,24 @@
     box-sizing: border-box;
   }
 
-  html, body {
+  /* Was `height: 100%` on BOTH html and body with `overflow-y: auto` on
+     both — pins body's box to exactly the viewport height regardless of
+     its content, and having non-visible overflow on both html and body is
+     ambiguous per the CSS Overflow spec's viewport-propagation rules.
+     Net effect: on any page whose content is taller than the viewport
+     (login/register with the language picker expanded, profile, settings,
+     premium, etc. — anything that isn't the map app shell, which manages
+     its own h-dvh/overflow-hidden container independently), the page
+     became completely unscrollable, hiding form fields and buttons below
+     the fold with no way to reach them. `min-height` lets body grow with
+     content so the browser's normal document-level scroll takes over. */
+  html {
     height: 100%;
     overflow-x: hidden;
-    overflow-y: auto;
+  }
+  body {
+    min-height: 100%;
+    overflow-x: hidden;
   }
 
   body {

@@ -23,7 +23,12 @@ function LoginPageContent() {
   const [showPass, setShowPass] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [googleLang, setGoogleLang] = useState('en');
+  // Was hardcoded to 'en' regardless of the page's actual detected language
+  // (register's equivalent defaults to 'ru') — the picker showed "English"
+  // with a GB flag while every other string on the page rendered in
+  // Russian, and silently proceeding without noticing sent the wrong
+  // language preference to the Google OAuth callback.
+  const [googleLang, setGoogleLang] = useState(i18n.language?.startsWith('ru') ? 'ru' : (i18n.language || 'ru'));
 
   useEffect(() => {
     const errorParam = searchParams?.get('error');

@@ -131,7 +131,12 @@ export const useMapStore = create<MapState>((set) => ({
   locationError: null,
 
   // Map view
-  mapCenter: { lat: 0, lng: 0 }, // Will be set by geolocation
+  // Overwritten by geolocation on success (useGeolocation.ts) — but on
+  // PERMISSION_DENIED/POSITION_UNAVAILABLE it never gets overwritten at all,
+  // so {0,0} (open ocean off the coast of Africa) used to stay the
+  // permanent map center for anyone who declines the location prompt.
+  // Moscow is a reasonable default for this app's CIS-focused user base.
+  mapCenter: { lat: 55.7558, lng: 37.6173 },
   zoom: 13,
   mapStyle: 'streets',
   showTraffic: true,
