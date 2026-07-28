@@ -2,7 +2,6 @@
 import { motion } from 'framer-motion';
 import { FaTimes, FaUser, FaRoute, FaBookmark, FaTrophy, FaCog, FaSignOutAlt,
          FaStar, FaMap, FaCrown, FaChevronRight, FaBell, FaCrown as FaPremium, FaUsers, FaHeadset } from 'react-icons/fa';
-import { FaWalkieTalkie } from 'react-icons/fa6';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useMapStore } from '@/store/map.store';
@@ -43,7 +42,8 @@ export function Sidebar() {
     { icon: <FaPremium size={16} />, label: t('sidebar.premium') || 'Premium', href: '/premium' },
     { icon: <FaUsers size={16} />, label: t('sidebar.friends') || 'Friends', href: '/friends' },
     { icon: <FaUsers size={16} />, label: t('sidebar.groups') || 'Groups', href: '/groups' },
-    { icon: <FaWalkieTalkie size={16} />, label: t('sidebar.voiceRooms'), href: '/voice-rooms' },
+    // Voice rooms are now reached from a group chat's call button instead
+    // of a standalone nav entry (see groups/[id]/page.tsx's startGroupCall).
     { icon: <FaTrophy size={16} />, label: t('sidebar.achievements'), href: '/achievements' },
     { icon: <FaBell size={16} />, label: t('sidebar.notifications'), href: '/notifications' },
     { icon: <FaHeadset size={16} />, label: t('sidebar.support') || 'Support', href: '/support' },

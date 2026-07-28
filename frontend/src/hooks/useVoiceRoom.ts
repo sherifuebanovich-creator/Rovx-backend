@@ -311,7 +311,10 @@ export function useVoiceRoom() {
     setSelfMicEnabled(false);
   }, [closeAllPeers]);
 
-  useEffect(() => () => leaveRoom(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // No longer auto-leaves on unmount — this hook is now owned by a single
+  // globally-mounted provider (VoiceRoomProvider) so a "back to map" nav
+  // can leave the room screen without tearing down the connection. Leaving
+  // is now always an explicit action (the Leave button / handleLeave).
 
   const setMicEnabled = useCallback((enabled: boolean) => {
     micEnabledRef.current = enabled;

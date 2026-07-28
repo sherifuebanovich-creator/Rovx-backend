@@ -734,6 +734,7 @@
     "loginRequired": "Sign in to use voice rooms",
     "login": "Sign In",
     "leave": "Leave",
+    "backToMap": "To map",
     "you": "you",
     "participantsLower": "participants",
     "volume": "Volume",
@@ -741,6 +742,7 @@
     "micOff": "Microphone off",
     "talking": "Talking",
     "holdToTalk": "Hold to talk",
+    "tapToTalk": "Tap to talk",
     "pttHint": "Hold the button or spacebar to talk",
     "joinFailed": "Failed to join the room",
     "status": {
@@ -794,6 +796,7 @@
   "groupDetails": {
     "call": "Call",
     "callFailed": "Failed to start call",
+    "joinCall": "Join call",
     "notFound": "Group not found",
     "noConnection": "No connection to server",
     "nameRequired": "Name cannot be empty",

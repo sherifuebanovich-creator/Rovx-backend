@@ -7,6 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useAuthStore } from '@/store/auth.store';
 import { I18nInitializer } from '@/i18n/I18nProvider';
 import { OfflineScreen } from '@/components/ui/OfflineScreen';
+import { VoiceRoomProvider } from '@/components/voice-rooms/VoiceRoomProvider';
 import dynamic from 'next/dynamic';
 
 const SessionSyncLazy = dynamic(() => import('@/components/auth/SessionSync').then(m => ({ default: m.SessionSync })), { ssr: false });
@@ -18,6 +19,13 @@ const SessionSyncLazy = dynamic(() => import('@/components/auth/SessionSync').th
 // makes calls receivable from anywhere; see FriendsPage for the button that
 // now actually starts one via the rovx:voice-start-call event.
 const VoiceChatLazy = dynamic(() => import('@/components/chat/VoiceChat'), { ssr: false });
+// VoiceRoomProvider (imported above) owns the single useVoiceRoom()
+// connection for the whole app — must wrap {children}, not sit beside it
+// like VoiceChatLazy, since the [roomId] page now reads it via context
+// rather than window events. Imported directly (no ssr:false/dynamic):
+// useVoiceRoom() only touches RTCPeerConnection/navigator.mediaDevices/
+// socket.io inside user-triggered callbacks, never at render time, so it's
+// already SSR-safe — the [roomId] page called it the same way before this.
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -122,7 +130,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <SocketInitializer />
         <OfflineScreen />
         <VoiceChatLazy />
-        {children}
+        <VoiceRoomProvider>
+          {children}
+        </VoiceRoomProvider>
         <Toaster
           position="top-center"
           toastOptions={{

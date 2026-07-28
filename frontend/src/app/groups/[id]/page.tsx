@@ -410,12 +410,22 @@ export default function GroupChatPage() {
     setStartingCall(true);
     try {
       const roomName = `${group.name} — звонок`;
-      const res = await voiceRoomsApi.create(roomName, Math.max(group.memberCount, 2));
+      // Was capped to the group's CURRENT member count — a small group
+      // (e.g. 3 members right now) permanently locked its call room to 3
+      // seats even if the group grows later, or if the room was meant to
+      // be joined via the group's public invite link by non-members too.
+      // Backend's own default (voice-rooms.service.ts) is a generous 20.
+      const res = await voiceRoomsApi.create(roomName);
       const room = res.data?.data || res.data;
       const ws = getSocket();
+      // The [[voicecall:ID]] marker is parsed out by the message renderer
+      // below (see the `voicecall` match in the messages list) and turned
+      // into a tappable "join call" bubble instead of plain text — every
+      // member just taps the message itself instead of having to know
+      // Voice Rooms exists in the sidebar (which this feature replaces).
       ws?.emit('group:message', {
         groupId,
-        content: `📞 ${user?.displayName || 'Кто-то'} начал(а) групповой звонок «${roomName}». Открой «Голосовые комнаты» в меню, чтобы присоединиться.`,
+        content: `📞 ${user?.displayName || 'Кто-то'} начал(а) групповой звонок «${roomName}»\n[[voicecall:${room.id}]]`,
       });
       router.push(`/voice-rooms/${room.id}`);
     } catch (err: any) {
@@ -894,9 +904,27 @@ export default function GroupChatPage() {
                       />
                     </div>
                   )}
-                  {msg.content && !msg.sticker && (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                  )}
+                  {msg.content && !msg.sticker && (() => {
+                    // startGroupCall (header phone button) embeds a
+                    // [[voicecall:ID]] marker in its announcement message —
+                    // strip it from the displayed text and render a
+                    // tappable "join call" bubble in its place instead.
+                    const voiceCallMatch = msg.content.match(/\[\[voicecall:([a-zA-Z0-9-]+)\]\]/);
+                    const textPart = msg.content.replace(/\n?\[\[voicecall:[a-zA-Z0-9-]+\]\]/, '');
+                    return (
+                      <>
+                        {textPart && <p className="text-sm leading-relaxed whitespace-pre-wrap">{textPart}</p>}
+                        {voiceCallMatch && (
+                          <button
+                            onClick={() => router.push(`/voice-rooms/${voiceCallMatch[1]}`)}
+                            className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-green-600/20 text-green-400 text-xs font-medium hover:bg-green-600/30 transition-all w-full"
+                          >
+                            <FaPhone size={12} /> {t('groupDetails.joinCall')}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                   {!msg.sticker && (
                     <div className="flex items-center justify-end gap-1 mt-1">
                       <p className="text-[10px] opacity-50">

@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { mediaUrl } from '@/lib/media';
 import { voiceRoomsApi } from '@/lib/api';
-import { useVoiceRoom } from '@/hooks/useVoiceRoom';
+import { useVoiceRoomContext } from '@/components/voice-rooms/VoiceRoomProvider';
 import {
   FaArrowLeft, FaMicrophone, FaMicrophoneSlash, FaVolumeHigh, FaVolumeXmark,
   FaWalkieTalkie, FaUsers,
@@ -20,38 +20,49 @@ export default function VoiceRoomScreen() {
   const { user } = useAuthStore();
   const [roomName, setRoomName] = useState('');
   const [joining, setJoining] = useState(true);
-  const joinAttemptedRef = useRef(false);
+  const joinAttemptedRef = useRef<string | null>(null);
 
   const {
     connectionState, participants, selfMicEnabled, selfSpeaking, volume, error,
-    joinRoom, leaveRoom, setMicEnabled, startTalking, stopTalking, setVolume,
-  } = useVoiceRoom();
+    leaveAndClear, setMicEnabled, startTalking, stopTalking, setVolume, joinAndTrack,
+  } = useVoiceRoomContext();
 
   useEffect(() => {
-    if (!user || !roomId || joinAttemptedRef.current) return;
-    joinAttemptedRef.current = true;
+    if (!user || !roomId || joinAttemptedRef.current === roomId) return;
+    joinAttemptedRef.current = roomId;
 
     voiceRoomsApi.get(roomId)
       .then((res) => setRoomName((res.data?.data || res.data)?.name || ''))
       .catch(() => {});
 
-    joinRoom(roomId).then((ok) => {
+    // joinAndTrack (VoiceRoomProvider) no-ops if already connected to this
+    // exact room — the connection now lives above this page (see
+    // VoiceRoomProvider), so returning to this screen after minimizing to
+    // the map must NOT rejoin from scratch.
+    joinAndTrack(roomId, roomName).then((ok) => {
       if (!ok) toast.error(t('voiceRooms.joinFailed'));
       setJoining(false);
     });
-
-    return () => { leaveRoom(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, roomId]);
 
   const handleLeave = useCallback(() => {
-    leaveRoom();
+    leaveAndClear();
     router.push('/voice-rooms');
-  }, [leaveRoom, router]);
+  }, [leaveAndClear, router]);
+
+  // Minimizes to the map WITHOUT leaving the room — VoiceRoomProvider keeps
+  // the connection alive and shows a Telegram-style bar at the top of every
+  // other screen; tapping it brings the user straight back here.
+  const handleBackToMap = useCallback(() => {
+    router.push('/');
+  }, [router]);
 
   // Space bar as a keyboard PTT alternative (a driver mounted phone may
   // have the app connected to a Bluetooth-paired peripheral, or this may
-  // be tested/used on a desktop) — held down to talk, same as the button.
+  // be tested/used on a desktop) — kept as hold-to-talk even though the
+  // on-screen button below is now a tap-to-lock toggle: holding a physical
+  // key is trivial, unlike holding a touchscreen button with a thumb.
   useEffect(() => {
     const isTypingTarget = (el: EventTarget | null) =>
       el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
@@ -88,21 +99,32 @@ export default function VoiceRoomScreen() {
     <div className="min-h-dvh bg-dark-bg pb-safe-bottom flex flex-col">
       <div className="px-4 pt-12 sm:pt-16 max-w-2xl mx-auto w-full flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={handleLeave} className="flex items-center gap-2 text-gray-400 hover:text-white transition-all">
-            <FaArrowLeft size={14} /> {t('voiceRooms.leave')}
+          {/* Minimizes to the map — the connection stays alive (see
+              VoiceRoomProvider) and a bar at the top of every other screen
+              lets you jump straight back in, same as Telegram's call bar. */}
+          <button onClick={handleBackToMap} title={t('voiceRooms.backToMap')} aria-label={t('voiceRooms.backToMap')}
+            className="flex items-center gap-2 text-gray-400 hover:text-white transition-all">
+            <FaArrowLeft size={14} /> {t('voiceRooms.backToMap')}
           </button>
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`w-2 h-2 rounded-full ${
-              connectionState === 'connected' ? 'bg-green-500'
-              : connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-500 animate-pulse'
-              : 'bg-red-500'
-            }`} />
-            <span className="text-gray-400">
-              {connectionState === 'connected' && t('voiceRooms.status.connected')}
-              {connectionState === 'connecting' && t('voiceRooms.status.connecting')}
-              {connectionState === 'reconnecting' && t('voiceRooms.status.reconnecting')}
-              {connectionState === 'error' && t('voiceRooms.status.error')}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`w-2 h-2 rounded-full ${
+                connectionState === 'connected' ? 'bg-green-500'
+                : connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-500 animate-pulse'
+                : 'bg-red-500'
+              }`} />
+              <span className="text-gray-400">
+                {connectionState === 'connected' && t('voiceRooms.status.connected')}
+                {connectionState === 'connecting' && t('voiceRooms.status.connecting')}
+                {connectionState === 'reconnecting' && t('voiceRooms.status.reconnecting')}
+                {connectionState === 'error' && t('voiceRooms.status.error')}
+              </span>
+            </div>
+            {/* Actually disconnects — distinct from the back button above,
+                which only minimizes. */}
+            <button onClick={handleLeave} className="text-xs text-red-400 hover:text-red-300 transition-all">
+              {t('voiceRooms.leave')}
+            </button>
           </div>
         </div>
 
@@ -163,22 +185,22 @@ export default function VoiceRoomScreen() {
             {selfMicEnabled ? <FaMicrophone size={18} /> : <FaMicrophoneSlash size={18} />}
           </button>
 
+          {/* Was hold-to-talk (onPointerDown/Up) — a "lock" toggle instead:
+              one tap starts transmitting and it stays on (no need to keep a
+              finger down for a long conversation), another tap stops it. */}
           <button
             disabled={!selfMicEnabled || joining || connectionState !== 'connected'}
-            onPointerDown={(e) => { e.preventDefault(); startTalking(); }}
-            onPointerUp={stopTalking}
-            onPointerLeave={stopTalking}
-            onPointerCancel={stopTalking}
+            onClick={() => (selfSpeaking ? stopTalking() : startTalking())}
+            aria-pressed={selfSpeaking}
             className={`w-28 h-28 rounded-full flex flex-col items-center justify-center gap-1 select-none transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
               selfSpeaking
                 ? 'bg-gradient-to-br from-accent-500 to-accent-600 shadow-[0_0_30px_rgba(234,88,12,0.5)] scale-105'
                 : 'bg-gradient-to-br from-primary-600 to-primary-800 hover:opacity-90'
             }`}
-            style={{ touchAction: 'none' }}
           >
             <FaWalkieTalkie size={28} className="text-white" />
             <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-              {selfSpeaking ? t('voiceRooms.talking') : t('voiceRooms.holdToTalk')}
+              {selfSpeaking ? t('voiceRooms.talking') : t('voiceRooms.tapToTalk')}
             </span>
           </button>
           <p className="text-[11px] text-gray-500">{t('voiceRooms.pttHint')}</p>
