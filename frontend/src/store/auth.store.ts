@@ -103,24 +103,32 @@ export const useAuthStore = create<AuthState>()(
                 ...(storedRefresh ? { 'x-refresh-token': storedRefresh } : {}),
               };
             };
+            // This is a second, independent copy of api.ts's own refresh
+            // call (initAuth can't route through the `api` instance's
+            // interceptor — that interceptor is what calls back into this
+            // store). It kept the old single-retry-after-1.5s fallback
+            // after api.ts's copy was widened to 5 attempts in a previous
+            // fix ("Widen /auth/refresh's own retry budget to match the
+            // rest of the app") — 1.5s is nowhere near Render's 30-60s
+            // cold-start window, and initAuth runs on every page load, so
+            // this is the copy that actually fires first and most often.
+            // Same backoff as api.ts's version for consistency.
+            const REFRESH_RETRY_DELAYS_MS = [1500, 3000, 5000, 8000, 12000];
             let res;
-            try {
-              res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
-                withCredentials: true,
-                headers: getRefreshHeaders(),
-              });
-            } catch (firstErr: any) {
-              // 409 = another in-flight request is already rotating this
-              // token (backend redis lock) — the session is fine, just
-              // retry shortly instead of treating it as an invalid token.
-              if (firstErr?.response?.status >= 500 || firstErr?.response?.status === 409 || !firstErr?.response) {
-                await new Promise(r => setTimeout(r, 1500));
+            for (let attempt = 0; ; attempt++) {
+              try {
                 res = await axiosMod.post(`${BASE_URL}/auth/refresh`, null, {
                   withCredentials: true,
                   headers: getRefreshHeaders(),
                 });
-              } else {
-                throw firstErr;
+                break;
+              } catch (err: any) {
+                // 409 = another in-flight request is already rotating this
+                // token (backend redis lock) — the session is fine, just
+                // retry shortly instead of treating it as an invalid token.
+                const isRetryable = err?.response?.status >= 500 || err?.response?.status === 409 || !err?.response;
+                if (!isRetryable || attempt >= REFRESH_RETRY_DELAYS_MS.length) throw err;
+                await new Promise(r => setTimeout(r, REFRESH_RETRY_DELAYS_MS[attempt]));
               }
             }
             const raw = res.data;
