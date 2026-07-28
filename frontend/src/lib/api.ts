@@ -250,7 +250,18 @@ export const usersApi = {
     formData.append('avatar', file);
     return api.post('/users/me/avatar', formData, {
       timeout: 30000,
-    });
+      // Re-uploading the same file is idempotent (backend just overwrites
+      // `avatar` with the same base64 data URI, no accumulation) — unlike a
+      // blind POST retry that could double-create, this one is as safe to
+      // replay as the PUT/DELETE calls that already retry on cold start by
+      // default. Without this, saving a profile edit that included a new
+      // avatar while the backend was cold/asleep (Render free tier) failed
+      // this step outright with no retry, surfacing as "Failed to update
+      // profile" even though the actual PUT /users/me that follows it would
+      // have gone through fine — see the cold-start retry comment above in
+      // the response interceptor.
+      retryOnColdStart: true,
+    } as any);
   },
 };
 
