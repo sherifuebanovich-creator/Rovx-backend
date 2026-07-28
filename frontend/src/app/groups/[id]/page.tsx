@@ -161,6 +161,11 @@ export default function GroupChatPage() {
 
     const MAX_MESSAGES = 200;
     const onMessage = (msg: GroupMessage) => {
+      // The socket can briefly remain joined to the previous group's room
+      // while navigating between group chats (join:group for the new room
+      // fires before leave:group for the old one is processed) — without
+      // this check a message from the old group could land in this thread.
+      if (msg.groupId !== groupId) return;
       setMessages(prev => {
         const next = [...prev, msg];
         return next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next;

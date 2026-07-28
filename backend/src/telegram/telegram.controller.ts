@@ -280,7 +280,12 @@ export class TelegramController implements OnModuleInit {
               await this.telegram.sendMessageToChat(chatId, caption);
             }
           } catch (e) {
-            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${e}`);
+            // Raw exception text interpolated into an HTML-parse-mode
+            // message — if it happens to contain `<`/`&`, Telegram's
+            // sendMessage rejects the whole call (can't parse entities),
+            // which sendMessageToChat swallows, so the admin gets no reply
+            // at all instead of an error.
+            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${escapeTelegramHtml(String(e instanceof Error ? e.message : e))}`);
           }
           return { ok: true };
         }
@@ -309,17 +314,18 @@ export class TelegramController implements OnModuleInit {
           }
           try {
             const result = await this.reports.getReportsForCity(query, 1, 10);
+            const safeQuery = escapeTelegramHtml(query);
             if (result.reports.length === 0) {
-              await this.telegram.sendMessageToChat(chatId, `🔍 Репортов в <b>${query}</b> не найдено`);
+              await this.telegram.sendMessageToChat(chatId, `🔍 Репортов в <b>${safeQuery}</b> не найдено`);
               return { ok: true };
             }
             const lines = result.reports.map((r: any, i: number) => {
               const sev = r.severity >= 4 ? '🔴' : r.severity >= 3 ? '🟡' : '🟢';
               const time = r.createdAt ? new Date(r.createdAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '';
               const photo = r.images && r.images.length > 0 ? '📷' : '';
-              return `${i+1}. ${sev} <b>${r.type}</b> ${photo}\n   📍 ${r.address ? escapeTelegramHtml(r.address) : 'нет адреса'}\n   🕐 ${time}\n   ⚠️ Серьёзность: ${r.severity}/5`;
+              return `${i+1}. ${sev} <b>${escapeTelegramHtml(r.type)}</b> ${photo}\n   📍 ${r.address ? escapeTelegramHtml(r.address) : 'нет адреса'}\n   🕐 ${time}\n   ⚠️ Серьёзность: ${r.severity}/5`;
             });
-            const header = `🔍 <b>Репорты в ${query}</b> (${result.total} шт.):\n━━━━━━━━━━━━━━━`;
+            const header = `🔍 <b>Репорты в ${safeQuery}</b> (${result.total} шт.):\n━━━━━━━━━━━━━━━`;
             const msg = [header, ...lines].join('\n\n');
 
             const firstWithPhoto = result.reports.find((r: any) => r.images && r.images.length > 0);
@@ -329,7 +335,7 @@ export class TelegramController implements OnModuleInit {
               await this.telegram.sendMessageToChat(chatId, msg);
             }
           } catch (e) {
-            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка поиска: ${e}`);
+            await this.telegram.sendMessageToChat(chatId, `❌ Ошибка поиска: ${escapeTelegramHtml(String(e instanceof Error ? e.message : e))}`);
           }
           return { ok: true };
         }
@@ -514,6 +520,12 @@ export class TelegramController implements OnModuleInit {
             await this.telegram.sendMessageToChat(chatId,
               '🔒 <b>Сменить пароль</b>\n\n' +
               'Пример: <code>/setpass userId новый_пароль</code>');
+            return { ok: true };
+          }
+          // Matches RegisterDto's @MinLength(8) — the bot had no floor at
+          // all, so an operator could set a 1-character password here.
+          if (parts[1].length < 8) {
+            await this.telegram.sendMessageToChat(chatId, '❌ Пароль должен быть не короче 8 символов');
             return { ok: true };
           }
           try {
@@ -760,7 +772,7 @@ export class TelegramController implements OnModuleInit {
         await this.telegram.sendMessageToChat(chatId, `❌ Не удалось выдать премиум`);
       }
     } catch (error) {
-      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${error instanceof Error ? error.message : error}`);
+      await this.telegram.sendMessageToChat(chatId, `❌ Ошибка: ${escapeTelegramHtml(String(error instanceof Error ? error.message : error))}`);
     }
   }
 
@@ -818,7 +830,7 @@ export class TelegramController implements OnModuleInit {
 
   private async sendRole(chatId: number, userId: string, role: string) {
     try {
-      const validRoles = ['USER', 'ADMIN', 'SUPERADMIN'];
+      const validRoles = ['USER', 'MODERATOR', 'ADMIN', 'SUPERADMIN'];
       if (!validRoles.includes(role.toUpperCase())) {
         await this.telegram.sendMessageToChat(chatId,
           `❌ Неверная роль. Доступные: ${validRoles.join(', ')}`);
@@ -886,7 +898,10 @@ export class TelegramController implements OnModuleInit {
       });
 
       const type = group.isPublic ? '🌐 Публичная' : '🔒 Приватная';
-      const photoStatus = group.avatar ? `📷 <a href="${group.avatar}">Фото</a>` : '📷 Нет фото';
+      // group.avatar is stored as an untrusted string (a legacy row could
+      // predate the multer-validated upload path) — escaped like every
+      // other field here rather than interpolated raw into the href.
+      const photoStatus = group.avatar ? `📷 <a href="${escapeTelegramHtml(group.avatar)}">Фото</a>` : '📷 Нет фото';
 
       let msg = `📋 <b>ГРУППА</b>\n━━━━━━━━━━━━━━━\n` +
         `📛 <b>${escapeTelegramHtml(group.name)}</b>\n` +
@@ -1096,9 +1111,9 @@ export class TelegramController implements OnModuleInit {
     return id.slice(0, 8);
   }
 
-  private regMethodLabel(u: { googleId?: string | null; passwordHash?: string | null }): string {
+  private regMethodLabel(u: { googleId?: string | null; hasPassword?: boolean }): string {
     if (u.googleId) return '🌐 Google';
-    if (u.passwordHash) return '📧 Email+пароль';
+    if (u.hasPassword) return '📧 Email+пароль';
     return '❓';
   }
 

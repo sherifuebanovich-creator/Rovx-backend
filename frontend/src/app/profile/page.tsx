@@ -35,7 +35,7 @@ export default function ProfilePage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const years = useMemo(() => Array.from({ length: currentYear - 1969 + 1 }, (_, i) => currentYear - i), [currentYear]);
-  const [addForm, setAddForm] = useState({ type: 'TRUCK' as 'CAR' | 'TRUCK', make: '', model: '', year: currentYear });
+  const [addForm, setAddForm] = useState({ type: 'CAR' as 'CAR' | 'TRUCK', make: '', model: '', year: currentYear });
   const [addLoading, setAddLoading] = useState(false);
 
   // Edit profile state
@@ -183,7 +183,7 @@ export default function ProfilePage() {
       const newVehicle = res.data.data || res.data;
       setVehicles(prev => [...prev, newVehicle]);
       setShowAddForm(false);
-      setAddForm({ type: 'TRUCK', make: '', model: '', year: currentYear });
+      setAddForm({ type: 'CAR', make: '', model: '', year: currentYear });
       toast.success(t('profile.vehicleAdded'));
     } catch {
       toast.error(t('profile.vehicleAddFailed'));
@@ -432,10 +432,24 @@ export default function ProfilePage() {
             >
               <p className="text-white text-sm font-semibold mb-3">{t('profile.addVehicle')}</p>
 
-              {/* Type indicator - truck only */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent-500/10 border border-accent-500/20 mb-3">
-                <FaTruck size={14} className="text-accent-400" />
-                <span className="text-xs text-accent-300 font-medium">{t('profile.truck')}</span>
+              {/* Type toggle — was a static "truck" badge with no way to
+                  switch, which combined with the make filter below meant
+                  car drivers could never find their brand in the list. */}
+              <div className="flex gap-2 mb-3">
+                <button type="button" onClick={() => setAddForm(p => ({ ...p, type: 'CAR', make: '' }))}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                    addForm.type === 'CAR' ? 'bg-accent-500/10 border-accent-500/20 text-accent-300' : 'bg-white/5 border-white/10 text-gray-400'
+                  }`}>
+                  <FaCar size={14} />
+                  {t('profile.car')}
+                </button>
+                <button type="button" onClick={() => setAddForm(p => ({ ...p, type: 'TRUCK', make: '' }))}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                    addForm.type === 'TRUCK' ? 'bg-accent-500/10 border-accent-500/20 text-accent-300' : 'bg-white/5 border-white/10 text-gray-400'
+                  }`}>
+                  <FaTruck size={14} />
+                  {t('profile.truck')}
+                </button>
               </div>
 
               {/* Make */}

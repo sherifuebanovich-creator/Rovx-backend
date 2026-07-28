@@ -221,7 +221,10 @@ export class SocialService {
         data: {
           name: data.name,
           description: data.description || '',
-          avatar: data.avatar,
+          // avatar is deliberately not accepted here — the frontend creates
+          // the group first, then uploads the avatar through the dedicated
+          // multipart endpoint (multer-validated). Accepting an arbitrary
+          // string here had no size/mimetype check at all.
           region: data.region,
           city: data.city,
           ownerId: userId,
@@ -267,7 +270,8 @@ export class SocialService {
         data: {
           name: data.name,
           description: data.description,
-          avatar: data.avatar,
+          // avatar is deliberately not accepted here — see setGroupAvatar(),
+          // which is the only path allowed to set it (multer-validated).
           region: data.region,
           city: data.city,
           isPublic: data.isPublic,
@@ -282,6 +286,26 @@ export class SocialService {
     const { _count, ...rest } = updated as any;
     const payload = { ...rest, memberCount: _count.members };
 
+    await this.gateway.broadcastToGroup(groupId, 'group:updated', payload);
+    return payload;
+  }
+
+  // Only called from POST /groups/:groupId/avatar, after multer's
+  // mimetype/size checks have already run — unlike updateGroup(), which must
+  // never accept an unvalidated `avatar` value from an arbitrary request body.
+  async setGroupAvatar(userId: string, groupId: string, avatarDataUri: string) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Only admin can edit group');
+
+    const updated = await this.prisma.group.update({
+      where: { id: groupId },
+      data: { avatar: avatarDataUri },
+      include: { _count: { select: { members: true } } },
+    });
+    const { _count, ...rest } = updated as any;
+    const payload = { ...rest, memberCount: _count.members };
     await this.gateway.broadcastToGroup(groupId, 'group:updated', payload);
     return payload;
   }
@@ -618,12 +642,14 @@ export class SocialService {
     if (!msg || msg.groupId !== groupId) throw new NotFoundException('Сообщение не найдено');
 
     const isSender = msg.senderId === userId;
-    if (!isSender) {
-      const member = await this.prisma.groupMember.findUnique({
-        where: { groupId_userId: { groupId, userId } },
-      });
-      if (!member?.isAdmin || member.isBanned) throw new ForbiddenException('Нет прав на удаление');
-    }
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    // A banned member can no longer act in the group at all, even to delete
+    // their own historical message — matches every other moderation check
+    // in this file.
+    if (member?.isBanned) throw new ForbiddenException('Вы заблокированы в этой группе');
+    if (!isSender && !member?.isAdmin) throw new ForbiddenException('Нет прав на удаление');
 
     await this.prisma.groupMessage.update({ where: { id: messageId }, data: { isDeleted: true } });
     await this.gateway.broadcastToGroup(groupId, 'group:message_deleted', { messageId });
@@ -651,8 +677,11 @@ export class SocialService {
       data: { isBanned: true },
     });
 
-    await this.gateway.forceLeaveGroup(targetUserId, groupId);
+    // Broadcast before forceLeaveGroup evicts the target's socket from the
+    // room — otherwise the banned user themselves never receives this event
+    // and their UI silently keeps treating them as a member.
     await this.gateway.broadcastToGroup(groupId, 'group:member_banned', { userId: targetUserId, bannedBy: userId });
+    await this.gateway.forceLeaveGroup(targetUserId, groupId);
     return { banned: true };
   }
 
@@ -702,8 +731,10 @@ export class SocialService {
       this.prisma.group.update({ where: { id: groupId }, data: { memberCount: { decrement: 1 } } }),
       this.prisma.groupRequest.deleteMany({ where: { groupId, userId: targetUserId } }),
     ]);
-    await this.gateway.forceLeaveGroup(targetUserId, groupId);
+    // Same ordering fix as banMember — broadcast while the target is still
+    // in the room, then evict them.
     await this.gateway.broadcastToGroup(groupId, 'group:member_kicked', { userId: targetUserId, kickedBy: userId });
+    await this.gateway.forceLeaveGroup(targetUserId, groupId);
     return { kicked: true };
   }
 

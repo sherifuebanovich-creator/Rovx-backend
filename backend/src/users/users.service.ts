@@ -46,24 +46,51 @@ export class UsersService {
     return safe;
   }
 
+  private static readonly MAX_TEXT_LENGTHS: Record<string, number> = {
+    displayName: 60,
+    bio: 500,
+    phone: 30,
+    city: 100,
+    homeAddress: 200,
+    workAddress: 200,
+  };
+
+  private static readonly COORD_FIELDS = ['homeLat', 'homeLng', 'workLat', 'workLng'] as const;
+
   async updateProfile(userId: string, data: any) {
     const updateData: any = {};
 
-    if (data.displayName !== undefined) updateData.displayName = data.displayName;
-    if (data.bio !== undefined) updateData.bio = data.bio;
-    if (data.avatar !== undefined) updateData.avatar = data.avatar;
-    if (data.phone !== undefined) updateData.phone = data.phone;
-    if (data.city !== undefined) updateData.city = data.city;
-    if (data.homeAddress !== undefined) updateData.homeAddress = data.homeAddress;
-    if (data.homeLat !== undefined) updateData.homeLat = data.homeLat;
-    if (data.homeLng !== undefined) updateData.homeLng = data.homeLng;
-    if (data.workAddress !== undefined) updateData.workAddress = data.workAddress;
-    if (data.workLat !== undefined) updateData.workLat = data.workLat;
-    if (data.workLng !== undefined) updateData.workLng = data.workLng;
+    // `avatar` is deliberately NOT accepted here — it must go through
+    // POST /users/me/avatar, which validates mimetype/size via multer. This
+    // endpoint has no such checks, so accepting it here let anyone set an
+    // arbitrary URL or oversized data: URI as their avatar, which then gets
+    // rendered verbatim to every viewer of the leaderboard/public profile.
+    for (const [field, maxLen] of Object.entries(UsersService.MAX_TEXT_LENGTHS)) {
+      if (data[field] === undefined) continue;
+      if (typeof data[field] !== 'string' || data[field].length > maxLen) {
+        throw new BadRequestException(`${field} must be a string up to ${maxLen} characters`);
+      }
+      updateData[field] = data[field];
+    }
+    for (const field of UsersService.COORD_FIELDS) {
+      if (data[field] === undefined) continue;
+      if (typeof data[field] !== 'number' || !Number.isFinite(data[field])) {
+        throw new BadRequestException(`${field} must be a finite number`);
+      }
+      updateData[field] = data[field];
+    }
     if (data.preferredLang !== undefined) updateData.preferredLang = data.preferredLang;
     if (data.preferredVehicle !== undefined) updateData.preferredVehicle = data.preferredVehicle;
 
     if (data.username !== undefined) {
+      if (
+        typeof data.username !== 'string' ||
+        data.username.length < 3 ||
+        data.username.length > 30 ||
+        !/^[a-zA-Z0-9_]+$/.test(data.username)
+      ) {
+        throw new BadRequestException('Username must be 3-30 characters (letters, numbers, underscores only)');
+      }
       const existing = await this.prisma.user.findUnique({ where: { username: data.username } });
       if (existing && existing.id !== userId) {
         throw new ConflictException('Username already taken');
@@ -107,6 +134,38 @@ export class UsersService {
       }
       throw err;
     }
+  }
+
+  private static readonly PROFILE_SELECT = {
+    id: true,
+    email: true,
+    username: true,
+    displayName: true,
+    avatar: true,
+    bio: true,
+    role: true,
+    subscription: true,
+    preferredLang: true,
+    preferredVehicle: true,
+    phone: true,
+    city: true,
+    homeAddress: true,
+    homeLat: true,
+    homeLng: true,
+    workAddress: true,
+    workLat: true,
+    workLng: true,
+  } as const;
+
+  // Only called from POST /users/me/avatar, after multer's mimetype/size
+  // checks have already run — unlike updateProfile(), which must never
+  // accept an unvalidated `avatar` value from arbitrary request bodies.
+  async setAvatar(userId: string, avatarDataUri: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarDataUri },
+      select: UsersService.PROFILE_SELECT,
+    });
   }
 
   // Was `create: { userId, ...prefs }, update: prefs` with `prefs: any` —
@@ -173,6 +232,13 @@ export class UsersService {
   async addVehicle(userId: string, data: any) {
     if (!data.name || typeof data.name !== 'string') {
       throw new BadRequestException('name is required');
+    }
+    // Float/Int columns in Prisma — a wrong-typed value (e.g. "abc") throws
+    // an unhandled validation error at create() instead of a clean 400.
+    for (const field of ['year', 'weight', 'height', 'length', 'axleCount', 'fuelEfficiency', 'tankCapacity'] as const) {
+      if (data[field] !== undefined && (typeof data[field] !== 'number' || !isFinite(data[field]))) {
+        throw new BadRequestException(`${field} must be a number`);
+      }
     }
 
     const createVehicle = this.prisma.vehicle.create({
@@ -291,6 +357,17 @@ export class UsersService {
   async addFuelLog(userId: string, data: any) {
     if (typeof data.liters !== 'number' || !isFinite(data.liters)) {
       throw new BadRequestException('liters is required and must be a number');
+    }
+    // These are Float columns in Prisma — an out-of-type value (e.g. a
+    // string) throws an unhandled validation error at the create() call
+    // below instead of a clean 400. odometer/lat/lng/totalCost are also
+    // validated even though the DB doesn't reject a bad pricePerLiter via
+    // the totalCost fallback math (NaN there silently resolves to 0 instead
+    // of surfacing the bad input).
+    for (const field of ['odometer', 'pricePerLiter', 'totalCost', 'lat', 'lng'] as const) {
+      if (data[field] !== undefined && (typeof data[field] !== 'number' || !isFinite(data[field]))) {
+        throw new BadRequestException(`${field} must be a number`);
+      }
     }
     if (data.vehicleId) {
       const vehicle = await this.prisma.vehicle.findFirst({

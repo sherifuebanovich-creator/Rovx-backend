@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsIn, IsArray, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsIn, IsArray, Min, Max, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ReportType } from '../reports.service';
 
@@ -30,6 +30,7 @@ export class CreateReportDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   description?: string;
 
   @ApiPropertyOptional()

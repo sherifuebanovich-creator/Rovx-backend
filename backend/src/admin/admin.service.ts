@@ -186,12 +186,34 @@ export class AdminService {
     return { objects, total, page, limit };
   }
 
+  private static readonly MAP_OBJECT_FIELDS = [
+    'category', 'name', 'description', 'lat', 'lng', 'address', 'phone',
+    'website', 'openHours', 'amenities', 'images', 'rating', 'reviewCount',
+    'isVerified', 'isActive', 'isPremium', 'data',
+  ] as const;
+
+  private pickMapObjectFields(data: any): any {
+    const picked: Record<string, any> = {};
+    for (const field of AdminService.MAP_OBJECT_FIELDS) {
+      if (data[field] !== undefined) picked[field] = data[field];
+    }
+    return picked;
+  }
+
   async createMapObject(data: any) {
-    return this.prisma.mapObject.create({ data });
+    // Cast: pickMapObjectFields whitelists fields but can't statically prove
+    // the required ones (category/name/lat/lng) were present — same trust
+    // boundary as this method's `data: any` param (admin-only, unchanged).
+    return this.prisma.mapObject.create({ data: this.pickMapObjectFields(data) });
   }
 
   async updateMapObject(id: string, data: any) {
-    return this.prisma.mapObject.update({ where: { id }, data });
+    // Was `data` passed straight through — a request body containing `id`
+    // silently changed the row's primary key on update. Bookmark.mapObjectId
+    // /Review.mapObjectId have no onDelete/onUpdate: Cascade, so any existing
+    // bookmark/review pointing at the old id became a dangling reference
+    // with no matching MapObject.
+    return this.prisma.mapObject.update({ where: { id }, data: this.pickMapObjectFields(data) });
   }
 
   async deleteMapObject(id: string) {
@@ -386,7 +408,17 @@ export class AdminService {
       PREMIUM_STANDARD: { tier: 2, name: 'PREMIUM_STANDARD' },
       PREMIUM_MAX: { tier: 3, name: 'PREMIUM_MAX' },
     };
-    const t = tierMap[tierName] || tierMap.PREMIUM_MAX;
+    // Was `tierMap[tierName] || tierMap.PREMIUM_MAX` — a typo'd/unrecognized
+    // tier name silently granted the most generous tier instead of erroring,
+    // so an operator's typo (e.g. "PREMIUM_STANDART") gave a user PREMIUM_MAX
+    // for free with no indication anything was wrong.
+    const t = tierMap[tierName];
+    if (!t) {
+      throw new BadRequestException(`Unknown tier "${tierName}". Valid: ${Object.keys(tierMap).join(', ')}`);
+    }
+    if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+      throw new BadRequestException('days must be a positive number');
+    }
 
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + days);

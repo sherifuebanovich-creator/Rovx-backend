@@ -107,7 +107,7 @@ export class SocialController {
     // deploy/restart and avatars silently break. The frontend downsizes the
     // image before upload, so the payload stays small.
     const avatarUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
-    return this.socialService.updateGroup(userId, groupId, { avatar: avatarUrl });
+    return this.socialService.setGroupAvatar(userId, groupId, avatarUrl);
   }
 
   @Put('groups/:groupId')

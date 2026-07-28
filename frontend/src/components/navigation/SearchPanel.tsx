@@ -150,6 +150,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const [inputMode, setInputMode] = useState<'search' | 'origin' | 'destination'>('search');
   const [selectedTypes, setSelectedTypes] = useState<RouteType[]>([activeRouteType || 'FASTEST']);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const isBookmarkingRef = useRef(false);
   const [showRouteResults, setShowRouteResults] = useState(false);
   const [localRoutes, setLocalRoutes] = useState<RouteResult[]>([]);
   const [selectedLocalRoute, setSelectedLocalRoute] = useState<RouteResult | null>(null);
@@ -169,8 +170,20 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   // mounted while selectedItem swaps between places (never remounted per
   // item), so bookmarking one place and then picking a different one kept
   // showing the filled bookmark icon for a place that was never saved.
+  // It also unconditionally reset to false instead of checking whether this
+  // place was already bookmarked previously — reopening it always showed the
+  // unfilled icon, so tapping "Bookmark" again created a duplicate row
+  // (addBookmark now also dedupes server-side, but the icon should reflect
+  // reality regardless).
   useEffect(() => {
-    setIsBookmarked(false);
+    if (!selectedItem?.id) { setIsBookmarked(false); return; }
+    let cancelled = false;
+    mapApi.getBookmarks().then(res => {
+      if (cancelled) return;
+      const list = res.data?.data || res.data || [];
+      setIsBookmarked(Array.isArray(list) && list.some((b: any) => b.mapObjectId === selectedItem.id));
+    }).catch(() => { if (!cancelled) setIsBookmarked(false); });
+    return () => { cancelled = true; };
   }, [selectedItem?.id]);
 
   // Fetch vehicles
@@ -673,6 +686,10 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
 
   const handleBookmark = async () => {
     if (!selectedItem || !user) { toast.error(t('searchPanel.loginToSave')); return; }
+    // Already known to be bookmarked, or a request from a rapid double-tap
+    // is still in flight — either way, skip creating a second row.
+    if (isBookmarked || isBookmarkingRef.current) return;
+    isBookmarkingRef.current = true;
     try {
       await mapApi.addBookmark({
         mapObjectId: selectedItem.id,
@@ -685,6 +702,8 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       toast.success(t('searchPanel.placeSaved'));
     } catch {
       toast.error(t('searchPanel.placeSaveFailed'));
+    } finally {
+      isBookmarkingRef.current = false;
     }
   };
 

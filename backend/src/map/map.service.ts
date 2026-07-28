@@ -773,6 +773,16 @@ export class MapService {
   }
 
   async addBookmark(userId: string, data: any) {
+    // No unique constraint on (userId, mapObjectId) at the DB level — without
+    // this check, reopening a place already bookmarked (the frontend doesn't
+    // fetch existing bookmark state, so its "bookmarked" icon always starts
+    // unfilled) and tapping "Bookmark" again silently creates a duplicate row.
+    if (data.mapObjectId) {
+      const existing = await this.prisma.bookmark.findFirst({
+        where: { userId, mapObjectId: data.mapObjectId },
+      });
+      if (existing) return existing;
+    }
     return this.prisma.bookmark.create({
       data: {
         userId,

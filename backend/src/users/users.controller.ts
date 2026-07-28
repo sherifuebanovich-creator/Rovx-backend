@@ -94,7 +94,7 @@ export class UsersController {
     }
 
     const avatarUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
-    return this.usersService.updateProfile(userId, { avatar: avatarUrl });
+    return this.usersService.setAvatar(userId, avatarUrl);
   }
 
   @Put('me/preferences')

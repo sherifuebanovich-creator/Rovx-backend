@@ -52,11 +52,20 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       });
       streamRef.current = stream;
 
-      const mr = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm',
-      });
+      // Safari/iOS supports neither webm variant — forcing mimeType to
+      // 'audio/webm' there throws NotSupportedError on construction (caught
+      // below and misreported as "microphone unavailable"). Probe a list of
+      // candidates and let the browser pick its own default (by omitting
+      // mimeType) rather than force an unsupported format, mirroring the
+      // video recorder's fix for the same issue.
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mp4',
+      ];
+      const supported = candidates.find(m => MediaRecorder.isTypeSupported(m));
+      const mr = new MediaRecorder(stream, supported ? { mimeType: supported } : undefined);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
 
@@ -116,7 +125,7 @@ export default function AudioRecorderButton({ groupId, onSent }: Props) {
       // codecs value there broke the server's multipart parser.
       const mimeType = (mr.mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
-      const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+      const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm';
       const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
 
       // Matches the server's Multer fileSize limit for voice messages

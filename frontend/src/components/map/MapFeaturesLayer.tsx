@@ -90,6 +90,11 @@ function MapFeaturesLayer({ map }: Props) {
     const zoom = map.getZoom();
     if (zoom < MIN_ZOOM) {
       cleanup();
+      // Without resetting this, zooming back in to the exact same bbox
+      // after having zoomed out below MIN_ZOOM compares equal to the stale
+      // pre-zoom-out value and short-circuits below, leaving the markers
+      // cleaned up above never re-added.
+      lastBoundsRef.current = '';
       return;
     }
 

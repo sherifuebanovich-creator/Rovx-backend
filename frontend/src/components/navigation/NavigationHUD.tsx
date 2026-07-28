@@ -3,6 +3,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaTimes, FaVolumeMute, FaVolumeUp, FaChevronRight, FaLocationArrow } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
+import { useAuthStore } from '@/store/auth.store';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 import { useTranslation } from 'react-i18next';
 import { mapApi, routesApi } from '@/lib/api';
@@ -105,11 +106,20 @@ export function NavigationHUD() {
           ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
           : 0;
         const traveled = selectedRoute ? selectedRoute.distance - rem / 1000 : 0;
-        await routesApi.endTrip(activeTrip, {
+        const res = await routesApi.endTrip(activeTrip, {
           distance: traveled,
           duration: 0,
           status: 'completed',
         });
+        // Profile page reads trip stats straight off the auth store, which
+        // otherwise only refreshes via /auth/me at app init — without this,
+        // totalTrips/totalDistance stayed at their pre-trip values until a
+        // full reload.
+        const updatedUser = res?.data?.data?.user || res?.data?.user;
+        if (updatedUser) {
+          const { user, setUser } = useAuthStore.getState();
+          if (user) setUser({ ...user, ...updatedUser });
+        }
       } catch {}
       setActiveTrip(null);
       isEndingTripRef.current = false;

@@ -101,6 +101,12 @@ export class AuthService {
     };
   }
 
+  // A bcrypt hash of an arbitrary fixed string, compared against on the
+  // not-found/no-password path below so its latency matches the real
+  // bcrypt.compare() cost on the found-user path. Cost factor 12 to match
+  // the hashing cost used elsewhere (RegisterDto/registration).
+  private static readonly DUMMY_PASSWORD_HASH = '$2b$12$sHbIYNjmAicXNh7NSoap1.tcn5fjADrK.ASbO0qHx2mKlruf/.0Ki';
+
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findFirst({
       where: {
@@ -108,12 +114,12 @@ export class AuthService {
       },
     });
 
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordValid) {
+    // Without a dummy comparison on this path, "no such identifier" returns
+    // near-instantly while "wrong password" always pays bcrypt's ~tens-of-ms
+    // cost — a timing side-channel that lets an attacker enumerate
+    // registered emails/usernames by measuring response latency.
+    const passwordValid = await bcrypt.compare(dto.password, user?.passwordHash || AuthService.DUMMY_PASSWORD_HASH);
+    if (!user || !user.passwordHash || !passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 

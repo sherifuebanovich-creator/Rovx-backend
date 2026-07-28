@@ -285,6 +285,10 @@ export default function VoiceChat() {
       const signal = data?.signal;
       const fromUserId = data?.fromUserId;
       if (!signal) return;
+      // A stale offer/answer/ICE candidate from a call that just ended (e.g.
+      // delayed on a flaky connection) must not be applied to the peer
+      // connection now in use for a different, newer call.
+      if (peerIdRef.current && fromUserId && fromUserId !== peerIdRef.current) return;
 
       const pc = pcRef.current;
 

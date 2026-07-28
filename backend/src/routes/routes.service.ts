@@ -431,15 +431,20 @@ export class RoutesService {
         throw new BadRequestException('Trip is not active');
       }
 
-      await tx.user.update({
+      const user = await tx.user.update({
         where: { id: userId },
         data: {
           totalTrips: { increment: 1 },
           totalDistance: { increment: stats.distance || trip.distance || 0 },
         },
+        select: { totalTrips: true, totalDistance: true, driverScore: true, reputation: true },
       });
 
-      return { id: tripId, status: 'completed' };
+      // Returned so the frontend can push updated stats straight into the
+      // auth store — without this, the profile page (which reads stats off
+      // the store, only refreshed via /auth/me at app init) kept showing
+      // pre-trip counters until a full reload.
+      return { id: tripId, status: 'completed', user };
     });
   }
 }

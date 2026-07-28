@@ -14,6 +14,12 @@ export function BottomBar() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>(null);
   const toggleReportPanel = useMapStore(s => s.toggleReportPanel);
+  // ReportPanel can close itself independently (header X button, or the
+  // auto-close timer after submit) by writing straight to the map store,
+  // without going through this component — reading the flag directly here
+  // instead of relying solely on local `activeTab` keeps the highlight from
+  // getting stuck "active" after one of those paths closes the panel.
+  const isReportPanelOpen = useMapStore(s => s.isReportPanelOpen);
 
   const tabs: { id: Tab; icon: React.ReactNode; label: string; action?: () => void; href?: string }[] = [
     { id: 'report', icon: <FaExclamationTriangle size={16} />, label: t('bottombar.report'), action: toggleReportPanel },
@@ -25,7 +31,7 @@ export function BottomBar() {
       <div className="mx-6 mb-3 w-auto">
         <div className="glass-dark rounded-full px-1 py-1 flex items-center gap-1">
           {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
+            const isActive = tab.id === 'report' ? isReportPanelOpen : activeTab === tab.id;
             const classes = `flex items-center gap-1.5 px-3 py-2 rounded-full transition-all text-xs font-medium ${
               isActive ? 'bg-primary-600/30 text-primary-400' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`;
             const content = (

@@ -136,6 +136,13 @@ export class PremiumService {
     if (!tier || tier.tier === 0) {
       throw new BadRequestException('Invalid tier');
     }
+    // `months` is client-supplied and flows straight into `amount = price *
+    // months` and the HMAC-signed checkout token — 0 produces a $0
+    // checkout, a negative value a negative one, with no floor/ceiling
+    // before reaching Xsolla's API.
+    if (!Number.isInteger(months) || months < 1 || months > 24) {
+      throw new BadRequestException('months must be an integer between 1 and 24');
+    }
 
     if (!this.xsolla.configured) {
       throw new BadRequestException('Xsolla payment is not configured');
@@ -245,18 +252,30 @@ export class PremiumService {
         // for a cheap tier but get credited for whatever tier is currently sitting in
         // that row. Never derive the credited tier from it.
         const customParams = body.custom_parameters || {};
+        const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
         let tierName = PREMIUM_TIERS.find(t => t.name === customParams.tier_name)?.name;
         const months = parseInt(customParams.months, 10) || 1;
         if (!tierName) {
-          const paidAmount = parseFloat(body.purchase?.checkout?.amount) || 0;
           // Checkout charges tier.price * months (see createCheckoutSession above), so
           // matching against the per-month tier price requires dividing back out first —
-          // otherwise a multi-month purchase gets guessed into a too-high tier.
-          const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount / months);
-          tierName = matchedTier?.name || 'PREMIUM_BASIC';
-          this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount} / ${months}mo`);
+          // otherwise a multi-month purchase gets guessed into a too-high tier. `t.tier > 0`
+          // excludes FREE from the match — a $0/malformed webhook must be rejected below,
+          // not silently resolve to "FREE" and get written as an active subscription.
+          const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.tier > 0 && t.price <= paidAmount / months);
+          tierName = matchedTier?.name;
+          this.logger.warn(`Xsolla: payment ${transactionId} missing/invalid custom_parameters.tier_name for user ${userId}, guessed tier ${tierName || 'none'} from paid amount ${paidAmount} / ${months}mo`);
         }
-        const tier = this.getTierInfo(tierName);
+        const tier = tierName ? this.getTierInfo(tierName) : null;
+        // Cross-check the paid amount against the claimed/guessed tier's
+        // price even when tier_name WAS present — previously this check only
+        // ran as part of the fallback-guess path, so a webhook with a valid
+        // tier_name but an amount below that tier's price (e.g. a
+        // flexible-amount checkout config) was credited in full with no
+        // verification at all. 2% tolerance absorbs FX rounding.
+        if (!tier || tier.tier === 0 || paidAmount < tier.price * months * 0.98) {
+          this.logger.error(`Xsolla payment ${transactionId} REJECTED: paid ${paidAmount} does not cover tier ${tierName || 'unknown'} x${months}mo for user ${userId}`);
+          return { received: true };
+        }
         const endDate = await this.extendedEndDate(userId, months);
 
         await this.prisma.$transaction([
@@ -420,17 +439,25 @@ export class PremiumService {
       // Squeezy echoes back inside the HMAC-signed webhook body — not the mutable
       // `existingSub.levelName` row, which a later checkout for a different tier could
       // have overwritten before this order was paid.
+      const paidAmount = (orderData?.total || 0) / 100;
       let tierName: string | undefined = PREMIUM_TIERS.find(t => t.name === customData.tier_name)?.name;
       if (!tierName) {
         // Same rule as Xsolla above — guess from the paid amount (Lemon Squeezy `total`
         // is in cents), never from `existingSub.levelName`, which a second checkout for
-        // a different tier can overwrite before this order is confirmed paid.
-        const paidAmount = (orderData?.total || 0) / 100;
-        const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.price <= paidAmount);
-        tierName = matchedTier?.name || 'PREMIUM_BASIC';
-        this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, guessed tier ${tierName} from paid amount ${paidAmount}`);
+        // a different tier can overwrite before this order is confirmed paid. `t.tier > 0`
+        // excludes FREE — a $0/malformed webhook must be rejected below, not resolve to it.
+        const matchedTier = [...PREMIUM_TIERS].reverse().find(t => t.tier > 0 && t.price <= paidAmount);
+        tierName = matchedTier?.name;
+        this.logger.warn(`Lemon Squeezy: order ${orderId} missing/invalid custom_data.tier_name for user ${userId}, guessed tier ${tierName || 'none'} from paid amount ${paidAmount}`);
       }
-      const tier = this.getTierInfo(tierName);
+      const tier = tierName ? this.getTierInfo(tierName) : null;
+      // Cross-check the paid amount against the claimed/guessed tier's price
+      // even when tier_name WAS present — a "pay what you want" variant
+      // could otherwise credit the full tier for less than its price.
+      if (!tier || tier.tier === 0 || paidAmount < tier.price * 0.98) {
+        this.logger.error(`Lemon Squeezy order ${orderId} REJECTED: paid ${paidAmount} does not cover tier ${tierName || 'unknown'} for user ${userId}`);
+        return { received: true };
+      }
       const endDate = await this.extendedEndDate(userId, 1);
 
       await this.prisma.$transaction([
@@ -521,16 +548,13 @@ export class PremiumService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    // `premiumSubscription.status` is shared with in-flight checkouts from
-    // OTHER providers (Xsolla/Lemon Squeezy flip it to 'pending' the instant
-    // a checkout starts, even for an already-active user), so it can't be
-    // trusted here — starting an Xsolla checkout used to silently defeat
-    // this guard and let an active user open a second Stripe checkout too.
-    // `user.subscriptionEnd` is only ever written by a confirmed webhook or
-    // cancellation, so it's the reliable "currently entitled" signal.
-    if (user.subscriptionEnd && user.subscriptionEnd > new Date()) {
-      throw new BadRequestException('Already subscribed');
-    }
+    // Previously blocked any already-active user from starting a new Stripe
+    // checkout at all ("Already subscribed") — unlike Xsolla/Lemon Squeezy,
+    // which have no such guard and rely on extendedEndDate() to add time on
+    // top of the current subscriptionEnd. The Stripe webhook handler below
+    // already extends correctly (same extendedEndDate() call), so the only
+    // bug was here: a user renewing early or switching tiers via Stripe was
+    // hard-blocked until their subscription actually lapsed.
 
     return this.stripeService.createCheckoutSession({
       email: user.email,
@@ -550,6 +574,17 @@ export class PremiumService {
 
       if (!userId || !tierName) {
         this.logger.error('Stripe webhook missing metadata');
+        return;
+      }
+
+      // Only 'card' payment_method_types are enabled today, which never
+      // completes this event before payment settles — but this event type
+      // doesn't itself guarantee payment, only that checkout was completed
+      // (e.g. a delayed/async method like a bank debit stays 'unpaid' here
+      // and settles via a later event). Enabling such a method without this
+      // check would grant premium for an unpaid session.
+      if (session.payment_status !== 'paid') {
+        this.logger.warn(`Stripe session ${session.id} completed but payment_status=${session.payment_status} — not granting premium yet`);
         return;
       }
 
@@ -867,7 +902,7 @@ export class PremiumService {
     page = Number.isFinite(page) && page > 0 ? page : 1;
     limit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     const skip = Math.max(0, (page - 1) * limit);
-    const [users, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.user.findMany({
         skip,
         take: limit,
@@ -886,6 +921,11 @@ export class PremiumService {
       }),
       this.prisma.user.count(),
     ]);
+    // passwordHash is only ever selected to derive this boolean — never
+    // returned as-is. A caller (Telegram bot today, maybe an admin-panel
+    // endpoint tomorrow) that spread/serialized the raw row would otherwise
+    // leak bcrypt hashes.
+    const users = rows.map(({ passwordHash, ...u }) => ({ ...u, hasPassword: !!passwordHash }));
     return { users, total, page, pages: Math.ceil(total / limit) };
   }
 
@@ -911,7 +951,9 @@ export class PremiumService {
         _count: { select: { reports: true } },
       },
     });
-    return user;
+    if (!user) return null;
+    const { passwordHash, ...rest } = user;
+    return { ...rest, hasPassword: !!passwordHash };
   }
 
   async deleteUser(userId: string): Promise<{ success: boolean; message: string; email?: string }> {
@@ -989,16 +1031,21 @@ export class PremiumService {
   }
 
   async cancelSubscription(userId: string) {
-    await this.prisma.$transaction([
-      this.prisma.premiumSubscription.updateMany({
-        where: { userId, status: 'active' },
-        data: { status: 'cancelled', autoRenew: false },
-      }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { subscription: 'FREE', subscriptionEnd: null },
-      }),
-    ]);
+    // Previously nulled user.subscription/subscriptionEnd immediately,
+    // forfeiting whatever time the user had already paid for (e.g.
+    // cancelling on day 1 of a 3-month purchase lost the other ~89 days).
+    // Every access check in this file (hasPaidAiAccess, getMySubscription's
+    // `active` flag, etc.) already gates on `user.subscriptionEnd > now`, so
+    // leaving those fields untouched and only turning off autoRenew lets the
+    // user keep access through the period they paid for, exactly like the
+    // rest of this file's "keeps access until subscriptionEnd naturally
+    // lapses" pattern (refunds/disputes). Only marks the subscription row as
+    // cancelled — never claims a match, unlike before it unconditionally
+    // nulled the user row even if the subscription row wasn't actually 'active'.
+    await this.prisma.premiumSubscription.updateMany({
+      where: { userId, status: 'active' },
+      data: { status: 'cancelled', autoRenew: false },
+    });
     return { cancelled: true };
   }
 

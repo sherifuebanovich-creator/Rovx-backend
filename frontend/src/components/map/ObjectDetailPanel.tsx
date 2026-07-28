@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { FaBookmark, FaRegBookmark, FaChevronRight, FaClock, FaCompass, FaGlobe, FaMapMarkerAlt, FaPhone, FaStar, FaTimes } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
@@ -40,14 +40,27 @@ export function ObjectDetailPanel() {
   const { t } = useTranslation();
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const bookmarkingRef = useRef(false);
 
   // isBookmarked used to persist across objects — since this panel stays
   // mounted while selectedObject swaps from one place to another (it's only
   // conditionally rendered on truthiness, not remounted per object), picking
   // a new marker right after bookmarking a previous one kept showing the
   // filled bookmark icon for a place that was never actually saved.
+  // It also unconditionally reset to false rather than checking whether this
+  // object was already bookmarked in an earlier session — reopening an
+  // already-bookmarked place always showed the unfilled icon, so tapping
+  // "Bookmark" again created a duplicate row (addBookmark now also dedupes
+  // server-side, but the icon should reflect reality regardless).
   useEffect(() => {
-    setIsBookmarked(false);
+    if (!selectedObject?.id) { setIsBookmarked(false); return; }
+    let cancelled = false;
+    mapApi.getBookmarks().then(res => {
+      if (cancelled) return;
+      const list = res.data?.data || res.data || [];
+      setIsBookmarked(Array.isArray(list) && list.some((b: any) => b.mapObjectId === selectedObject.id));
+    }).catch(() => { if (!cancelled) setIsBookmarked(false); });
+    return () => { cancelled = true; };
   }, [selectedObject?.id]);
 
   if (!selectedObject) return null;
@@ -67,6 +80,10 @@ export function ObjectDetailPanel() {
 
   const handleBookmark = async () => {
     if (!user) { toast.error(t('objectDetailPanel.loginToBookmark')); return; }
+    // Already known to be bookmarked, or a request from a rapid double-tap
+    // is still in flight — either way, skip creating a second row.
+    if (isBookmarked || bookmarkingRef.current) return;
+    bookmarkingRef.current = true;
     try {
       await mapApi.addBookmark({
         mapObjectId: obj.id,
@@ -79,6 +96,8 @@ export function ObjectDetailPanel() {
       toast.success(t('objectDetailPanel.bookmarkSaved'));
     } catch {
       toast.error(t('objectDetailPanel.bookmarkFailed'));
+    } finally {
+      bookmarkingRef.current = false;
     }
   };
 

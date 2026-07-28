@@ -68,6 +68,23 @@ export class AiService {
       throw new ForbiddenException('AI Co-Driver requires a premium subscription');
     }
 
+    // buildRoutePrompt()/getFallbackSuggestion() both dereference these
+    // fields unguarded (ctx.hazards.join, ctx.userPreferences.lang) — a
+    // client sending a partial context (e.g. omitting hazards/reports/
+    // userPreferences) used to throw an unhandled TypeError, as a raw 500,
+    // from BOTH the main path and the fallback path meant to degrade
+    // gracefully when the LLM call itself fails.
+    ctx = {
+      ...ctx,
+      hazards: Array.isArray(ctx.hazards) ? ctx.hazards : [],
+      reports: Array.isArray(ctx.reports) ? ctx.reports : [],
+      userPreferences: {
+        avoidTolls: ctx.userPreferences?.avoidTolls ?? false,
+        preferScenic: ctx.userPreferences?.preferScenic ?? false,
+        lang: ctx.userPreferences?.lang || 'ru',
+      },
+    };
+
     const cacheKey = `ai:route:${userId}:${ctx.originName}:${ctx.destName}`;
     try {
       const cached = await this.redis.get(cacheKey);
@@ -80,9 +97,9 @@ export class AiService {
     }
 
     const userHistory = await this.getUserHistory(userId);
-    const prompt = this.buildRoutePrompt(ctx, userHistory);
 
     try {
+      const prompt = this.buildRoutePrompt(ctx, userHistory);
       const result = await this.callLLM(prompt, ctx.userPreferences.lang);
       await this.redis.set(cacheKey, JSON.stringify(result), 600);
       return result;
@@ -368,7 +385,7 @@ Respond in JSON with: recommendation (string), reasoning (string), warnings (arr
       },
     );
 
-    return response.data.choices[0].message.content;
+    return response.data.choices?.[0]?.message?.content || '';
   }
 
   async chat(chatId: number, userMessage: string): Promise<string> {
@@ -424,7 +441,7 @@ Respond in JSON with: recommendation (string), reasoning (string), warnings (arr
         },
       );
 
-      const reply = response.data.choices[0].message.content;
+      const reply = response.data.choices?.[0]?.message?.content || '❌ Пустой ответ AI.';
       history.push({ role: 'assistant', content: reply });
       if (history.length > 20) history.splice(0, history.length - 20);
       await this.redis.set(historyKey, JSON.stringify(history), 3600);
