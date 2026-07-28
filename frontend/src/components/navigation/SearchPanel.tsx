@@ -67,6 +67,30 @@ const CATEGORY_EMOJI: Record<string, string> = {
   ADDRESS: '📍', COORDINATES: '📍',
 };
 
+// OSM POIs without a name/operator/brand tag (common for small,
+// unbranded stations) come back from the backend with name: '' — every
+// list here used to render that as a blank row. Fall back to a
+// translated category label so nothing is shown with no text at all.
+const CATEGORY_LABEL_KEYS: Record<string, string> = {
+  GAS_STATION: 'gasStation', EV_CHARGER: 'evCharger',
+  PARKING: 'parking', TRUCK_PARKING: 'truckParking',
+  CAFE: 'cafe', RESTAURANT: 'restaurant',
+  HOTEL: 'hotel', MOTEL: 'motel',
+  TOILET: 'restroom', SHOWER: 'shower',
+  PHARMACY: 'pharmacy', HOSPITAL: 'hospital', MEDICAL: 'medical',
+  SHOP: 'shop', SUPERMARKET: 'supermarket', MALL: 'mall',
+  SCHOOL: 'school', UNIVERSITY: 'university', KINDERGARTEN: 'kindergarten',
+  BANK: 'bank', ATM: 'atm', BUS_STOP: 'busStop',
+  METRO_STATION: 'metroStation', TRAIN_STATION: 'trainStation', AIRPORT: 'airport',
+  PARK: 'park', SPORTS_FACILITY: 'sportsFacility', GOVERNMENT: 'government',
+  ATTRACTION: 'attraction',
+  TIRE_SERVICE: 'tireService', CAR_SERVICE: 'carService', CAR_WASH: 'carWash',
+  REST_AREA: 'restArea', TOURIST_ATTRACTION: 'touristAttraction',
+  BORDER_CROSSING: 'borderCrossing', WEIGH_STATION: 'weighStation', CUSTOMS: 'customs',
+  SPEED_CAMERA: 'speedCamera', ROAD_WORKS: 'roadWorks', ACCIDENT: 'accident',
+  TRAFFIC_LIGHT: 'trafficLight', POLICE: 'police',
+};
+
 interface SearchPanelProps {
   onClose?: () => void;
 }
@@ -177,6 +201,16 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [toggleSearch, onClose, selectedItem]);
 
+  // OSM POIs without a name/operator/brand tag (common for small,
+  // unbranded stations) come back from the backend with name: '' — every
+  // list here used to render that as a blank row. Fall back to a
+  // translated category label so nothing is shown with no text at all.
+  const withFallbackNames = useCallback((list: any[]): any[] =>
+    list.map((item) => item.name ? item : {
+      ...item,
+      name: t('objectDetailPanel.categories.' + (CATEGORY_LABEL_KEYS[item.category] || item.category), t('searchPanel.unnamedPlace')),
+    }), [t]);
+
   // Fetch autocomplete suggestions
   const fetchSuggestions = useCallback(
     async (q: string) => {
@@ -191,7 +225,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       try {
         const res = await mapApi.suggest(q, userLocation?.lat, userLocation?.lng);
         if (thisFetch !== fetchIdRef.current) return;
-        setSearchSuggestions(res.data.data || res.data || []);
+        setSearchSuggestions(withFallbackNames(res.data.data || res.data || []));
         setActiveIdx(-1);
       } catch {
         if (thisFetch === fetchIdRef.current) setSearchSuggestions([]);
@@ -199,7 +233,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
         if (thisFetch === fetchIdRef.current) setIsSearching(false);
       }
     },
-    [userLocation, setSearchSuggestions, setIsSearching, setSearchQuery],
+    [userLocation, setSearchSuggestions, setIsSearching, setSearchQuery, withFallbackNames],
   );
 
   const debouncedFetch = useRef<ReturnType<typeof setTimeout>>();
@@ -322,7 +356,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     try {
       const res = await mapApi.search(q, userLocation?.lat, userLocation?.lng, 50);
       if (thisSearch !== fullSearchIdRef.current) return;
-      const data = res.data?.data || res.data || [];
+      const data = withFallbackNames(res.data?.data || res.data || []);
       setSearchResults(data);
       if (data.length > 0) {
         setMapCenter({ lat: data[0].lat, lng: data[0].lng });
@@ -333,7 +367,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     } finally {
       if (thisSearch === fullSearchIdRef.current) setIsFullSearching(false);
     }
-  }, [userLocation, setMapCenter, setZoom]);
+  }, [userLocation, setMapCenter, setZoom, withFallbackNames]);
 
   const calculateMultiRoutes = async () => {
     if (!selectedItem || selectedTypes.length === 0 || isGoing || isCalculatingMultiRef.current) return;
@@ -615,11 +649,11 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     const thisSearch = ++fullSearchIdRef.current;
     mapApi.getNearby(userLocation.lat, userLocation.lng, 15, cat).then((res) => {
       if (thisSearch !== fullSearchIdRef.current) return;
-      const objs = (res.data.data || res.data || []).map((o: any) => ({
+      const objs = withFallbackNames((res.data.data || res.data || []).map((o: any) => ({
         ...o,
         category: o.category || cat,
         distance: o.distance || undefined,
-      }));
+      })));
       if (objs.length > 0) {
         setSearchResults(objs);
         useMapStore.getState().setVisibleObjects(objs);

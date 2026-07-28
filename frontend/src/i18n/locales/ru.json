@@ -159,6 +159,7 @@
     "mapAction": "Карта",
     "startTyping": "Начните вводить, чтобы найти место",
     "noResults": "Ничего не найдено",
+    "unnamedPlace": "Без названия",
     "foundNearby_one": "Найдено {{count}} место рядом",
     "foundNearby_few": "Найдено {{count}} места рядом",
     "foundNearby_many": "Найдено {{count}} мест рядом",

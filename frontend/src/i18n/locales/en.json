@@ -158,6 +158,7 @@
     "mapAction": "Map",
     "startTyping": "Start typing to find a place",
     "noResults": "No results found",
+    "unnamedPlace": "Unnamed place",
     "foundNearby_one": "Found {{count}} place nearby",
     "foundNearby_other": "Found {{count}} places nearby",
     "foundResults_one": "Found {{count}} result",

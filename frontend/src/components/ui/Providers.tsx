@@ -81,6 +81,25 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     <SessionProviderErrorBoundary>
       <Suspense fallback={<>{children}</>}>
         <SessionProviderLazy>
+          {/* Must render *inside* SessionProviderLazy, not as a sibling
+              passed down through `children` — `children` (the rest of the
+              app) is also shown raw, without any provider, during the two
+              windows above (`!mounted`, and this Suspense still pending on
+              the next-auth chunk). SessionSync calls useSession(), which in
+              a production build skips next-auth's dev-only "must be wrapped
+              in a <SessionProvider/>" warning and just destructures its
+              context value directly — `undefined` with no provider present
+              — throwing "Cannot destructure property 'data' of ... as it is
+              undefined" and taking down the whole app with Next's generic
+              "Application error" screen. Whether that races into an actual
+              crash used to depend on chunk-load timing (SessionSync's own
+              dynamic import resolving before or after this one), which is
+              why it only reproduced on some routes/loads. Nesting it here
+              makes the ordering impossible to race: React always finishes
+              rendering a parent (establishing its context) before its
+              children, so SessionSync can never mount before the real
+              provider does. */}
+          <SessionSyncLazy />
           {children}
         </SessionProviderLazy>
       </Suspense>
@@ -125,7 +144,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <AuthProvider>
       <QueryClientProvider client={client}>
         <AuthInit />
-        <SessionSyncLazy />
         <I18nInitializer />
         <SocketInitializer />
         <OfflineScreen />
