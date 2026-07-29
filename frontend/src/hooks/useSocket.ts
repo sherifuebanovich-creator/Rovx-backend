@@ -12,6 +12,11 @@ let socketInstance: Socket | null = null;
 // server. Track the last city joined so it can be rejoined automatically
 // whenever the socket (re)connects, instead of only on the initial mount.
 let lastJoinedCity: string | null = null;
+// The token the current socketInstance was last (re)connected with — a
+// mutable module-level value rather than a captured `const` so the
+// mismatch check below doesn't need a new closure (and therefore a whole
+// new Socket object, see the 'connect' handler) every time it updates.
+let currentToken: string | null = null;
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
@@ -31,6 +36,7 @@ export function useSocket() {
       return socketInstance;
     }
 
+    currentToken = token;
     socketInstance = io(WS_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
@@ -42,16 +48,27 @@ export function useSocket() {
 
     socketInstance.on('connect', () => {
       const latestToken = Cookies.get('access_token');
-      if (latestToken && latestToken !== token) {
+      if (latestToken && latestToken !== currentToken) {
         const now = Date.now();
         const lastReconnect = (connect as any).__lastReconnect || 0;
         if (now - lastReconnect < 3000) return;
         (connect as any).__lastReconnect = now;
-        socketInstance?.removeAllListeners();
-        socketInstance?.disconnect();
-        socketInstance = null;
-        socketRef.current = null;
-        connect();
+        currentToken = latestToken;
+        // Was: removeAllListeners() + disconnect() + null out socketInstance
+        // + recurse into connect() to build a brand-new Socket object. Every
+        // consumer that called getSocket() once and attached listeners
+        // directly to that object (groups/[id]/page.tsx, TopBar.tsx,
+        // notifications/page.tsx) kept a reference to the now-discarded old
+        // instance and never found out a new one existed — they silently
+        // stopped receiving events until their own effect happened to
+        // re-run for an unrelated reason (e.g. navigating away and back).
+        // Updating auth and reconnecting the SAME instance keeps every
+        // existing listener (this hook's own, and every consumer's) intact,
+        // since they're attached to an object reference that never changes.
+        if (socketInstance) {
+          socketInstance.auth = { token: latestToken };
+          socketInstance.disconnect().connect();
+        }
         return;
       }
       if (lastJoinedCity) {

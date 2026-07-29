@@ -186,11 +186,17 @@ export class ReportsService {
     if (typeof videoUrl !== 'string' || videoUrl.length > 2048) {
       return { valid: false, reason: 'Invalid video URL' };
     }
-    const resolved = this.resolveImageUrl(videoUrl);
-    if (resolved.startsWith('/uploads/')) {
-      // Locally-hosted path we generated ourselves elsewhere — nothing to check.
+    // Checked against the ORIGINAL value — resolveImageUrl() below rewrites
+    // any `/uploads/...` path into a full `${backendBaseUrl}/uploads/...`
+    // URL, so checking the resolved value here could never match and this
+    // shortcut never actually fired. In local dev (no BACKEND_URL set),
+    // backendBaseUrl falls back to a localhost URL, so the app's own
+    // uploaded videos went on to fail isHostnameBlocked('localhost') as a
+    // false-positive SSRF rejection instead of being trusted as intended.
+    if (videoUrl.startsWith('/uploads/')) {
       return { valid: true };
     }
+    const resolved = this.resolveImageUrl(videoUrl);
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(resolved);

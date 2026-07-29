@@ -18,7 +18,11 @@ export default function JoinGroupPage() {
   useEffect(() => {
     if (!isInitDone) return;
     if (!user) {
-      router.push('/auth/register');
+      // Was /auth/register — an existing user just not logged in on this
+      // device got funneled toward creating a second account instead of
+      // signing into the one they already have (which itself offers a
+      // "create one" link for anyone who genuinely needs to register).
+      router.push('/auth/login');
     }
   }, [isInitDone, user, router]);
 

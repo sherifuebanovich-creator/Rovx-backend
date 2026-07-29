@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
 import { StripeService } from './stripe.service';
+import { RedisService } from '../redis/redis.service';
 import { escapeTelegramHtml } from '../common/utils/telegram.util';
 
 export const PREMIUM_TIERS = [
@@ -49,6 +50,7 @@ export class PremiumService {
     private xsolla: XsollaService,
     private lemonSqueezy: LemonSqueezyService,
     private stripeService: StripeService,
+    private redis: RedisService,
   ) {}
 
   isStripeConfigured(): boolean {
@@ -234,6 +236,30 @@ export class PremiumService {
       }
 
       if (status === 'done') {
+        // The `status === 'active' && paymentId === transactionId` check
+        // below only catches a redelivery of a transaction whose FIRST
+        // delivery has already committed — it does nothing for two
+        // deliveries of the same webhook arriving close together (a real
+        // Xsolla behavior: it retries on any non-2xx/timeout response).
+        // Both would read the same pre-processing `existingSub` state,
+        // both pass the idempotency check, and both call extendedEndDate()
+        // independently, double-extending the subscription for one
+        // payment. Serialize processing per-transaction with a short-lived
+        // Redis lock; fail open (process anyway) if Redis is unreachable
+        // rather than silently dropping a real payment.
+        const lockKey = `xsolla:payment:${transactionId || userId}`;
+        let locked = true;
+        try {
+          locked = await this.redis.setnx(lockKey, '1', 30);
+        } catch (e) {
+          this.logger.warn(`Xsolla lock unavailable, processing without it: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        if (!locked) {
+          this.logger.log(`Xsolla payment ${transactionId} already being processed — skipping concurrent delivery`);
+          return { received: true };
+        }
+
+        try {
         const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
 
         // Idempotency: only skip a webhook redelivery for a transaction we've
@@ -313,6 +339,9 @@ export class PremiumService {
         ]);
 
         this.logger.log(`User ${userId} subscribed to ${tierName} via Xsolla`);
+        } finally {
+          await this.redis.del(lockKey).catch(() => {});
+        }
       } else if (status === 'canceled' || status === 'failed') {
         await this.prisma.premiumSubscription.updateMany({
           where: { userId, status: 'pending' },
@@ -1042,11 +1071,16 @@ export class PremiumService {
     // lapses" pattern (refunds/disputes). Only marks the subscription row as
     // cancelled — never claims a match, unlike before it unconditionally
     // nulled the user row even if the subscription row wasn't actually 'active'.
-    await this.prisma.premiumSubscription.updateMany({
+    // Was unconditionally `{ cancelled: true }` regardless of whether
+    // updateMany actually matched a row — a user with no active
+    // subscription (or an out-of-sync `pending` row from an abandoned
+    // checkout) got the same "success" response as someone who genuinely
+    // had something to cancel.
+    const { count } = await this.prisma.premiumSubscription.updateMany({
       where: { userId, status: 'active' },
       data: { status: 'cancelled', autoRenew: false },
     });
-    return { cancelled: true };
+    return { cancelled: count > 0 };
   }
 
   async getMySubscription(userId: string) {

@@ -51,7 +51,7 @@ export default function SupportPage() {
         {!user ? (
           <div className="card p-6 text-center">
             <p className="text-sm text-gray-400 mb-3">{t('notifications.signIn')}</p>
-            <button onClick={() => router.push('/auth/register')} className="btn-primary px-6 py-3">
+            <button onClick={() => router.push('/auth/login')} className="btn-primary px-6 py-3">
               {t('notifications.signIn')}
             </button>
           </div>

@@ -111,6 +111,18 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
     const room = await this.prisma.voiceRoom.findUnique({ where: { id: data.roomId } });
     if (!room || !room.isActive) return { error: 'Room not found' };
 
+    // A group-linked room is only discoverable through that group's chat
+    // (excluded from the public listActiveRooms directory), but the join
+    // event itself has no membership check without this — anyone who
+    // learned the roomId (e.g. from a screenshot, or by joining the group
+    // briefly and then leaving/being kicked) could still connect directly.
+    if (room.groupId) {
+      const member = await this.prisma.groupMember.findUnique({
+        where: { groupId_userId: { groupId: room.groupId, userId: user.userId } },
+      });
+      if (!member || member.isBanned) return { error: 'Not a member of this group' };
+    }
+
     const participant: VoiceRoomParticipant = {
       socketId: client.id,
       userId: user.userId,
@@ -145,6 +157,21 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
   @SubscribeMessage('room:leave')
   handleLeave(@ConnectedSocket() client: Socket) {
     this.leaveCurrentRoom(client);
+  }
+
+  // Closing a room (VoiceRoomsController#close) only ever flipped isActive
+  // in the DB — it never touched anyone already connected, so a "closed"
+  // room kept its live call running indefinitely with no way for the owner
+  // to actually end it.
+  evictRoom(roomId: string) {
+    const room = `voice:${roomId}`;
+    this.server.to(room).emit('room:closed');
+    this.server.in(room).fetchSockets().then((sockets) => {
+      for (const s of sockets) {
+        this.leaveCurrentRoom(s as unknown as Socket);
+        s.disconnect(true);
+      }
+    }).catch(() => {});
   }
 
   private leaveCurrentRoom(client: Socket) {

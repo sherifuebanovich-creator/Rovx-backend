@@ -474,6 +474,7 @@ model Group {
   messages GroupMessage[]
   favorites GroupFavorite[]
   requests GroupRequest[]
+  voiceRooms VoiceRoom[] @relation("VoiceRoomGroup")
 
   @@map("groups")
 }
@@ -668,14 +669,23 @@ model VoiceRoom {
   id              String   @id @default(uuid())
   name            String
   ownerId         String
+  // Null = a standalone room, open to any authenticated user (the original
+  // public-lobby design). Set = a call started from a specific group's chat
+  // — only that group's members may see or join it. Without this field
+  // every group call was indistinguishable from a public room: listed for
+  // every user in the app's global Voice Rooms directory and joinable by
+  // anyone who found it there, not just the group it was "started from".
+  groupId         String?
   isActive        Boolean  @default(true)
   maxParticipants Int      @default(20)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  owner User @relation("VoiceRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner User   @relation("VoiceRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  group Group? @relation("VoiceRoomGroup", fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([isActive])
+  @@index([groupId])
   @@map("voice_rooms")
 }
 

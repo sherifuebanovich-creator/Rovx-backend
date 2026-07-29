@@ -274,7 +274,7 @@ export const routesApi = {
   save: (data: any) => api.post('/routes/save', data),
   getSaved: () => api.get('/routes/saved'),
   deleteSaved: (id: string) => api.delete(`/routes/saved/${id}`),
-  getTrips: (page = 1) => api.get(`/routes/trips?page=${page}`),
+  getTrips: (page = 1, limit = 20) => api.get(`/routes/trips?page=${page}&limit=${limit}`),
   startTrip: (data: any) => api.post('/routes/trips/start', data),
   endTrip: (tripId: string, stats: any) => api.post(`/routes/trips/${tripId}/end`, stats),
 };
@@ -317,6 +317,13 @@ export const reportsApi = {
       formData.append('lng', String(data.lng));
       if (data.description) formData.append('description', data.description);
       if (data.severity) formData.append('severity', String(data.severity));
+      // Was missing here — ReportPanel.tsx passes these so the backend can
+      // reliably notify users in the report's city instead of falling back
+      // to its own synchronous, easy-to-time-out geocode call, but this
+      // FormData branch (taken for the large majority of real reports,
+      // since most carry a photo) silently dropped both.
+      if (data.address) formData.append('address', data.address);
+      if (data.city) formData.append('city', data.city);
       for (const photo of photos) {
         formData.append('photos', photo);
       }
@@ -433,7 +440,7 @@ export const premiumApi = {
 export const voiceRoomsApi = {
   list: () => api.get('/voice-rooms'),
   get: (roomId: string) => api.get(`/voice-rooms/${roomId}`),
-  create: (name: string, maxParticipants?: number) => api.post('/voice-rooms', { name, maxParticipants }),
+  create: (name: string, maxParticipants?: number, groupId?: string) => api.post('/voice-rooms', { name, maxParticipants, groupId }),
   close: (roomId: string) => api.delete(`/voice-rooms/${roomId}`),
   getIceServers: () => api.get('/voice-rooms/ice-servers'),
 };

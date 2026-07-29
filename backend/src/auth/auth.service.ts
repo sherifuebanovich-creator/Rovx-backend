@@ -549,7 +549,10 @@ export class AuthService {
 
   private sanitizeUser(user: any) {
     const { passwordHash, refreshToken, ...safe } = user;
-    return safe;
+    // Same reasoning as users.service.ts#getProfile — lets the frontend
+    // distinguish a Google-only account (no password at all) from a
+    // password-based one without exposing the hash itself.
+    return { ...safe, hasPassword: !!passwordHash };
   }
 
   /** Parses strings like "15m", "1h", "30d", "900" (jsonwebtoken-style) into seconds. */

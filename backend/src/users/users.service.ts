@@ -43,7 +43,12 @@ export class UsersService {
 
     if (!user) throw new NotFoundException('User not found');
     const { passwordHash, refreshToken, ...safe } = user;
-    return safe;
+    // Lets the frontend tell Google-only accounts (no password set at all)
+    // apart from password-based ones without ever exposing the hash itself
+    // — needed so Settings can show accurate "change password" behavior
+    // instead of always offering a reset flow that silently no-ops for
+    // Google-only accounts.
+    return { ...safe, hasPassword: !!passwordHash };
   }
 
   private static readonly MAX_TEXT_LENGTHS: Record<string, number> = {

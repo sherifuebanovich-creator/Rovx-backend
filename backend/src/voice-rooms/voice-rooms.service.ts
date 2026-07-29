@@ -48,18 +48,31 @@ export class VoiceRoomsService {
   }
 
   async createRoom(ownerId: string, dto: CreateVoiceRoomDto) {
+    // A client-supplied groupId is only honored if the creator is actually
+    // a member — otherwise anyone could attach a "private" room to a group
+    // they don't belong to and have it inherit that group's member list as
+    // its access list, which would be backwards (granting access, not
+    // restricting it, to people who aren't even in the group).
+    if (dto.groupId) {
+      await this.assertGroupMember(dto.groupId, ownerId);
+    }
     return this.prisma.voiceRoom.create({
       data: {
         name: dto.name.trim(),
         ownerId,
+        groupId: dto.groupId,
         maxParticipants: dto.maxParticipants ?? 20,
       },
     });
   }
 
+  // Group-scoped rooms are only ever meant to be reachable via the group's
+  // chat (which only its members can see in the first place) — surfacing
+  // them here too would let any user in the app discover and join a call
+  // its own group members think is private.
   async listActiveRooms() {
     const rooms = await this.prisma.voiceRoom.findMany({
-      where: { isActive: true },
+      where: { isActive: true, groupId: null },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
@@ -72,12 +85,13 @@ export class VoiceRoomsService {
     }));
   }
 
-  async getRoom(roomId: string) {
+  async getRoom(roomId: string, userId: string) {
     const room = await this.prisma.voiceRoom.findUnique({
       where: { id: roomId },
       include: { owner: { select: { id: true, displayName: true, avatar: true } } },
     });
     if (!room || !room.isActive) throw new NotFoundException('Voice room not found');
+    if (room.groupId) await this.assertGroupMember(room.groupId, userId);
     return room;
   }
 
@@ -86,6 +100,17 @@ export class VoiceRoomsService {
     if (!room) throw new NotFoundException('Voice room not found');
     if (room.ownerId !== userId) throw new ForbiddenException('Only the room owner can close it');
     await this.prisma.voiceRoom.update({ where: { id: roomId }, data: { isActive: false } });
+    // Flipping isActive only stopped NEW joins — everyone already connected
+    // kept talking indefinitely, and the owner had no real way to end a
+    // live call. Return the room so the gateway can evict current sockets.
+    return room;
+  }
+
+  async assertGroupMember(groupId: string, userId: string) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member || member.isBanned) throw new ForbiddenException('Not a member of this group');
   }
 
   // ── Live participant state (in-memory) ─────────────────────────────

@@ -2,27 +2,22 @@
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FaArrowLeft, FaRoute, FaMapMarkerAlt, FaClock, FaTimes, FaSpinner } from 'react-icons/fa';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { routesApi } from '@/lib/api';
 import { useMapStore } from '@/store/map.store';
-
-interface SavedRoute { id: string; name: string; from: string; to: string; distance: string; duration: string; }
 
 export default function RoutesPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const [routes, setRoutes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const FALLBACK_ROUTES: SavedRoute[] = useMemo(() => [
-    { id: '1', name: t('routes.fallback1'), from: t('routes.fallback5'), to: t('routes.fallback9'), distance: `12.4 ${t('routes.km')}`, duration: `28 ${t('routes.min')}` },
-    { id: '2', name: t('routes.fallback2'), from: t('routes.fallback6'), to: t('routes.fallback10'), distance: `5.2 ${t('routes.km')}`, duration: `14 ${t('routes.min')}` },
-    { id: '3', name: t('routes.fallback3'), from: t('routes.fallback7'), to: t('routes.fallback11'), distance: `35.6 ${t('routes.km')}`, duration: `45 ${t('routes.min')}` },
-    { id: '4', name: t('routes.fallback4'), from: t('routes.fallback8'), to: t('routes.fallback12'), distance: `28.1 ${t('routes.km')}`, duration: `38 ${t('routes.min')}` },
-  ], [t]);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
     routesApi.getSaved().then(res => {
       const rawData = res.data.data || res.data || [];
       const normalized = rawData.map((r: any) => ({
@@ -39,9 +34,17 @@ export default function RoutesPage() {
       }));
       setRoutes(normalized);
     }).catch(() => {
-      setRoutes(FALLBACK_ROUTES);
+      // Was silently substituting 4 hardcoded demo routes here, with no
+      // indication they weren't real — a transient network blip, an
+      // expired token, or a Render cold-start timeout all looked
+      // identical to "you have these saved routes," and deleting one of
+      // the fake ones 404'd server-side with a confusing "failed to
+      // remove" toast for a route the user never actually had.
+      setLoadError(true);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [t]);
+
+  useEffect(() => { load(); }, [load]);
 
   const deleteRoute = async (id: string) => {
     const previous = [...routes];
@@ -57,7 +60,8 @@ export default function RoutesPage() {
 
   const handleSelectRoute = (route: any) => {
     if (route.originLat == null || route.destLat == null) {
-      // If it's a fallback route, we don't have lat/lng, so redirect to map
+      // Missing coordinates (legacy row) — just open the map instead of
+      // trying to pre-fill an origin/destination we don't have.
       router.push('/');
       return;
     }
@@ -80,6 +84,12 @@ export default function RoutesPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <FaSpinner size={24} className="text-primary-400 animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <FaRoute size={48} className="text-gray-600" />
+            <p className="text-red-400 text-center">{t('routes.loadFailed')}</p>
+            <button onClick={load} className="btn-primary px-6 py-3 mt-2">{t('routes.retry')}</button>
           </div>
         ) : routes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">

@@ -169,11 +169,16 @@ function PremiumPage() {
 
   const handleCancel = async () => {
     try {
-      await premiumApi.cancel();
-      setMySub(prev => prev ? { ...prev, active: false } : null);
-      if (user) {
-        setUser({ ...user, subscription: 'FREE' });
+      const res = await premiumApi.cancel();
+      const cancelled = (res.data?.data ?? res.data)?.cancelled;
+      if (cancelled === false) {
+        toast.error(t('premium.cancelNothingToCancel'));
+        return;
       }
+      // Cancelling only turns off auto-renew — access continues until the
+      // already-paid period ends (see premium.service.ts#cancelSubscription).
+      // Flipping `active`/`subscription` to FREE here immediately claimed
+      // the user lost access right away, which wasn't true.
       toast.success(t('premium.cancelled'));
     } catch {
       toast.error(t('premium.cancelError'));

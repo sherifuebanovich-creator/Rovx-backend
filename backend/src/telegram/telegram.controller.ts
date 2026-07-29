@@ -449,6 +449,7 @@ export class TelegramController implements OnModuleInit {
               'Пример: <code>/role userId ADMIN</code>\n\n' +
               'Доступные роли:\n' +
               '• USER\n' +
+              '• MODERATOR\n' +
               '• ADMIN\n' +
               '• SUPERADMIN');
             return { ok: true };

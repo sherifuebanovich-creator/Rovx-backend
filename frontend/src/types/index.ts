@@ -21,6 +21,10 @@ export interface User {
   workAddress?: string;
   phone?: string;
   city?: string;
+  // False for a Google-only account (never set a password) — lets Settings
+  // show accurate "change password" behavior instead of always routing into
+  // a reset flow that silently no-ops for these accounts.
+  hasPassword?: boolean;
 }
 
 export type VehicleType = 'CAR' | 'TRUCK';

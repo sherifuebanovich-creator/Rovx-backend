@@ -415,12 +415,11 @@ export default function GroupChatPage() {
     setStartingCall(true);
     try {
       const roomName = `${group.name} — звонок`;
-      // Was capped to the group's CURRENT member count — a small group
-      // (e.g. 3 members right now) permanently locked its call room to 3
-      // seats even if the group grows later, or if the room was meant to
-      // be joined via the group's public invite link by non-members too.
-      // Backend's own default (voice-rooms.service.ts) is a generous 20.
-      const res = await voiceRoomsApi.create(roomName);
+      // Passing groupId scopes the room to this group's members only — the
+      // backend rejects both the public room listing and room:join for
+      // anyone who isn't a member, so this call is actually private to the
+      // group it was started from, not just presented that way in the UI.
+      const res = await voiceRoomsApi.create(roomName, undefined, groupId);
       const room = res.data?.data || res.data;
       const ws = getSocket();
       // The [[voicecall:ID]] marker is parsed out by the message renderer

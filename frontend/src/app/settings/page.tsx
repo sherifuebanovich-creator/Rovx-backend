@@ -291,10 +291,24 @@ export default function SettingsPage() {
       title: t('settings.privacy'),
       subtitle: t('settings.privacyIntro'),
       items: [
-        { icon: <FaKey size={16} className="text-blue-400" />, label: t('settings.changePassword'),
-          right: <FaChevronRight size={12} className="text-gray-600" />,
-          onClick: () => router.push(`/auth/reset-password${user?.email ? `?email=${encodeURIComponent(user.email)}` : ''}`),
-        },
+        // A Google-only account (no password ever set) hitting this used to
+        // land on /auth/reset-password, which auto-sends on mount — the
+        // backend's forgot-password flow intentionally no-ops for accounts
+        // with no passwordHash (anti-enumeration), but still returns a
+        // generic "sent" response, so the user saw a fake success toast and
+        // a code-entry screen for a code that was never emailed. We already
+        // know hasPassword here (this is the logged-in Settings page, not
+        // the public forgot-password form, so showing it doesn't leak
+        // anything about other accounts).
+        user?.hasPassword === false
+          ? { icon: <FaKey size={16} className="text-gray-500" />, label: t('settings.changePassword'),
+              right: <span className="text-xs text-gray-500">{t('settings.googleAccount')}</span>,
+              onClick: () => toast(t('settings.googleAccountHint')),
+            }
+          : { icon: <FaKey size={16} className="text-blue-400" />, label: t('settings.changePassword'),
+              right: <FaChevronRight size={12} className="text-gray-600" />,
+              onClick: () => router.push(`/auth/reset-password${user?.email ? `?email=${encodeURIComponent(user.email)}` : ''}`),
+            },
         { icon: <FaTrash size={16} className="text-red-400" />, label: t('settings.deleteMyData'),
           right: <FaChevronRight size={12} className="text-gray-600" />,
           onClick: () => router.push('/support'),
