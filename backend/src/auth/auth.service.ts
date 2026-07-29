@@ -90,9 +90,10 @@ export class AuthService {
       throw err;
     }
 
-    const code = await this.verificationService.generateCode(user.email);
-    await this.mailService.sendVerificationCode(user.email, code);
-
+    // The verify page itself sends the first code on mount now (so it can
+    // also cover the "log in with an unverified account" path, which never
+    // sent one at all) — sending one here too would double-email a fresh
+    // registration.
     this.logger.log(`New user registered: ${user.email}`);
     return {
       user: this.sanitizeUser(user),

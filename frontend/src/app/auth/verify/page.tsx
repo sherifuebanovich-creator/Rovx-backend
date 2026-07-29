@@ -26,6 +26,7 @@ function VerifyForm() {
   const [error, setError] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { setUser, setTokens } = useAuthStore();
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     if (!email) router.replace('/auth/login');
@@ -51,6 +52,17 @@ function VerifyForm() {
       setIsSending(false);
     }
   }, [email, isSending, cooldown, t]);
+
+  // Was a manual "Send Code" button the user had to click first — the code
+  // now goes out automatically the moment this page loads (registration no
+  // longer sends its own copy server-side, precisely so this is the single
+  // place that does), with the existing 60s cooldown still gating resends.
+  useEffect(() => {
+    if (!email || autoSentRef.current) return;
+    autoSentRef.current = true;
+    handleSendCode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();

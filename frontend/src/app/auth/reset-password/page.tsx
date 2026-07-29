@@ -28,6 +28,7 @@ function ResetPasswordForm() {
   const [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -50,6 +51,19 @@ function ResetPasswordForm() {
       setIsSending(false);
     }
   }, [isSending, cooldown, t]);
+
+  // Arriving with `?email=` pre-filled (e.g. Settings' "change password"
+  // link) used to jump straight to the code-entry step without a code ever
+  // actually having been sent — the step transition only ever happened as a
+  // side effect of a successful send. Fire that send automatically instead
+  // of leaving the user on a code screen for a code that never went out.
+  const prefilledEmail = searchParams.get('email');
+  useEffect(() => {
+    if (!prefilledEmail || autoSentRef.current) return;
+    autoSentRef.current = true;
+    handleSendCode(prefilledEmail);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefilledEmail]);
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();

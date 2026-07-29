@@ -95,6 +95,29 @@ interface SearchPanelProps {
   onClose?: () => void;
 }
 
+// Recognizes a pasted Google Maps link (`?q=lat,lng`, `/@lat,lng,zoom`) or a
+// raw "lat,lng" pair typed/pasted directly — lets the search box accept a
+// coordinate straight from a shared Maps link instead of only free-text
+// place names.
+function parseCoordsFromQuery(input: string): { lat: number; lng: number } | null {
+  const trimmed = input.trim();
+  const patterns = [
+    /[?&]q=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/,
+    /\/@(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/,
+    /^(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/,
+  ];
+  for (const re of patterns) {
+    const m = trimmed.match(re);
+    if (!m) continue;
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { lat, lng };
+    }
+  }
+  return null;
+}
+
 export function SearchPanel({ onClose }: SearchPanelProps) {
   const { t } = useTranslation();
   const formatDistance = (km?: number): string => {
@@ -235,6 +258,32 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       const thisFetch = ++fetchIdRef.current;
       setIsSearching(true);
       setSearchQuery(q);
+
+      const coords = parseCoordsFromQuery(q);
+      if (coords) {
+        // Reverse-geocode for a readable name/address, but the coordinate
+        // itself is already good enough to show and select even if that
+        // call fails or is slow.
+        const fallback: SearchSuggestion = {
+          id: `coords-${coords.lat}-${coords.lng}`,
+          name: `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,
+          lat: coords.lat, lng: coords.lng, category: 'COORDINATES',
+        };
+        if (thisFetch === fetchIdRef.current) setSearchSuggestions([fallback]);
+        try {
+          const res = await mapApi.reverseGeocode(coords.lat, coords.lng);
+          if (thisFetch !== fetchIdRef.current) return;
+          const geo = res.data?.data || res.data;
+          if (geo?.name) {
+            setSearchSuggestions([{ ...fallback, name: geo.name, address: geo.address || undefined }]);
+          }
+        } catch { /* keep the coordinate-only fallback */ }
+        finally {
+          if (thisFetch === fetchIdRef.current) setIsSearching(false);
+        }
+        return;
+      }
+
       try {
         const res = await mapApi.suggest(q, userLocation?.lat, userLocation?.lng);
         if (thisFetch !== fetchIdRef.current) return;

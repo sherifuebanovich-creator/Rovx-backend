@@ -28,7 +28,17 @@ function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }) {
   }, [map]);
 
   const addLayer = useCallback(() => {
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
+    // The style can still be mid-load right when this first runs (its exact
+    // timing relative to the map's own 'style.load' firing varies with
+    // network conditions — reliably raced on the deployed site even though
+    // it happened to resolve fast enough locally). Retry once on 'idle',
+    // which fires once the map has nothing left to load regardless of
+    // exactly when 'style.load' fired relative to this effect attaching.
+    if (!map.isStyleLoaded()) {
+      map.once('idle', () => addLayer());
+      return;
+    }
     if (!TOMTOM_KEY) {
       if (!warnedMissingKey) {
         console.warn('[TrafficFlowLayer] NEXT_PUBLIC_TOMTOM_API_KEY is not set — traffic flow layer disabled.');
