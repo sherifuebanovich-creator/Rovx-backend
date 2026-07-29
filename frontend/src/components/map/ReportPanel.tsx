@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaCamera, FaCheckCircle, FaExclamationTriangle, FaTimes, FaSpinner, FaImage, FaCommentDots } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
-import { reportsApi } from '@/lib/api';
+import { reportsApi, mapApi } from '@/lib/api';
 import { ReportType } from '@/types';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -191,10 +191,27 @@ export function ReportPanel() {
     try {
       const validatedFiles = photoFiles.filter((_, i) => photoValidated[i]);
 
+      // Without a real address/city, the backend fell back to its own
+      // separate reverse-geocode call (city notifications' whole
+      // "who's in this city" match depended on that succeeding within a
+      // tight 2s timeout at report-creation time) — reusing the app's
+      // regular reverseGeocode call here means the report already carries
+      // real location data, so nearby-city users actually get notified.
+      let address: string | undefined;
+      let city: string | undefined;
+      try {
+        const geo = await mapApi.reverseGeocode(userLocation.lat, userLocation.lng);
+        const geoData = geo.data?.data || geo.data;
+        address = geoData?.address || undefined;
+        city = geoData?.city || undefined;
+      } catch { /* report creation must not block on this */ }
+
       const res = await reportsApi.create({
         type: selectedType,
         lat: userLocation.lat,
         lng: userLocation.lng,
+        address,
+        city,
         description: description.trim() || undefined,
         severity,
       }, validatedFiles.length > 0 ? validatedFiles : undefined);

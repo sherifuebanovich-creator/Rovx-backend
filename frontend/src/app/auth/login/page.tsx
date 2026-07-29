@@ -191,6 +191,11 @@ function LoginPageContent() {
                     {showPass ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
                   </button>
                 </div>
+                <div className="text-right mt-1.5">
+                  <Link href="/auth/reset-password" className="text-xs text-primary-400 hover:text-primary-300 font-medium">
+                    {t('auth.login.forgotPassword')}
+                  </Link>
+                </div>
               </div>
 
               <motion.button

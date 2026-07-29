@@ -2,10 +2,11 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaBell, FaRoute, FaExclamationTriangle, FaHeadset } from 'react-icons/fa';
+import { FaArrowLeft, FaBell, FaRoute, FaExclamationTriangle, FaHeadset, FaMapMarkerAlt } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import { socialApi } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useMapStore } from '@/store/map.store';
 import toast from 'react-hot-toast';
 import { getSocket } from '@/hooks/useSocket';
 
@@ -62,6 +63,23 @@ export default function NotificationsPage() {
   }, [user, fetchNotifs]);
 
   const unread = notifs.filter(n => !n.isRead).length;
+
+  // Report notifications carry the report's lat/lng in `data` (a JSON
+  // string, see reports.service.ts's notificationData) — previously nothing
+  // ever read it, so tapping a report notification did nothing at all.
+  const parseNotificationData = (raw: unknown): { lat?: number; lng?: number } | null => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw as any;
+    try { return JSON.parse(raw as string); } catch { return null; }
+  };
+
+  const handleNotificationClick = (n: any) => {
+    if (n.type !== 'report' && n.type !== 'report_premium') return;
+    const data = parseNotificationData(n.data);
+    if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number') return;
+    useMapStore.getState().setMapCenter({ lat: data.lat, lng: data.lng }, 16);
+    router.push('/');
+  };
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -147,22 +165,28 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {notifs.map((n, i) => (
-              <motion.div key={n.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
-                className={`card p-4 flex items-start gap-3 ${!n.isRead ? 'border-primary-500/20' : ''}`}>
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMap[n.type] || colorMap.info}`}>
-                  {getIcon(n.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-white font-semibold text-sm">{n.title}</p>
-                    {!n.isRead && <span className="w-2 h-2 rounded-full bg-primary-400 flex-shrink-0" />}
+            {notifs.map((n, i) => {
+              const isLocatable = (n.type === 'report' || n.type === 'report_premium') &&
+                parseNotificationData(n.data)?.lat !== undefined;
+              return (
+                <motion.div key={n.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
+                  onClick={isLocatable ? () => handleNotificationClick(n) : undefined}
+                  className={`card p-4 flex items-start gap-3 ${!n.isRead ? 'border-primary-500/20' : ''} ${isLocatable ? 'cursor-pointer hover:bg-white/5 transition-all' : ''}`}>
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMap[n.type] || colorMap.info}`}>
+                    {getIcon(n.type)}
                   </div>
-                  <p className="text-gray-400 text-xs mt-0.5">{n.body}</p>
-                  <p className="text-gray-600 text-[11px] mt-1">{formatTime(n.createdAt)}</p>
-                </div>
-              </motion.div>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-semibold text-sm">{n.title}</p>
+                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-primary-400 flex-shrink-0" />}
+                    </div>
+                    <p className="text-gray-400 text-xs mt-0.5">{n.body}</p>
+                    <p className="text-gray-600 text-[11px] mt-1">{formatTime(n.createdAt)}</p>
+                  </div>
+                  {isLocatable && <FaMapMarkerAlt size={12} className="text-gray-600 flex-shrink-0 mt-1" />}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>

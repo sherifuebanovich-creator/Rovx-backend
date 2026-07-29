@@ -758,6 +758,11 @@ export class MapService {
           id: `rev-${f.properties.osm_id || ''}-${lng}-${lat}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
           name: f.properties.name || f.properties.street || f.properties.city || 'Unknown',
           address: [f.properties.street, f.properties.housenumber, f.properties.city, f.properties.country].filter(Boolean).join(', '),
+          // Same extraction reports.service.ts's own getCityFromCoords does —
+          // exposing it here lets the frontend send a real `city` at report
+          // creation time instead of the backend needing its own separate,
+          // synchronous (and easy to time out) Photon call for that.
+          city: f.properties.city || f.properties.town || f.properties.village || f.properties.municipality || f.properties.county || null,
           lat: f.geometry.coordinates[1],
           lng: f.geometry.coordinates[0],
           category: (f.properties.osm_value || 'address').toUpperCase(),
@@ -769,7 +774,7 @@ export class MapService {
       this.logger.error(`Reverse geocode failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    return { name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, address: '', lat, lng, category: 'COORDINATES' };
+    return { name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, address: '', city: null, lat, lng, category: 'COORDINATES' };
   }
 
   async addBookmark(userId: string, data: any) {

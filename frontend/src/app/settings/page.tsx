@@ -5,13 +5,15 @@ import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n/i18n';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaShieldAlt, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase } from 'react-icons/fa';
+import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase, FaUser, FaIdBadge, FaKey } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { authApi, usersApi, mapApi } from '@/lib/api';
+import Link from 'next/link';
+import { authApi, usersApi } from '@/lib/api';
 import { LANGUAGES, getLanguageConfig } from '@/config/languages';
 import { useMapStore } from '@/store/map.store';
 import { VehicleForm } from '@/components/vehicles/VehicleForm';
+import { AddressPicker } from '@/components/settings/AddressPicker';
 import { Vehicle } from '@/types';
 import { getStoredThemeMode, resolveIsDark } from '@/lib/theme';
 
@@ -98,67 +100,58 @@ export default function SettingsPage() {
     }).finally(() => setVehiclesLoading(false));
   }, [user]);
 
-  // Free-text home/work addresses were saving text without geocoding it,
-  // so an edited address kept the OLD lat/lng — SearchPanel's quick-
-  // destination buttons would then route to a stale location under the
-  // new label. Geocode on blur and keep coords in lockstep with the text;
-  // clear them (rather than leave stale) if geocoding finds nothing.
-  const handleAddressBlur = async (field: 'home' | 'work', rawValue: string) => {
-    if (!user) return;
-    const value = rawValue.trim();
+  // Home/work addresses are set by picking a geocoded suggestion (see
+  // AddressPicker), never by free-typing — so there's no ambiguous "first
+  // search result" guess anymore, just whichever place the user selected.
+  const revertAddressOnFailure = (field: 'home' | 'work', requestId: number) => {
+    // A newer edit already superseded this one — let it own the outcome.
+    if (requestId !== addressRequestIdRef.current[field]) return;
     const addressKey = field === 'home' ? 'homeAddress' : 'workAddress';
     const latKey = field === 'home' ? 'homeLat' : 'workLat';
     const lngKey = field === 'home' ? 'homeLng' : 'workLng';
+    const saved = lastSavedAddressRef.current[field];
+    const current = useAuthStore.getState().user;
+    if (!current) return;
+    setUser({ ...current, [addressKey]: saved.address, [latKey]: saved.lat, [lngKey]: saved.lng } as any);
+  };
 
-    // A failed save used to leave the input showing the new (unsaved) text
-    // while homeLat/homeLng still pointed at the OLD location — exactly the
-    // stale-coordinate mismatch this function exists to prevent, just on
-    // the error path. Revert to the last confirmed value instead.
-    const revertOnFailure = (requestId: number) => {
-      // A newer edit already superseded this one — let it own the outcome.
-      if (requestId !== addressRequestIdRef.current[field]) return;
-      const saved = lastSavedAddressRef.current[field];
-      const current = useAuthStore.getState().user;
-      if (!current) return;
-      setUser({ ...current, [addressKey]: saved.address, [latKey]: saved.lat, [lngKey]: saved.lng } as any);
-    };
-
+  const handleAddressSelect = async (field: 'home' | 'work', suggestion: { name: string; address?: string; lat: number; lng: number }) => {
+    if (!user) return;
+    const addressKey = field === 'home' ? 'homeAddress' : 'workAddress';
+    const latKey = field === 'home' ? 'homeLat' : 'workLat';
+    const lngKey = field === 'home' ? 'homeLng' : 'workLng';
+    const value = suggestion.address || suggestion.name;
     const requestId = ++addressRequestIdRef.current[field];
 
-    if (!value) {
-      const patch = { [addressKey]: '', [latKey]: null, [lngKey]: null };
-      try {
-        await usersApi.updateProfile(patch);
-        if (requestId !== addressRequestIdRef.current[field]) return;
-        setUser({ ...useAuthStore.getState().user!, ...patch });
-        lastSavedAddressRef.current[field] = { address: '', lat: null, lng: null };
-      } catch (err: any) {
-        console.error('[Settings] Failed to clear address:', err?.response?.status, err?.response?.data || err?.message);
-        toast.error(err?.response?.data?.message || t('settings.saveFailed'));
-        revertOnFailure(requestId);
-      }
-      return;
-    }
-
+    const patch = { [addressKey]: value, [latKey]: suggestion.lat, [lngKey]: suggestion.lng };
+    setUser({ ...user, ...patch } as any);
     try {
-      const res = await mapApi.search(value, undefined, undefined, 20);
-      if (requestId !== addressRequestIdRef.current[field]) return;
-      const results = res.data?.data || res.data || [];
-      const match = results[0];
-      const patch = {
-        [addressKey]: value,
-        [latKey]: match?.lat ?? null,
-        [lngKey]: match?.lng ?? null,
-      };
       await usersApi.updateProfile(patch);
       if (requestId !== addressRequestIdRef.current[field]) return;
-      setUser({ ...useAuthStore.getState().user!, ...patch });
-      lastSavedAddressRef.current[field] = { address: value, lat: patch[latKey], lng: patch[lngKey] };
-      if (!match) toast.error(t('settings.addressNotFound'));
+      lastSavedAddressRef.current[field] = { address: value, lat: suggestion.lat, lng: suggestion.lng };
     } catch (err: any) {
       console.error('[Settings] Failed to save address:', err?.response?.status, err?.response?.data || err?.message);
       toast.error(err?.response?.data?.message || t('settings.saveFailed'));
-      revertOnFailure(requestId);
+      revertAddressOnFailure(field, requestId);
+    }
+  };
+
+  const handleAddressClear = async (field: 'home' | 'work') => {
+    if (!user) return;
+    const addressKey = field === 'home' ? 'homeAddress' : 'workAddress';
+    const latKey = field === 'home' ? 'homeLat' : 'workLat';
+    const lngKey = field === 'home' ? 'homeLng' : 'workLng';
+    const requestId = ++addressRequestIdRef.current[field];
+    const patch = { [addressKey]: '', [latKey]: null, [lngKey]: null };
+    setUser({ ...user, ...patch } as any);
+    try {
+      await usersApi.updateProfile(patch);
+      if (requestId !== addressRequestIdRef.current[field]) return;
+      lastSavedAddressRef.current[field] = { address: '', lat: null, lng: null };
+    } catch (err: any) {
+      console.error('[Settings] Failed to clear address:', err?.response?.status, err?.response?.data || err?.message);
+      toast.error(err?.response?.data?.message || t('settings.saveFailed'));
+      revertAddressOnFailure(field, requestId);
     }
   };
 
@@ -289,9 +282,24 @@ export default function SettingsPage() {
     },
     {
       title: t('settings.account'),
+      items: user ? [
+        { icon: <FaUser size={16} className="text-primary-400" />, label: t('settings.email'), right: <span className="text-sm text-gray-400 truncate max-w-[160px]">{user.email}</span> },
+        { icon: <FaIdBadge size={16} className="text-gray-400" />, label: t('settings.accountId'), right: <span className="text-xs text-gray-500 font-mono">{user.id.slice(0, 8)}</span> },
+      ] : [],
+    },
+    {
+      title: t('settings.privacy'),
+      subtitle: t('settings.privacyIntro'),
       items: [
-        { icon: <FaShieldAlt size={16} className="text-primary-400" />, label: t('settings.privacy'), right: <FaChevronRight size={12} className="text-gray-600" />, onClick: () => toast(t('settings.privacyComingSoon')) },
-      ]
+        { icon: <FaKey size={16} className="text-blue-400" />, label: t('settings.changePassword'),
+          right: <FaChevronRight size={12} className="text-gray-600" />,
+          onClick: () => router.push(`/auth/reset-password${user?.email ? `?email=${encodeURIComponent(user.email)}` : ''}`),
+        },
+        { icon: <FaTrash size={16} className="text-red-400" />, label: t('settings.deleteMyData'),
+          right: <FaChevronRight size={12} className="text-gray-600" />,
+          onClick: () => router.push('/support'),
+        },
+      ],
     },
   ];
 
@@ -306,15 +314,33 @@ export default function SettingsPage() {
         {sections.map((section, si) => (
           <div key={si} className="mb-5">
             <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2 px-1">{section.title}</p>
+            {section.subtitle && (
+              <p className="text-xs text-gray-500 mb-2 px-1">{section.subtitle}</p>
+            )}
             <div className="card overflow-hidden">
-              {section.items.map((item, i) => (
-                <motion.button key={item.label} whileTap={{ scale: 0.98 }} onClick={item.onClick}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition-all text-left ${i > 0 ? 'border-t border-dark-border' : ''}`}>
-                  {item.icon}
-                  <span className="flex-1 text-sm text-gray-200">{item.label}</span>
-                  {item.right}
-                </motion.button>
-              ))}
+              {section.items.map((item, i) => {
+                const rowClasses = `w-full flex items-center gap-3 px-4 py-3.5 text-left ${i > 0 ? 'border-t border-dark-border' : ''}`;
+                // Read-only info rows (no onClick, e.g. email/account id) render
+                // as a plain div — a motion.button with hover/tap feedback but
+                // no action implied it was clickable when it did nothing.
+                if (!item.onClick) {
+                  return (
+                    <div key={item.label} className={rowClasses}>
+                      {item.icon}
+                      <span className="flex-1 text-sm text-gray-200">{item.label}</span>
+                      {item.right}
+                    </div>
+                  );
+                }
+                return (
+                  <motion.button key={item.label} whileTap={{ scale: 0.98 }} onClick={item.onClick}
+                    className={`${rowClasses} hover:bg-white/5 transition-all`}>
+                    {item.icon}
+                    <span className="flex-1 text-sm text-gray-200">{item.label}</span>
+                    {item.right}
+                  </motion.button>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -331,15 +357,11 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-500 font-medium">{t('settings.home')}</p>
-                    <input
+                    <AddressPicker
                       value={user.homeAddress || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setUser({ ...user, homeAddress: val });
-                      }}
-                      onBlur={(e) => handleAddressBlur('home', e.target.value)}
-                      className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.homePlaceholder')}
+                      onSelect={(s) => handleAddressSelect('home', s)}
+                      onClear={() => handleAddressClear('home')}
                     />
                   </div>
                   {user.homeLat && user.homeLng && (
@@ -356,15 +378,11 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-500 font-medium">{t('settings.work')}</p>
-                    <input
+                    <AddressPicker
                       value={user.workAddress || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setUser({ ...user, workAddress: val });
-                      }}
-                      onBlur={(e) => handleAddressBlur('work', e.target.value)}
-                      className="w-full bg-transparent text-sm text-white placeholder-gray-600 outline-none mt-0.5"
                       placeholder={t('settings.workPlaceholder')}
+                      onSelect={(s) => handleAddressSelect('work', s)}
+                      onClear={() => handleAddressClear('work')}
                     />
                   </div>
                   {user.workLat && user.workLng && (
@@ -470,7 +488,7 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
-        <p className="text-center text-xs text-gray-600 mt-6">{t('settings.footer')}</p>
+        <p className="text-center text-xs text-gray-600 mt-6">{t('settings.footer', { version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0' })}</p>
       </div>
 
       {/* Language picker modal */}

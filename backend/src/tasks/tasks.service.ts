@@ -35,10 +35,8 @@ export class TasksService {
     }
   }
 
-  // Was '0 * * * *' (every hour) — user asked to space reports out to
-  // every 3 hours instead. Only firing at hours divisible by 3 keeps it
-  // aligned to fixed clock times (00:00, 03:00, ...) rather than drifting.
-  @Cron('0 */3 * * *', { timeZone: 'Asia/Tashkent' })
+  // Back to hourly, on the fixed clock hour.
+  @Cron('0 * * * *', { timeZone: 'Asia/Tashkent' })
   async sendHourlyReport() {
     const chatId = this.config.get('TELEGRAM_CHAT_ID');
     if (!chatId) return;
@@ -52,10 +50,10 @@ export class TasksService {
     // same :00 tick. Redis SETNX makes the "already sent this run" check
     // shared across every instance. If Redis is unreachable, fail open (send
     // anyway) rather than silently going quiet for the run. TTL covers the
-    // full 3h gap between runs so a late/retried tick within the same
+    // full 1h gap between runs so a late/retried tick within the same
     // window still dedupes.
     try {
-      const acquired = await this.redis.setnx(`hourly-report:sent:${hourKey}`, '1', 3 * 3600);
+      const acquired = await this.redis.setnx(`hourly-report:sent:${hourKey}`, '1', 3600);
       if (!acquired) {
         this.logger.debug(`Skipping report — already sent for ${hourKey}`);
         return;
@@ -72,7 +70,7 @@ export class TasksService {
         timeZoneName: 'short',
       });
 
-      let msg = `📊 <b>ОТЧЁТ (раз в 3 часа)</b>\n🕐 ${timeStr}\n━━━━━━━━━━━━━━━\n`;
+      let msg = `📊 <b>ЕЖЕЧАСНЫЙ ОТЧЁТ</b>\n🕐 ${timeStr}\n━━━━━━━━━━━━━━━\n`;
       msg += `📋 <b>РЕПОРТЫ</b>\n`;
       msg += `За час: ${stats.reports.hour}\n`;
       msg += `За день: ${stats.reports.day}\n`;
