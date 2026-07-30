@@ -195,6 +195,19 @@ export function useGeolocation() {
 
     startWatching();
 
+    // The high-accuracy watch above can easily take 5-15s+ for its first fix
+    // indoors/urban, during which the map just sits on the Moscow fallback
+    // with nothing visibly happening. A low-accuracy fix (network/WiFi-based)
+    // typically resolves in well under a second — good enough to center the
+    // camera immediately; skipped entirely if the real watch already beat it.
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { if (!hasFixRef.current) processPosition(pos); },
+        () => { /* the high-accuracy watch above is the real error path */ },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
+      );
+    }
+
     const onVisibilityChange = () => {
       if (document.hidden) {
         isActiveRef.current = false;
@@ -251,7 +264,7 @@ export function useGeolocation() {
         permissionResult.removeEventListener('change', onPermChange);
       }
     };
-  }, [startWatching, stopWatching]);
+  }, [startWatching, stopWatching, processPosition]);
 
   return { location, error, permissionState, startWatching, stopWatching, getOnce };
 }
