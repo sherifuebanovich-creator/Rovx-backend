@@ -58,12 +58,6 @@ export function ReportPanel() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoChecking, setPhotoChecking] = useState(false);
-  const [photoValidated, setPhotoValidated] = useState<boolean[]>([]);
-  // Stable per-photo ids (mirrors photos/photoFiles/photoValidated order) so
-  // async validation results can be written to the photo's CURRENT index
-  // even if photos were removed while validation was still in flight.
-  const photoIdCounterRef = useRef(0);
-  const photoIdsRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout>>();
   // `isSubmitting` state alone isn't enough — a second invocation fired in
@@ -88,13 +82,6 @@ export function ReportPanel() {
     if (newFileCount <= 0) return;
     const filesToAdd = files.slice(0, newFileCount);
 
-    // Set BEFORE the async compression/encoding work below, not after —
-    // compressing a full-res camera photo can take real time, and during
-    // that window `photos` hasn't been appended to yet, so hasValidPhotos
-    // (which used to short-circuit true on `photos.length === 0`) didn't
-    // reflect the in-flight photo at all. A tap on Submit in that window
-    // used to send the report with zero photos while the user believed one
-    // was attached.
     setPhotoChecking(true);
 
     const addedPhotos: string[] = [];
@@ -110,59 +97,16 @@ export function ReportPanel() {
       }
     }
 
-    if (addedPhotos.length === 0) {
-      setPhotoChecking(false);
-      return;
-    }
-
-    const addedIds = addedPhotos.map(() => ++photoIdCounterRef.current);
-    photoIdsRef.current = [...photoIdsRef.current, ...addedIds];
+    setPhotoChecking(false);
+    if (addedPhotos.length === 0) return;
 
     setPhotos(prev => [...prev, ...addedPhotos]);
     setPhotoFiles(prev => [...prev, ...addedFiles]);
-    setPhotoValidated(prev => [...prev, ...addedPhotos.map(() => false)]);
-    setPhotoChecking(true);
-
-    const newValidations: boolean[] = [];
-    for (let i = 0; i < addedPhotos.length; i++) {
-      try {
-        const res = await reportsApi.validatePhoto(addedPhotos[i], selectedType || undefined, description || undefined);
-        const result = res.data.data || res.data;
-        if (result.valid) {
-          newValidations.push(true);
-        } else {
-          newValidations.push(false);
-          toast.error(t('reportPanel.photoRejected') + (result.reason ? ': ' + result.reason : ''));
-        }
-      } catch {
-        newValidations.push(false);
-        toast.error(t('reportPanel.photoLoadFailed'));
-      }
-    }
-
-    // Write each result to that photo's CURRENT index (looked up by its
-    // stable id), so a removal that happened while validation was in
-    // flight can't corrupt a sibling photo's slot or leave it stuck.
-    setPhotoValidated(prev => {
-      const copy = [...prev];
-      for (let i = 0; i < newValidations.length; i++) {
-        const idx = photoIdsRef.current.indexOf(addedIds[i]);
-        if (idx !== -1) copy[idx] = newValidations[i];
-      }
-      return copy;
-    });
-    setPhotoChecking(false);
-
-    if (newValidations.every(v => v) && newValidations.length > 0) {
-      toast.success(t('reportPanel.photoAccepted'));
-    }
   };
 
   const removePhoto = (index: number) => {
-    photoIdsRef.current = photoIdsRef.current.filter((_, i) => i !== index);
     setPhotos(prev => prev.filter((_, i) => i !== index));
     setPhotoFiles(prev => prev.filter((_, i) => i !== index));
-    setPhotoValidated(prev => prev.filter((_, i) => i !== index));
   };
 
   const [submittedData, setSubmittedData] = useState<any>(null);
@@ -189,8 +133,6 @@ export function ReportPanel() {
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const validatedFiles = photoFiles.filter((_, i) => photoValidated[i]);
-
       // Without a real address/city, the backend fell back to its own
       // separate reverse-geocode call (city notifications' whole
       // "who's in this city" match depended on that succeeding within a
@@ -214,7 +156,7 @@ export function ReportPanel() {
         city,
         description: description.trim() || undefined,
         severity,
-      }, validatedFiles.length > 0 ? validatedFiles : undefined);
+      }, photoFiles.length > 0 ? photoFiles : undefined);
 
       setSubmittedData(res.data.data || res.data);
       setSubmitted(true);
@@ -231,8 +173,6 @@ export function ReportPanel() {
         setSeverity(3);
         setPhotos([]);
         setPhotoFiles([]);
-        setPhotoValidated([]);
-        photoIdsRef.current = [];
       }, 3000);
     } catch (err: any) {
       const msg = err?.response?.data?.message || t('reportPanel.submitFailed');
@@ -242,12 +182,6 @@ export function ReportPanel() {
       setIsSubmitting(false);
     }
   };
-
-  // photoChecking is now checked unconditionally, not just when
-  // photos.length > 0 — it's set true synchronously before the async
-  // compress/validate pipeline even appends to `photos`, so a photo mid
-  // flight (still zero entries in `photos`) must still block submit.
-  const hasValidPhotos = !photoChecking && (photos.length === 0 || photoValidated.every(v => v));
 
   useEffect(() => {
     return () => {
@@ -373,11 +307,6 @@ export function ReportPanel() {
                   {photos.map((photo, i) => (
                     <div key={i} className="relative w-16 sm:w-20 h-16 sm:h-20 rounded-xl overflow-hidden border border-white/10">
                       <img src={photo} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                      {photoValidated[i] === false && (
-                        <div className="absolute inset-0 bg-red-600/50 flex items-center justify-center">
-                          <FaTimes size={16} className="text-white" />
-                        </div>
-                      )}
                       <button
                         onClick={() => removePhoto(i)}
                         className="absolute top-0.5 right-0.5 w-5 h-5 sm:w-6 sm:h-6 bg-black/60 rounded-full flex items-center justify-center z-10"
@@ -458,7 +387,7 @@ export function ReportPanel() {
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSubmit}
-                disabled={!selectedType || !userLocation || isSubmitting || !hasValidPhotos || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
+                disabled={!selectedType || !userLocation || isSubmitting || photoChecking || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
                 className="mt-4 w-full btn-accent py-4 flex items-center justify-center gap-2
                            font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >

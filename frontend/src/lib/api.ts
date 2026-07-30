@@ -336,7 +336,6 @@ export const reportsApi = {
   vote: (id: string, confirm: boolean) => api.post(`/reports/${id}/vote`, { confirm }),
   delete: (id: string) => api.delete(`/reports/${id}`),
   getMy: (page = 1) => api.get(`/reports/my?page=${page}`),
-  validatePhoto: (imageUrl: string, reportType?: string, description?: string) => api.post('/reports/validate-photo', { imageUrl, reportType, description }),
   getLimit: () => api.get('/reports/limit'),
   getForCity: (city: string, page = 1) => api.get(`/reports/city/${encodeURIComponent(city)}?page=${page}`),
 };

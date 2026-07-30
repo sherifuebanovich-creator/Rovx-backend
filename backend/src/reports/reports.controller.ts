@@ -71,23 +71,6 @@ export class ReportsController {
     return this.reportsService.createReport(userId, dto);
   }
 
-  @Post('validate-photo')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Validate photo matches the report type/description using AI' })
-  async validatePhoto(
-    @Body('imageUrl') imageUrl: string,
-    @Body('reportType') reportType?: string,
-    @Body('description') description?: string,
-  ) {
-    if (!imageUrl || typeof imageUrl !== 'string') {
-      throw new BadRequestException('imageUrl is required');
-    }
-    // URL/protocol/SSRF/size validation (incl. base64 data: URLs from the
-    // client's pre-upload preview) is handled centrally in the service.
-    return this.reportsService.validatePhoto(imageUrl, reportType, description);
-  }
-
   @Get('limit')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
