@@ -42,8 +42,16 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existingEmail = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    // Postgres's unique index on email is case-sensitive, and every lookup
+    // in this file used to compare emails as exact strings — "one account
+    // per mailbox" didn't actually hold (John@x.com and john@x.com could
+    // both register, and mobile keyboards' auto-capitalized first letter
+    // could lock a user out of their own account at login). Normalizing to
+    // lowercase at every entry point, and storing it lowercased from here
+    // on, makes the unique constraint mean what it's supposed to mean.
+    const email = this.normalizeEmail(dto.email);
+    const existingEmail = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
     });
     if (existingEmail) {
       throw new ConflictException('Email already registered');
@@ -68,7 +76,7 @@ export class AuthService {
     try {
       user = await this.prisma.user.create({
         data: {
-          email: dto.email,
+          email,
           username: dto.username,
           displayName: dto.displayName || dto.username,
           passwordHash,
@@ -108,10 +116,21 @@ export class AuthService {
   // the hashing cost used elsewhere (RegisterDto/registration).
   private static readonly DUMMY_PASSWORD_HASH = '$2b$12$sHbIYNjmAicXNh7NSoap1.tcn5fjADrK.ASbO0qHx2mKlruf/.0Ki';
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   async login(dto: LoginDto) {
+    // Only the email branch is case-insensitive — usernames are validated
+    // and stored as typed at registration, so an exact match there is
+    // correct; it's specifically the email side (mobile auto-capitalize,
+    // mixed-case at signup) that must not be sensitive to case.
     const user = await this.prisma.user.findFirst({
       where: {
-        OR: [{ email: dto.identifier }, { username: dto.identifier }],
+        OR: [
+          { email: { equals: dto.identifier, mode: 'insensitive' } },
+          { username: dto.identifier },
+        ],
       },
     });
 
@@ -237,8 +256,9 @@ export class AuthService {
     });
   }
 
-  async validateUser(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async validateUser(rawEmail: string, password: string) {
+    const email = this.normalizeEmail(rawEmail);
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     if (user && user.passwordHash && (await bcrypt.compare(password, user.passwordHash))) {
       const { passwordHash, ...result } = user;
       return result;
@@ -362,17 +382,21 @@ export class AuthService {
     deviceInfo?: string;
   }) {
     const verified = await this.verifyGoogleIdToken(data.idToken);
-    const email = verified.email;
+    // Normalized the same way as register()/login() — otherwise a manually
+    // registered Ivan@Gmail.com signing in with Google (whose token returns
+    // the canonical lowercase ivan@gmail.com) silently created a second,
+    // unlinked account instead of linking to the existing one.
+    const email = this.normalizeEmail(verified.email);
     const googleId = verified.sub;
     const displayName = verified.name || data.displayName;
     const avatar = verified.picture || data.avatar;
 
     const existingGoogleLink = await this.prisma.user.findFirst({ where: { googleId } });
-    if (existingGoogleLink && existingGoogleLink.email !== email) {
+    if (existingGoogleLink && this.normalizeEmail(existingGoogleLink.email) !== email) {
       throw new ConflictException('This Google account is already linked to a different user');
     }
 
-    let user = await this.prisma.user.findUnique({ where: { email } });
+    let user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
 
     if (!user) {
       // Auto-register Google user
@@ -457,8 +481,9 @@ export class AuthService {
     return { user: this.sanitizeUser(user), ...tokens };
   }
 
-  async sendVerification(email: string): Promise<{ message: string }> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async sendVerification(rawEmail: string): Promise<{ message: string }> {
+    const email = this.normalizeEmail(rawEmail);
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     if (!user || user.isVerified) {
       return { message: 'Verification code sent' };
     }
@@ -469,8 +494,9 @@ export class AuthService {
     return { message: 'Verification code sent' };
   }
 
-  async verifyEmail(email: string, code: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async verifyEmail(rawEmail: string, code: string) {
+    const email = this.normalizeEmail(rawEmail);
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     if (!user) {
       throw new BadRequestException('User not found');
     }
@@ -505,8 +531,9 @@ export class AuthService {
     return { message: 'Email verified successfully', user: this.sanitizeUser(user), ...tokens };
   }
 
-  async sendForgotPassword(email: string): Promise<{ message: string }> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async sendForgotPassword(rawEmail: string): Promise<{ message: string }> {
+    const email = this.normalizeEmail(rawEmail);
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     if (!user) {
       return { message: 'If the email exists, a reset code has been sent.' };
     }
@@ -521,8 +548,9 @@ export class AuthService {
     return { message: 'If the email exists, a reset code has been sent.' };
   }
 
-  async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async resetPassword(rawEmail: string, code: string, newPassword: string): Promise<{ message: string }> {
+    const email = this.normalizeEmail(rawEmail);
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     if (!user) {
       throw new BadRequestException('User not found');
     }

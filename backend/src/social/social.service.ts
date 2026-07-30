@@ -782,6 +782,12 @@ export class SocialService {
       await this.prisma.groupFavorite.delete({ where: { id: existing.id } });
       return { favorited: false };
     }
+    // GroupFavorite.groupId has a required FK to Group.id with no prior
+    // existence check — a deleted/made-up groupId used to fall straight
+    // through to Prisma's P2003 foreign-key violation (an unhandled 500)
+    // instead of the clean 404 every sibling group endpoint returns.
+    const group = await this.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
     await this.prisma.groupFavorite.create({ data: { groupId, userId } });
     return { favorited: true };
   }

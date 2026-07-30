@@ -165,6 +165,9 @@ function LoginPageContent() {
                     className="input-field pl-9"
                     placeholder={t('auth.login.emailPlaceholder')}
                     autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                 </div>
               </div>

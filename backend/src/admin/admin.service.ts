@@ -385,12 +385,31 @@ export class AdminService {
     return { ads, total };
   }
 
+  // Same defect class the comments on updateMapObject/createMapObject above
+  // already describe as fixed there — this model never got the same
+  // whitelist, so a body containing `id` (or `spent`/`impressions`/`clicks`,
+  // which should only ever be server-incremented) passed straight to Prisma
+  // could repoint the row's primary key or let an admin request silently
+  // overwrite counters it has no business setting directly.
+  private static readonly AD_FIELDS = [
+    'partnerId', 'title', 'description', 'imageUrl', 'clickUrl', 'category',
+    'lat', 'lng', 'radius', 'budget', 'isActive', 'startsAt', 'endsAt',
+  ] as const;
+
+  private pickAdFields(data: any): any {
+    const picked: Record<string, any> = {};
+    for (const field of AdminService.AD_FIELDS) {
+      if (data[field] !== undefined) picked[field] = data[field];
+    }
+    return picked;
+  }
+
   async createAd(data: any) {
-    return this.prisma.advertisement.create({ data });
+    return this.prisma.advertisement.create({ data: this.pickAdFields(data) });
   }
 
   async updateAd(id: string, data: any) {
-    return this.prisma.advertisement.update({ where: { id }, data });
+    return this.prisma.advertisement.update({ where: { id }, data: this.pickAdFields(data) });
   }
 
   async toggleAd(id: string) {

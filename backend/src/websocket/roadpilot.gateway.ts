@@ -628,7 +628,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage('group:edit')
   async handleGroupEdit(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { groupId: string; name?: string; description?: string; avatar?: string },
+    @MessageBody() data: { groupId: string; name?: string; description?: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
@@ -639,20 +639,37 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       });
       if (!member) return;
 
-      const updateData: any = {};
-      if (data.name !== undefined) updateData.name = data.name;
+      // Was accepting an unvalidated `avatar` string here with no
+      // size/mimetype check at all, and no uniqueness lock on `name` —
+      // exactly what social.service.ts#updateGroup()/createGroup() were
+      // hardened against (see their comments), just reachable through a
+      // second, unguarded path. avatar must go through the multer-validated
+      // POST /groups/:groupId/avatar endpoint only; name changes here now
+      // get the same advisory-lock uniqueness check as the REST path.
+      const updateData: { name?: string; description?: string } = {};
       if (data.description !== undefined) updateData.description = data.description;
-      if (data.avatar !== undefined) updateData.avatar = data.avatar;
 
-      if (Object.keys(updateData).length > 0) {
-        await this.prisma.group.update({
+      const updated = await this.prisma.$transaction(async (tx) => {
+        if (data.name !== undefined) {
+          const nameLower = String(data.name).toLowerCase();
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group_name:${nameLower}`})::bigint)`;
+          const existing = await tx.group.findFirst({ where: { name: { equals: data.name, mode: 'insensitive' }, id: { not: data.groupId } } });
+          if (existing) return null;
+          updateData.name = data.name;
+        }
+        if (Object.keys(updateData).length === 0) return null;
+        return tx.group.update({
           where: { id: data.groupId },
           data: updateData,
+          include: { _count: { select: { members: true } } },
         });
-      }
+      });
+      if (!updated) return;
 
+      const { _count, ...rest } = updated as any;
       this.server.to(`group:${data.groupId}`).emit('group:updated', {
-        ...data,
+        ...rest,
+        memberCount: _count.members,
         updatedBy: userId,
       });
     } catch (err) {
