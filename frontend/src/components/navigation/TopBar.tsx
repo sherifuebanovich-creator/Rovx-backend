@@ -24,7 +24,7 @@ export function TopBar() {
   const setDarkMode = useMapStore(s => s.setDarkMode);
   const setThemeMode = useMapStore(s => s.setThemeMode);
   const userLocation = useMapStore(s => s.userLocation);
-  const setMapCenter = useMapStore(s => s.setMapCenter);
+  const flyTo = useMapStore(s => s.flyTo);
   const setFollowUser = useMapStore(s => s.setFollowUser);
   const setUserLocation = useMapStore(s => s.setUserLocation);
   const show3D = useMapStore(s => s.show3D);
@@ -37,7 +37,9 @@ export function TopBar() {
 
   const handleLocateMe = useCallback(() => {
     if (userLocation) {
-      setMapCenter({ lat: userLocation.lat, lng: userLocation.lng }, 16);
+      // setMapCenter alone never moved an already-mounted map — this
+      // button visibly did nothing beyond re-enabling follow mode.
+      flyTo({ lat: userLocation.lat, lng: userLocation.lng }, 16);
       setFollowUser(true);
       return;
     }
@@ -54,7 +56,7 @@ export function TopBar() {
       (pos) => {
         const { latitude, longitude, heading, speed, accuracy } = pos.coords;
         setUserLocation({ lat: latitude, lng: longitude }, heading ?? 0, speed ?? 0, accuracy ?? 0, pos.timestamp);
-        setMapCenter({ lat: latitude, lng: longitude }, 16);
+        flyTo({ lat: latitude, lng: longitude }, 16);
         setFollowUser(true);
         setLocating(false);
       },
@@ -64,7 +66,7 @@ export function TopBar() {
       },
       { enableHighAccuracy: true, timeout: 20000 },
     );
-  }, [userLocation, setMapCenter, setFollowUser, setUserLocation, t]);
+  }, [userLocation, flyTo, setFollowUser, setUserLocation, t]);
 
   const checkUnread = useCallback(() => {
     if (!user) return;

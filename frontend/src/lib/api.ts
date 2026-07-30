@@ -244,7 +244,6 @@ export const usersApi = {
   updatePreferences: (data: any) => api.put('/users/me/preferences', data),
   getPublicProfile: (username: string) => api.get(`/users/profile/${username}`),
   getLeaderboard: () => api.get('/users/leaderboard'),
-  getAchievements: () => api.get('/users/me/achievements'),
   addVehicle: (data: any) => api.post('/users/me/vehicles', data),
   getVehicles: () => api.get('/users/me/vehicles'),
   deleteVehicle: (id: string) => api.delete(`/users/me/vehicles/${id}`),

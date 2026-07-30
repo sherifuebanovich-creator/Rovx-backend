@@ -44,7 +44,9 @@ export function Sidebar() {
     { icon: <FaUsers size={16} />, label: t('sidebar.groups') || 'Groups', href: '/groups' },
     // Voice rooms are now reached from a group chat's call button instead
     // of a standalone nav entry (see groups/[id]/page.tsx's startGroupCall).
-    { icon: <FaTrophy size={16} />, label: t('sidebar.achievements'), href: '/achievements' },
+    // Achievements removed — the feature never actually awarded anything
+    // (no code path ever created a UserAchievement row), so every user saw
+    // a permanently empty 0/N screen.
     { icon: <FaBell size={16} />, label: t('sidebar.notifications'), href: '/notifications' },
     { icon: <FaHeadset size={16} />, label: t('sidebar.support') || 'Support', href: '/support' },
     { icon: <FaCog size={16} />, label: t('sidebar.settings'), href: '/settings' },

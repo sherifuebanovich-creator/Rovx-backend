@@ -17,6 +17,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/groups`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.4 },
     { url: `${baseUrl}/friends`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.4 },
     { url: `${baseUrl}/notifications`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.3 },
-    { url: `${baseUrl}/achievements`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.5 },
   ];
 }

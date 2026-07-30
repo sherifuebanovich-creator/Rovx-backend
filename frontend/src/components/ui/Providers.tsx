@@ -140,6 +140,42 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // There is no real push notification delivery (FCM/web-push) anywhere in
+  // this app despite the README claiming it — the service worker cleanup
+  // right above literally unregisters the only one that ever existed. The
+  // only real-time delivery path is the WebSocket connection in useSocket.ts
+  // (rovx:notification), which only reaches a user who currently has the
+  // app open, and city/report notifications otherwise just sit unread in
+  // the DB until the next time someone happens to open /notifications.
+  // Full push would need a Firebase/VAPID project the user would have to
+  // provision — this is the improvement possible without one: while the tab
+  // is open but not the one the user is actually looking at (another tab,
+  // another app, screen off), surface it as a real OS-level notification
+  // instead of only an in-page badge nobody's watching.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const onNotification = (e: Event) => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) return;
+      const data = (e as CustomEvent).detail;
+      const show = () => {
+        try {
+          new Notification(data?.title || 'ROVX', {
+            body: data?.body || '',
+            icon: '/logo.png',
+            tag: data?.type || 'rovx-notification',
+          });
+        } catch { /* ignore — e.g. notifications unsupported in this context */ }
+      };
+      if (Notification.permission === 'granted') {
+        show();
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => { if (perm === 'granted') show(); }).catch(() => {});
+      }
+    };
+    window.addEventListener('rovx:notification', onNotification);
+    return () => window.removeEventListener('rovx:notification', onNotification);
+  }, []);
+
   return (
     <AuthProvider>
       <QueryClientProvider client={client}>

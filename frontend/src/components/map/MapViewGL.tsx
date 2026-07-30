@@ -33,6 +33,16 @@ export default function MapViewGL() {
   // happened to re-render this component — the blue dot, traffic, and
   // friend markers could stay missing until an unrelated state change.
   const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
+  // mapCenter/zoom are only ever read once, at construction (see `new
+  // maplibregl.Map({ center: [initState.mapCenter...] })` below) — updating
+  // them later (e.g. useGeolocation's success handler calling setMapCenter)
+  // does NOT move an already-mounted map. Without this, the map permanently
+  // stayed on its fallback center (previously {0,0}, now Moscow) even after
+  // a real GPS fix came in, until the user manually tapped the locate-me
+  // button — this jumps the camera to the user's real location the first
+  // time a fix arrives after mount, without fighting any panning the user
+  // does afterward.
+  const hasCenteredOnUserRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   // Keyed by object id (rather than a plain array) so a viewport update can
   // diff against what's already on the map instead of tearing down and
@@ -78,6 +88,14 @@ export default function MapViewGL() {
 
   const setMapCenter = useMapStore(s => s.setMapCenter);
   const setZoom = useMapStore(s => s.setZoom);
+  const userLocation = useMapStore(s => s.userLocation);
+  // Only flyToRequestId is subscribed reactively — mapCenter/zoom themselves
+  // are read via getState() inside the effect below, not as selectors here,
+  // since moveend's passive position sync writes them on every pan/zoom and
+  // this component (with everything it renders) would otherwise re-render
+  // on every map movement for a value this effect only cares about when
+  // flyToRequestId actually changes.
+  const flyToRequestId = useMapStore(s => s.flyToRequestId);
 
   const cleanupMarkers = useCallback((markers: maplibregl.Marker[]) => {
     markers.forEach(m => m.remove());
@@ -148,6 +166,7 @@ export default function MapViewGL() {
 
     mapRef.current = map;
     setMapInstance(map);
+    hasCenteredOnUserRef.current = false;
 
     return () => {
       clearTimeout(objectTimerRef.current);
@@ -162,6 +181,32 @@ export default function MapViewGL() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Jump to the user's real location the first time a GPS fix arrives —
+  // see hasCenteredOnUserRef above for why this can't just rely on the
+  // map's initial `center` option.
+  useEffect(() => {
+    if (!mapInstance || !userLocation || hasCenteredOnUserRef.current) return;
+    hasCenteredOnUserRef.current = true;
+    mapInstance.jumpTo({
+      center: [userLocation.lng, userLocation.lat],
+      zoom: Math.max(mapInstance.getZoom(), 15),
+    });
+  }, [mapInstance, userLocation]);
+
+  // Explicit "jump the camera here" requests (SearchPanel's "On Map",
+  // tapping a report notification) — see flyToRequestId's comment in
+  // map.store.ts for why this can't just watch mapCenter/zoom directly.
+  // Skips the initial mount (requestId starts at 0 and nothing should fire
+  // before the user actually asks for a jump).
+  const lastFlyToRequestIdRef = useRef(0);
+  useEffect(() => {
+    if (!mapInstance || flyToRequestId === lastFlyToRequestIdRef.current) return;
+    lastFlyToRequestIdRef.current = flyToRequestId;
+    if (flyToRequestId === 0) return;
+    const { mapCenter, zoom } = useMapStore.getState();
+    mapInstance.flyTo({ center: [mapCenter.lng, mapCenter.lat], zoom, essential: true });
+  }, [mapInstance, flyToRequestId]);
 
   // Change map style
   useEffect(() => {

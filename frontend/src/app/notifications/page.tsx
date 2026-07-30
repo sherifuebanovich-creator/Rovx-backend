@@ -8,7 +8,6 @@ import { socialApi } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { useMapStore } from '@/store/map.store';
 import toast from 'react-hot-toast';
-import { getSocket } from '@/hooks/useSocket';
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -38,28 +37,14 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!user) return;
-    const onNewNotification = () => {
-      fetchNotifs();
-    };
-    // The global socket may not exist yet at mount — poll briefly instead
-    // of giving up, otherwise this page never receives live updates.
-    let socket = getSocket();
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (socket) {
-      socket.on('notification:new', onNewNotification);
-    } else {
-      interval = setInterval(() => {
-        socket = getSocket();
-        if (socket) {
-          socket.on('notification:new', onNewNotification);
-          if (interval) clearInterval(interval);
-        }
-      }, 500);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-      socket?.off('notification:new', onNewNotification);
-    };
+    // useSocket.ts already re-dispatches this as a plain window event
+    // specifically so consumers don't need the raw socket object — grabbing
+    // it directly (as this used to) meant re-subscribing manually every
+    // time the underlying Socket instance changed (e.g. the token-rotation
+    // reconnect fixed elsewhere this session), which this page never did.
+    const onNewNotification = () => fetchNotifs();
+    window.addEventListener('rovx:notification', onNewNotification);
+    return () => window.removeEventListener('rovx:notification', onNewNotification);
   }, [user, fetchNotifs]);
 
   const unread = notifs.filter(n => !n.isRead).length;
@@ -77,7 +62,7 @@ export default function NotificationsPage() {
     if (n.type !== 'report' && n.type !== 'report_premium') return;
     const data = parseNotificationData(n.data);
     if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number') return;
-    useMapStore.getState().setMapCenter({ lat: data.lat, lng: data.lng }, 16);
+    useMapStore.getState().flyTo({ lat: data.lat, lng: data.lng }, 16);
     router.push('/');
   };
 

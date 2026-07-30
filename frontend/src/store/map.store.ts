@@ -27,6 +27,11 @@ interface MapState {
   // Map view
   mapCenter: Coordinates;
   zoom: number;
+  // See flyTo action below — incremented on every explicit "jump the camera
+  // here" request so MapViewGL can tell those apart from moveend's passive
+  // position sync (which also writes mapCenter, but must never trigger a
+  // camera move of its own).
+  flyToRequestId: number;
   mapStyle: 'streets' | 'satellite' | 'night' | 'traffic';
   showTraffic: boolean;
   followUser: boolean;
@@ -82,6 +87,14 @@ interface MapState {
   setLocationError: (err: string | null) => void;
   setMapCenter: (center: Coordinates, zoom?: number) => void;
   setZoom: (zoom: number) => void;
+  // A mounted map only ever reads mapCenter/zoom once, at construction —
+  // setMapCenter alone doesn't move an already-open map (moveend's own
+  // passive sync-from-pan relies on exactly that, so it can't just start
+  // driving the camera or it'd fight the user's own panning). flyTo is for
+  // callers that explicitly want the camera to jump somewhere right now
+  // (SearchPanel's "On Map", a notification's report location) — it bumps
+  // flyToRequestId, which MapViewGL watches specifically for this.
+  flyTo: (center: Coordinates, zoom?: number) => void;
   setMapStyle: (style: MapState['mapStyle']) => void;
   setShowTraffic: (show: boolean) => void;
   setFollowUser: (follow: boolean) => void;
@@ -138,6 +151,7 @@ export const useMapStore = create<MapState>((set) => ({
   // Moscow is a reasonable default for this app's CIS-focused user base.
   mapCenter: { lat: 55.7558, lng: 37.6173 },
   zoom: 13,
+  flyToRequestId: 0,
   mapStyle: 'streets',
   showTraffic: true,
   followUser: true,
@@ -232,6 +246,9 @@ export const useMapStore = create<MapState>((set) => ({
 
   setMapCenter: (center, zoom) =>
     set((s) => ({ mapCenter: center, zoom: zoom ?? s.zoom })),
+
+  flyTo: (center, zoom) =>
+    set((s) => ({ mapCenter: center, zoom: zoom ?? s.zoom, flyToRequestId: s.flyToRequestId + 1 })),
 
   setZoom: (zoom) => set({ zoom }),
   setMapStyle: (style) => set({ mapStyle: style }),

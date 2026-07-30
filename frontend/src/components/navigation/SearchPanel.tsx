@@ -130,8 +130,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   const setOrigin = useMapStore(s => s.setOrigin);
   const setDestination = useMapStore(s => s.setDestination);
   const userLocation = useMapStore(s => s.userLocation);
-  const setMapCenter = useMapStore(s => s.setMapCenter);
-  const setZoom = useMapStore(s => s.setZoom);
+  const flyTo = useMapStore(s => s.flyTo);
   const toggleRoutesPanel = useMapStore(s => s.toggleRoutesPanel);
   const setCalculatedRoutes = useMapStore(s => s.setCalculatedRoutes);
   const setSelectedRoute = useMapStore(s => s.setSelectedRoute);
@@ -421,15 +420,14 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       const data = withFallbackNames(res.data?.data || res.data || []);
       setSearchResults(data);
       if (data.length > 0) {
-        setMapCenter({ lat: data[0].lat, lng: data[0].lng });
-        setZoom(14);
+        flyTo({ lat: data[0].lat, lng: data[0].lng }, 14);
       }
     } catch {
       if (thisSearch === fullSearchIdRef.current) setSearchResults([]);
     } finally {
       if (thisSearch === fullSearchIdRef.current) setIsFullSearching(false);
     }
-  }, [userLocation, setMapCenter, setZoom, withFallbackNames]);
+  }, [userLocation, flyTo, withFallbackNames]);
 
   const calculateMultiRoutes = async () => {
     if (!selectedItem || selectedTypes.length === 0 || isGoing || isCalculatingMultiRef.current) return;
@@ -514,8 +512,10 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
   };
 
   const showOnMap = (item: SearchSuggestion) => {
-    setMapCenter({ lat: item.lat, lng: item.lng });
-    setZoom(16);
+    // setMapCenter alone never actually moved an already-mounted map (see
+    // map.store.ts's flyTo comment) — this button looked like it did
+    // nothing since the panel closed over the same, unmoved view.
+    flyTo({ lat: item.lat, lng: item.lng }, 16);
     speak(item.name, false);
     toggleSearch();
     onClose?.();
@@ -719,8 +719,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
       if (objs.length > 0) {
         setSearchResults(objs);
         useMapStore.getState().setVisibleObjects(objs);
-        setMapCenter({ lat: objs[0].lat, lng: objs[0].lng });
-        setZoom(14);
+        flyTo({ lat: objs[0].lat, lng: objs[0].lng }, 14);
         speak(t('searchPanel.foundNearby', { count: objs.length }), false);
       } else {
         setSearchResults([]);

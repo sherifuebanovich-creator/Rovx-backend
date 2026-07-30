@@ -122,14 +122,6 @@ export class UsersController {
     return this.usersService.getLeaderboard(+limit);
   }
 
-  @Get('me/achievements')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get my achievements' })
-  async getAchievements(@CurrentUser('id') userId: string) {
-    return this.usersService.getAchievements(userId);
-  }
-
   @Post('me/vehicles')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

@@ -2,125 +2,205 @@
 import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
+import { escapeAttr } from '@/lib/maplibreIcons';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
-const SOURCE_ID = 'tomtom-traffic-flow-source';
-const LAYER_ID = 'tomtom-traffic-flow-layer';
-const MAX_TILE_FAILURES = 3;
+// Was a TomTom raster "flow" tile overlay — those tiles always render a
+// colour for every road (green = free-flowing), so the whole map stayed
+// tinted even where there was no congestion at all, and there was no way to
+// tell "no traffic" apart from "traffic, but moving fine" at a glance. The
+// Incidents API instead returns actual jam *segments* — nothing at all when
+// a road has no reported jam, a real line exactly where one does.
+const SOURCE_ID = 'tomtom-traffic-incidents-source';
+const LINE_LAYER_ID = 'tomtom-traffic-incidents-line';
+const MIN_ZOOM = 6;
+const DEBOUNCE_MS = 500;
+const MAX_FETCH_FAILURES = 3;
 
 const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
 let warnedMissingKey = false;
 
-function TrafficFlowLayer({ map }: { map: maplibregl.Map | null }) {
+// iconCategory 6 = Jam in TomTom's traffic model. magnitudeOfDelay: 0
+// unknown, 1 minor, 2 moderate, 3 major, 4 undefined — only surfacing
+// moderate/major matches "if there's no jam show nothing, yellow for a
+// medium jam, a bigger red one for a major jam" rather than tinting every
+// road with the slightest reported slowdown.
+const JAM_ICON_CATEGORY = 6;
+
+interface Props {
+  map: maplibregl.Map | null;
+}
+
+function TrafficFlowLayer({ map }: Props) {
   const { t } = useTranslation();
   const showTraffic = useMapStore((s) => s.showTraffic);
   const setShowTraffic = useMapStore((s) => s.setShowTraffic);
-  const tileFailuresRef = useRef(0);
-  const disabledForKeyRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const lastBoundsRef = useRef<string>('');
+  const requestIdRef = useRef(0);
+  const fetchFailuresRef = useRef(0);
+  const disabledRef = useRef(false);
 
-  const removeLayer = useCallback(() => {
+  const cleanup = useCallback(() => {
     if (!map) return;
     try {
-      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+      if (map.getLayer(LINE_LAYER_ID)) map.removeLayer(LINE_LAYER_ID);
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
     } catch { /* ignore */ }
   }, [map]);
 
-  const addLayer = useCallback(() => {
-    if (!map) return;
-    // The style can still be mid-load right when this first runs (its exact
-    // timing relative to the map's own 'style.load' firing varies with
-    // network conditions — reliably raced on the deployed site even though
-    // it happened to resolve fast enough locally). Retry once on 'idle',
-    // which fires once the map has nothing left to load regardless of
-    // exactly when 'style.load' fired relative to this effect attaching.
-    if (!map.isStyleLoaded()) {
-      map.once('idle', () => addLayer());
-      return;
-    }
+  const loadIncidents = useCallback(async () => {
+    if (!map || !showTraffic) return;
     if (!TOMTOM_KEY) {
       if (!warnedMissingKey) {
-        console.warn('[TrafficFlowLayer] NEXT_PUBLIC_TOMTOM_API_KEY is not set — traffic flow layer disabled.');
+        console.warn('[TrafficFlowLayer] NEXT_PUBLIC_TOMTOM_API_KEY is not set — traffic layer disabled.');
         warnedMissingKey = true;
       }
       return;
     }
-    // A previous run this session already proved the key/tiles don't work —
-    // don't keep re-adding a broken layer every time the toggle/style flips.
-    if (disabledForKeyRef.current) return;
-    if (map.getSource(SOURCE_ID)) return;
+    if (disabledRef.current) return;
+
+    const requestId = ++requestIdRef.current;
+    const zoom = map.getZoom();
+    if (zoom < MIN_ZOOM) {
+      cleanup();
+      lastBoundsRef.current = '';
+      return;
+    }
+
+    const b = map.getBounds();
+    const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
+    if (bbox === lastBoundsRef.current) return;
+    lastBoundsRef.current = bbox;
 
     try {
-      map.addSource(SOURCE_ID, {
-        type: 'raster',
-        tiles: [
-          `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${TOMTOM_KEY}`,
-        ],
-        tileSize: 256,
-        maxzoom: 22,
-        attribution: '&copy; TomTom Traffic',
-      });
+      const fields = '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}';
+      const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${TOMTOM_KEY}&bbox=${bbox}&fields=${encodeURIComponent(fields)}&language=ru-RU`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (requestId !== requestIdRef.current) return;
+      fetchFailuresRef.current = 0;
 
-      // Insert below labels (so street/city names stay readable) but above
-      // the base road/land layers, using the style's own first symbol layer
-      // as the anchor — this is always a real, already-existing layer id at
-      // this point, unlike hardcoding one of our own async-added layer ids.
-      let beforeId: string | undefined;
-      try {
-        beforeId = map.getStyle()?.layers?.find((l) => l.type === 'symbol')?.id;
-      } catch { /* ignore */ }
-
-      map.addLayer(
-        {
-          id: LAYER_ID,
-          type: 'raster',
-          source: SOURCE_ID,
-          paint: { 'raster-opacity': 0.85 },
-        },
-        beforeId,
+      const incidents = (data?.incidents || []) as Array<{
+        geometry?: { type: string; coordinates: any };
+        properties?: { iconCategory?: number; magnitudeOfDelay?: number; events?: { description?: string }[] };
+      }>;
+      const jams = incidents.filter((inc) =>
+        inc.properties?.iconCategory === JAM_ICON_CATEGORY &&
+        (inc.properties?.magnitudeOfDelay ?? 0) >= 2 &&
+        inc.geometry?.type === 'LineString',
       );
-      tileFailuresRef.current = 0;
+
+      if (!map.isStyleLoaded()) return;
+      cleanup();
+      if (jams.length === 0) return;
+
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: jams.map((inc, i) => ({
+          type: 'Feature',
+          properties: {
+            id: i,
+            magnitudeOfDelay: inc.properties?.magnitudeOfDelay ?? 2,
+            description: inc.properties?.events?.[0]?.description || '',
+          },
+          geometry: inc.geometry as GeoJSON.Geometry,
+        })),
+      };
+
+      map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
+
+      map.addLayer({
+        id: LINE_LAYER_ID,
+        type: 'line',
+        source: SOURCE_ID,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          // Moderate (2) -> yellow, major/undefined (3, 4) -> red and drawn
+          // thicker so a severe jam actually reads as more prominent, not
+          // just a different colour of the same line.
+          'line-color': ['case', ['==', ['get', 'magnitudeOfDelay'], 2], '#eab308', '#ef4444'],
+          'line-width': ['case', ['==', ['get', 'magnitudeOfDelay'], 2], 5, 7],
+          'line-opacity': 0.85,
+        },
+      });
     } catch (err) {
-      console.warn('[TrafficFlowLayer] Failed to add traffic flow layer:', err);
-    }
-  }, [map]);
-
-  useEffect(() => {
-    if (!map) return;
-    if (showTraffic) addLayer(); else removeLayer();
-  }, [map, showTraffic, addLayer, removeLayer]);
-
-  // A style switch (setStyle) wipes all custom sources/layers — re-add once
-  // the new style has finished loading, if the toggle is still on.
-  useEffect(() => {
-    if (!map) return;
-    const onStyleLoad = () => { if (showTraffic) addLayer(); };
-    map.on('style.load', onStyleLoad);
-    return () => { map.off('style.load', onStyleLoad); };
-  }, [map, showTraffic, addLayer]);
-
-  // An invalid/expired/rate-limited TomTom key doesn't throw when the layer
-  // is added — the tile *requests* fail one at a time afterward. Left alone
-  // that leaves a broken-looking overlay stuck over the whole map with no
-  // way for the user to tell it's not working. Detect repeated tile
-  // failures on our own source specifically and self-heal by tearing the
-  // layer down and switching the toggle back off.
-  useEffect(() => {
-    if (!map) return;
-    const onError = (e: any) => {
-      if (e?.sourceId !== SOURCE_ID) return;
-      tileFailuresRef.current += 1;
-      if (tileFailuresRef.current >= MAX_TILE_FAILURES) {
-        disabledForKeyRef.current = true;
-        removeLayer();
+      if (requestId !== requestIdRef.current) return;
+      fetchFailuresRef.current += 1;
+      console.warn('[TrafficFlowLayer] Failed to load traffic incidents:', err);
+      if (fetchFailuresRef.current >= MAX_FETCH_FAILURES) {
+        disabledRef.current = true;
+        cleanup();
         setShowTraffic(false);
         toast.error(t('topbar.trafficLoadFailed'));
       }
+    }
+  }, [map, showTraffic, cleanup, setShowTraffic, t]);
+
+  useEffect(() => {
+    if (!map) return;
+    lastBoundsRef.current = '';
+    if (showTraffic) {
+      loadIncidents();
+    } else {
+      cleanup();
+    }
+  }, [map, showTraffic, loadIncidents, cleanup]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const debouncedLoad = () => {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(loadIncidents, DEBOUNCE_MS);
     };
-    map.on('error', onError);
-    return () => { map.off('error', onError); };
-  }, [map, removeLayer, setShowTraffic]);
+
+    const popup = new maplibregl.Popup({ offset: [0, -8], maxWidth: '260px' });
+    const onClick = (e: maplibregl.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const props = feature.properties as any;
+      const severity = props.magnitudeOfDelay >= 3 ? 'Серьёзная пробка' : 'Затруднённое движение';
+      const desc = props.description ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">${escapeAttr(props.description)}</div>` : '';
+      popup.setLngLat(e.lngLat).setHTML(
+        `<div style="min-width:120px"><strong style="font-size:13px;color:white">🚗 ${severity}</strong>${desc}</div>`,
+      ).addTo(map);
+    };
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+    map.on('click', LINE_LAYER_ID, onClick);
+    map.on('mouseenter', LINE_LAYER_ID, onEnter);
+    map.on('mouseleave', LINE_LAYER_ID, onLeave);
+
+    // Same race as MapFeaturesLayer's style.load handler — isStyleLoaded()
+    // can still read false for a tick right when the event fires.
+    const onStyleLoad = () => {
+      lastBoundsRef.current = '';
+      if (map.isStyleLoaded()) {
+        loadIncidents();
+      } else {
+        map.once('idle', loadIncidents);
+      }
+    };
+
+    map.on('moveend', debouncedLoad);
+    map.on('zoomend', debouncedLoad);
+    map.on('style.load', onStyleLoad);
+
+    return () => {
+      clearTimeout(debounceRef.current);
+      map.off('moveend', debouncedLoad);
+      map.off('zoomend', debouncedLoad);
+      map.off('style.load', onStyleLoad);
+      map.off('click', LINE_LAYER_ID, onClick);
+      map.off('mouseenter', LINE_LAYER_ID, onEnter);
+      map.off('mouseleave', LINE_LAYER_ID, onLeave);
+      popup.remove();
+    };
+  }, [map, loadIncidents]);
 
   return null;
 }

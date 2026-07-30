@@ -35,7 +35,6 @@ export class UsersService {
             following: true,
             trips: true,
             reports: true,
-            achievements: true,
           },
         },
       },
@@ -337,24 +336,6 @@ export class UsersService {
 
     await this.redis.set(cacheKey, JSON.stringify(result), 60);
     return result;
-  }
-
-  async getAchievements(userId: string) {
-    // Full catalog with per-user earned status, not just the earned rows —
-    // the achievements screen needs to show locked achievements too.
-    const [all, earned] = await Promise.all([
-      this.prisma.achievement.findMany({ orderBy: { points: 'asc' } }),
-      this.prisma.userAchievement.findMany({
-        where: { userId },
-        select: { achievementId: true, earnedAt: true },
-      }),
-    ]);
-    const earnedMap = new Map(earned.map((e) => [e.achievementId, e.earnedAt]));
-    return all.map((a) => ({
-      ...a,
-      earned: earnedMap.has(a.id),
-      earnedAt: earnedMap.get(a.id) || null,
-    }));
   }
 
   // --- Fuel Logs ---
