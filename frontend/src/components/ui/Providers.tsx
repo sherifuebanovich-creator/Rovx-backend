@@ -189,6 +189,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </VoiceRoomProvider>
         <Toaster
           position="top-center"
+          containerStyle={{ top: 72 }}
           toastOptions={{
             style: { background: '#111827', color: '#fff', border: '1px solid #1f2937', borderRadius: '12px' },
             success: { iconTheme: { primary: '#0ea5e9', secondary: '#fff' } },

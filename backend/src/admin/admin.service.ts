@@ -282,14 +282,13 @@ export class AdminService {
     // Server load
     let cpu = 0; let mem = 0;
     try {
-      const cpus = os.cpus();
-      let totalIdle = 0; let totalTick = 0;
-      for (const c of cpus) {
-        const sum = Object.values(c.times) as number[];
-        totalTick += sum.reduce((a, b) => a + b, 0);
-        totalIdle += c.times.idle;
-      }
-      cpu = totalTick > 0 ? Math.round((1 - totalIdle / totalTick) * 100) : 0;
+      // os.cpus() times are cumulative since boot — a single snapshot gives
+      // the average load over the machine's entire uptime, which barely
+      // moves in response to what's happening right now (a real spike a few
+      // minutes ago looks the same as an idle server that's been up for
+      // days). Sampling twice with a short gap and diffing the ticks gives
+      // the actual load during that window instead.
+      cpu = await this.sampleCpuUsagePercent();
       mem = Math.round((1 - os.freemem() / os.totalmem()) * 100);
     } catch {}
 
@@ -299,6 +298,25 @@ export class AdminService {
       online: { count: onlineUsers.length, users: onlineUsers },
       server: { cpu, memory: mem },
     };
+  }
+
+  private cpuTicks() {
+    let totalIdle = 0; let totalTick = 0;
+    for (const c of os.cpus()) {
+      const sum = Object.values(c.times) as number[];
+      totalTick += sum.reduce((a, b) => a + b, 0);
+      totalIdle += c.times.idle;
+    }
+    return { totalIdle, totalTick };
+  }
+
+  private async sampleCpuUsagePercent(sampleMs = 300): Promise<number> {
+    const start = this.cpuTicks();
+    await new Promise((resolve) => setTimeout(resolve, sampleMs));
+    const end = this.cpuTicks();
+    const idleDelta = end.totalIdle - start.totalIdle;
+    const tickDelta = end.totalTick - start.totalTick;
+    return tickDelta > 0 ? Math.round((1 - idleDelta / tickDelta) * 100) : 0;
   }
 
   async getPremiumDetail(id: string) {

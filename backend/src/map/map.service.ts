@@ -658,7 +658,7 @@ export class MapService {
 
     let externalResults: any[] = [];
     if (query.length >= 3) {
-      externalResults = await this.fetchExternalResults(query, 10, lat, lng);
+      externalResults = this.dedupeByProximity(await this.fetchExternalResults(query, 10, lat, lng), 0.1);
     }
 
     const combined = [
@@ -707,7 +707,7 @@ export class MapService {
 
     let externalResults: any[] = [];
     if (query.length >= 3) {
-      externalResults = await this.fetchExternalResults(query, 8, lat, lng);
+      externalResults = this.dedupeByProximity(await this.fetchExternalResults(query, 8, lat, lng), 0.05);
     }
 
     const combined = [
@@ -824,6 +824,22 @@ export class MapService {
   async deleteBookmark(id: string, userId: string) {
     await this.prisma.bookmark.deleteMany({ where: { id, userId } });
     return { deleted: true };
+  }
+
+  // Photon's own index occasionally has more than one doc for the same
+  // real-world place (e.g. both a node and the way/relation for its
+  // building) at essentially the same coordinates under the same name —
+  // fetchExternalResults' callers only ever deduped external results
+  // against the *local* DB list, never against each other, so a query like
+  // "Кремль" could show the same "Нижний Новгород" result twice in a row.
+  private dedupeByProximity<T extends { lat: number; lng: number }>(results: T[], thresholdKm: number): T[] {
+    const kept: T[] = [];
+    for (const r of results) {
+      if (!kept.some((k) => this.haversine(r.lat, r.lng, k.lat, k.lng) < thresholdKm)) {
+        kept.push(r);
+      }
+    }
+    return kept;
   }
 
   private haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {

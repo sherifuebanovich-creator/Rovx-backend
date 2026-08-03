@@ -638,6 +638,7 @@
     "title": "Notifications",
     "new": "new",
     "empty": "No notifications yet",
+    "signInPrompt": "Sign in to see your notifications",
     "deleteAll": "Delete all",
     "deleteAllConfirm": "Delete all notifications?",
     "deleted": "Notifications deleted",
