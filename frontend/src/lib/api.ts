@@ -102,6 +102,36 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      // A 401 from a public auth endpoint (wrong password on /auth/login,
+      // "неверные учётные данные"; a bad/expired code on /auth/verify-email
+      // or /auth/reset-password) means the *credentials in that request*
+      // were rejected — it has nothing to do with the access token cookie,
+      // which doesn't exist yet at this point in the flow anyway. Treating
+      // it as "access token expired, try to refresh" made every failed
+      // login attempt silently burn through the full refresh retry ladder
+      // below (up to ~30s across 5 attempts, since there's no refresh token
+      // to succeed with either) before the real "wrong password" error ever
+      // reached the login page — the submit button just spun with no
+      // feedback for that whole stretch.
+      if (/\/auth\/(login|register|send-verification|verify-email|forgot-password|reset-password)(\?|$)/.test(reqUrl)) {
+        return Promise.reject(error);
+      }
+
+      // A guest who never logged in has neither an access-token cookie nor a
+      // stored refresh token — the retry ladder below is guaranteed to fail
+      // (there is nothing to refresh with) and just adds a doomed network
+      // round-trip on top of every expected 401 a guest hits (bookmarks,
+      // report-limit checks, ...), which is what surfaced as repeated
+      // /auth/refresh calls and console errors for sessions that were never
+      // authenticated in the first place. Fail the original request fast
+      // instead.
+      const hasStoredRefreshToken = (() => {
+        try { return !!JSON.parse(localStorage.getItem('rovx-auth') || '{}')?.state?.refreshToken; } catch { return false; }
+      })();
+      if (!Cookies.get('access_token') && !hasStoredRefreshToken) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -429,7 +459,7 @@ export const premiumApi = {
   getMy: () => api.get('/premium/my'),
   createCheckout: (tierName: string, months = 1) => api.post('/premium/create-checkout', { tierName, months }),
   stripeCheckout: (tierName: string) => api.post('/premium/stripe-checkout', { tierName }),
-  getPaymentDetails: () => api.get('/premium/payment-details'),
+  getPaymentDetails: (tierName?: string) => api.get('/premium/payment-details', { params: tierName ? { tier: tierName } : undefined }),
   directPay: (tierName: string, proof: string) => api.post('/premium/direct-pay', { tierName, proof }),
   cancel: () => api.post('/premium/cancel'),
   canCreateGroup: () => api.get('/premium/can-create-group'),

@@ -7,10 +7,12 @@ import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { routesApi } from '@/lib/api';
 import { useMapStore } from '@/store/map.store';
+import { useAuthStore } from '@/store/auth.store';
 
 export default function RoutesPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [routes, setRoutes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -44,7 +46,10 @@ export default function RoutesPage() {
     }).finally(() => setLoading(false));
   }, [t]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!user) { setLoading(false); return; }
+    load();
+  }, [load, user]);
 
   const deleteRoute = async (id: string) => {
     const previous = [...routes];
@@ -72,6 +77,22 @@ export default function RoutesPage() {
     });
     router.push('/');
   };
+
+  // Was falling through to the generic loadError branch below (a 401 from
+  // getSaved() looks like any other fetch failure) — showed "Couldn't load
+  // routes, try again" with a Retry button that just re-hit the same 401
+  // forever, instead of the sign-in prompt every other guest-gated page
+  // (Friends, Groups, Notifications, Profile, Voice Rooms) already shows.
+  if (!user) {
+    return (
+      <div className="min-h-dvh bg-dark-bg flex flex-col items-center justify-center gap-4 px-6">
+        <FaRoute size={48} className="text-gray-600" />
+        <h2 className="text-white font-bold text-xl text-center">{t('routes.loginRequired')}</h2>
+        <button onClick={() => router.push('/auth/login')} className="btn-primary px-6 py-3">{t('routes.signIn')}</button>
+        <button onClick={() => router.back()} className="text-gray-400 text-sm">{t('routes.back')}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-dark-bg">

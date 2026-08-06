@@ -43,6 +43,15 @@ function UserLocationLayer({ map }: Props) {
   const userAccuracy = useMapStore((s) => s.userAccuracy);
   const userSpeed = useMapStore((s) => s.userSpeed);
   const locationError = useMapStore((s) => s.locationError);
+  // The banner below has no other way to go away — a PERMISSION_DENIED error
+  // never clears itself (there's no fix to arrive and call setLocationError
+  // (null), unlike POSITION_UNAVAILABLE/TIMEOUT, since the browser won't
+  // re-prompt), so without a dismiss it sat on screen permanently blocking
+  // part of the map for the rest of the session. Tracks which error string
+  // was dismissed rather than a plain boolean, so a genuinely new/different
+  // error (e.g. permission granted later, then GPS goes briefly unavailable)
+  // still shows instead of staying suppressed forever.
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const setFollowUser = useMapStore((s) => s.setFollowUser);
   // Only isNavigating is used here — selecting it directly (instead of the
   // whole `navigation` object) avoids re-rendering on every unrelated
@@ -310,9 +319,9 @@ function UserLocationLayer({ map }: Props) {
 
   return (
     <>
-      {locationError && (
+      {locationError && locationError !== dismissedError && (
         <div
-          className="absolute z-40 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs font-medium"
+          className="absolute z-40 left-1/2 -translate-x-1/2 pl-4 pr-2 py-2 rounded-xl text-xs font-medium flex items-center gap-2"
           style={{
             bottom: '120px',
             background: 'rgba(239,68,68,0.9)',
@@ -322,7 +331,14 @@ function UserLocationLayer({ map }: Props) {
             textAlign: 'center',
           }}
         >
-          {locationError}
+          <span className="flex-1">{locationError}</span>
+          <button
+            onClick={() => setDismissedError(locationError)}
+            aria-label="Dismiss"
+            className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
+          >
+            ×
+          </button>
         </div>
       )}
     </>

@@ -179,7 +179,12 @@ function MapFeaturesLayer({ map }: Props) {
         filter: ['has', 'point_count'],
         layout: {
           'text-field': '{point_count_abbreviated}',
-          'text-font': ['Open Sans Bold', 'Noto Sans Bold', 'Arial Unicode MS Bold'],
+          // OpenFreeMap's glyph server only serves single-name font stacks
+          // ('Noto Sans Regular/Bold/Italic', per its own style JSON) — the
+          // previous comma-joined fallback stack 404s the entire combined
+          // glyph range (verified directly against the endpoint), so the
+          // cluster count number silently never rendered at all.
+          'text-font': ['Noto Sans Bold'],
           'text-size': 11,
         },
         paint: {

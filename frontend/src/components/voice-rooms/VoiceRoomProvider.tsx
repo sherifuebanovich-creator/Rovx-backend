@@ -1,9 +1,10 @@
 'use client';
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FaWalkieTalkie } from 'react-icons/fa6';
 import { useVoiceRoom, VoiceRoomConnectionState, VoiceRoomParticipant } from '@/hooks/useVoiceRoom';
+import { useAuthStore } from '@/store/auth.store';
 
 interface VoiceRoomContextValue {
   connectionState: VoiceRoomConnectionState;
@@ -77,6 +78,24 @@ export function VoiceRoomProvider({ children }: { children: React.ReactNode }) {
     setActiveRoomName('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // This provider is mounted once at the app root and outlives login/logout
+  // — unlike map.store's resetSession() (called from auth.store's logout()),
+  // nothing ever tore down an in-progress voice-room connection when the
+  // signed-in user logged out. Sign-out on a shared/kiosk device left the
+  // previous user's live mic stream, WebRTC peers, and /voice socket running
+  // underneath, and the next person signing in on that same tab would
+  // silently inherit it: joinAndTrack's "already connected to this room,
+  // reuse it" guard above means navigating to that room as the new user just
+  // adopts the still-live connection instead of starting a fresh one.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const wasAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => {
+    if (wasAuthenticatedRef.current && !isAuthenticated) {
+      leaveAndClear();
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated, leaveAndClear]);
 
   const onOwnRoomScreen = pathname === `/voice-rooms/${activeRoomId}`;
   const showMinimizedBar = !!activeRoomId && !onOwnRoomScreen

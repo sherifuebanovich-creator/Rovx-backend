@@ -167,7 +167,8 @@
     "showOnMap": "On Map",
     "noCategoryResults": "Nothing found nearby",
     "km": "km",
-    "m": "m"
+    "m": "m",
+    "ms": "m/s"
   },
   "routePanel": {
     "setOriginDest": "Set origin and destination first",
@@ -599,10 +600,13 @@
     "title": "Bookmarks",
     "loading": "Loading bookmarks...",
     "empty": "No bookmarks yet.",
-    "hint": "Search for places and save them from the search panel."
+    "hint": "Search for places and save them from the search panel.",
+    "loginRequired": "Sign in to see your bookmarks",
+    "signIn": "Sign In"
   },
   "routes": {
     "removed": "Route removed",
+    "removeFailed": "Couldn't remove route",
     "back": "Back",
     "title": "Saved Routes",
     "empty": "No saved routes yet.",
@@ -611,7 +615,9 @@
     "km": "km",
     "min": "min",
     "loadFailed": "Couldn't load routes. Try again.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "loginRequired": "Sign in to see your saved routes",
+    "signIn": "Sign In"
   },
   "achievements": {
     "back": "Back",
@@ -711,6 +717,7 @@
     "login": "Sign In",
     "all": "All groups",
     "my": "My groups",
+    "favorites": "Favorites",
     "members_one": "{{count}} member",
     "members_other": "{{count}} members",
     "namePlaceholder": "Group name",
@@ -837,6 +844,8 @@
     "chat": "Chat",
     "admin": "Admin",
     "leave": "Leave group",
+    "info": "Group info",
+    "description": "Description",
     "nameLabel": "Name",
     "descriptionLabel": "Description",
     "cityLabel": "City",
@@ -856,12 +865,15 @@
     "noMessages": "No messages yet",
     "messagePlaceholder": "Type a message...",
     "members": "Members",
-    "signInRequired": "Sign in to use chats"
+    "signInRequired": "Sign in to use chats",
+    "noGroups": "You don't have any groups yet",
+    "groupsNotFound": "No groups found"
   },
   "createGroup": {
     "title": "Create Group",
     "nameLabel": "Group name",
     "namePlaceholder": "Enter group name",
+    "enterName": "Enter a group name",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Enter description",
     "cityLabel": "City",
@@ -903,6 +915,7 @@
     "paymentProcessing": "Payment is processing — refresh this page in a minute",
     "testModeActivated": "Premium activated (test mode)!",
     "checkoutError": "Failed to create checkout session",
+    "loginRequired": "Sign in to subscribe",
     "payByTransfer": "Or pay by bank transfer",
     "subscribeError": "Failed to process subscription",
     "features": {
@@ -939,6 +952,28 @@
       "enterLast4Sub": "Enter the last 4 digits of the card you transferred from",
       "last4Label": "Last 4 digits",
       "submitRequest": "Submit Request"
+    }
+  },
+  "aiAssistantPanel": {
+    "welcome": "Hi! I'm your AI co-driver. Ask me for directions, gas stations, parking, or traffic info.",
+    "coDriver": "Co-Driver",
+    "statusReady": "Ready",
+    "statusListening": "Listening...",
+    "statusProcessing": "Thinking...",
+    "statusSpeaking": "Speaking...",
+    "placeholder": "Ask me anything...",
+    "error": "Sorry, something went wrong. Please try again.",
+    "suggestions": {
+      "home": "Home",
+      "gas": "Nearest gas station",
+      "parking": "Find parking",
+      "noTraffic": "Avoid traffic"
+    },
+    "commands": {
+      "home": "Take me home",
+      "gas": "Find the nearest gas station",
+      "parking": "Find parking nearby",
+      "noTraffic": "Find a route avoiding traffic"
     }
   }
 }

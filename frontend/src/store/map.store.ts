@@ -183,6 +183,13 @@ export const useMapStore = create<MapState>((set) => ({
   // Map objects
   visibleObjects: [],
   selectedObject: null,
+  // TRAFFIC_LIGHT is deliberately excluded — MapFeaturesLayer already renders
+  // every real traffic signal (synced from the same OSM highway=traffic_signals
+  // tag, see backend map-features-sync.service.ts) as its own circle layer.
+  // Fetching/rendering the identical intersections again here through the
+  // general POI path produced two (and, via MapViewGL's now-removed
+  // loadTrafficSignals, three) overlapping icons stacked on every traffic
+  // light in the app.
   activeCategories: [
     'PARKING', 'TRUCK_PARKING', 'GAS_STATION', 'EV_CHARGER',
     'CAFE', 'RESTAURANT', 'SHOP', 'SUPERMARKET', 'MALL',
@@ -194,7 +201,7 @@ export const useMapStore = create<MapState>((set) => ({
     'GOVERNMENT', 'ATTRACTION',
     'TIRE_SERVICE', 'CAR_SERVICE', 'CAR_WASH', 'WEIGH_STATION',
     'BORDER_CROSSING', 'CUSTOMS', 'REST_AREA', 'TOURIST_ATTRACTION',
-    'SPEED_CAMERA', 'ROAD_WORKS', 'ACCIDENT', 'TRAFFIC_LIGHT',
+    'SPEED_CAMERA', 'ROAD_WORKS', 'ACCIDENT',
     'POLICE',
   ],
 

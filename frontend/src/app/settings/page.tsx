@@ -488,20 +488,27 @@ export default function SettingsPage() {
           </>
         )}
 
-        <div className="mb-5">
-          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2 px-1">{t('settings.dangerZone')}</p>
-          <div className="card overflow-hidden">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-red-600/10 transition-all text-left border-b border-dark-border">
-              <FaSignOutAlt size={16} className="text-red-400" />
-              <span className="flex-1 text-sm text-red-400">{t('settings.signOut')}</span>
-            </button>
-            <button onClick={() => toast.error(t('settings.contactSupport'))}
-              className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-red-600/10 transition-all text-left">
-              <FaTrash size={16} className="text-red-600" />
-              <span className="flex-1 text-sm text-red-600">{t('settings.deleteAccount')}</span>
-            </button>
+        {/* Sign out / delete only mean anything with an actual session —
+            unlike Account above (which already hides its rows for guests via
+            an empty items array), this block rendered unconditionally, so a
+            guest who never logged in saw a "Sign out" / "Delete account"
+            section same as Profile/Notifications correctly gate for guests. */}
+        {user && (
+          <div className="mb-5">
+            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2 px-1">{t('settings.dangerZone')}</p>
+            <div className="card overflow-hidden">
+              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-red-600/10 transition-all text-left border-b border-dark-border">
+                <FaSignOutAlt size={16} className="text-red-400" />
+                <span className="flex-1 text-sm text-red-400">{t('settings.signOut')}</span>
+              </button>
+              <button onClick={() => toast.error(t('settings.contactSupport'))}
+                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-red-600/10 transition-all text-left">
+                <FaTrash size={16} className="text-red-600" />
+                <span className="flex-1 text-sm text-red-600">{t('settings.deleteAccount')}</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         <p className="text-center text-xs text-gray-600 mt-6">{t('settings.footer', { version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0' })}</p>
       </div>
 

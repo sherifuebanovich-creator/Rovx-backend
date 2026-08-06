@@ -148,8 +148,8 @@ export class PremiumController {
   @Public()
   @Get('payment-details')
   @ApiOperation({ summary: 'Get payment card details for manual transfer' })
-  async getPaymentDetails() {
-    return this.premiumService.getPaymentDetails();
+  async getPaymentDetails(@Query('tier') tier?: string) {
+    return this.premiumService.getPaymentDetails(tier);
   }
 
   @ApiBearerAuth()

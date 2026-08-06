@@ -30,13 +30,17 @@ export default function DirectPaymentModal({ tierName, tierLabel, price, onClose
   const [detailsError, setDetailsError] = useState(false);
 
   useEffect(() => {
-    premiumApi.getPaymentDetails().then(res => {
+    // Was called with no tier at all, so the "transfer to card" amount
+    // shown below always came back as one fixed global figure regardless of
+    // which tier this modal was actually opened for — visibly disagreeing
+    // with the correct per-tier `price` prop shown right above it.
+    premiumApi.getPaymentDetails(tierName).then(res => {
       setDetails(res.data?.data || res.data);
     }).catch(() => {
       setDetailsError(true);
       toast.error(t('premium.directPayment.loadFailed'));
     });
-  }, [t]);
+  }, [t, tierName]);
 
   // This modal had no keyboard dismissal at all — only a backdrop click —
   // and closing never returned focus to whatever button opened it, so

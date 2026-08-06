@@ -764,7 +764,7 @@ export class PremiumService {
     }
   }
 
-  async getPaymentDetails() {
+  async getPaymentDetails(tierName?: string) {
     const cardNumber = this.config.get('PAYMENT_CARD_NUMBER');
     const cardHolder = this.config.get('PAYMENT_CARD_HOLDER');
     const cardBank = this.config.get('PAYMENT_CARD_BANK');
@@ -773,11 +773,25 @@ export class PremiumService {
       // if the real one isn't configured for this environment.
       throw new BadRequestException('Payment details are not configured');
     }
+
+    // Was a single global PAYMENT_AMOUNT regardless of which tier the caller
+    // was actually buying — DirectPaymentModal shows this "transfer to card"
+    // amount right next to the tier's real price (from getTierPrice), and
+    // the two disagreed for every tier except whichever one happened to
+    // match the fallback. Resolve to the specific tier's USD price (the
+    // same figure Stripe/Xsolla/Lemon Squeezy charge) when a valid tier is
+    // given; fall back to the flat configured amount otherwise.
+    let amount = this.config.get('PAYMENT_AMOUNT') || '6.49';
+    const tier = tierName ? PREMIUM_TIERS.find(t => t.name === tierName) : undefined;
+    if (tier && tier.tier > 0) {
+      amount = String(tier.price);
+    }
+
     return {
       cardNumber,
       cardHolder,
       cardBank,
-      amount: this.config.get('PAYMENT_AMOUNT') || '6.49',
+      amount,
       currency: this.config.get('PAYMENT_CURRENCY') || 'USD',
     };
   }
@@ -794,17 +808,15 @@ export class PremiumService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
-    // `premiumSubscription.status` never flips off 'active' when a subscription
-    // naturally lapses (only an explicit refund/dispute/cancel changes it), so
-    // trusting it here — like createStripeCheckout's equivalent guard already
-    // documents — would permanently block a user from ever submitting a bank
-    // transfer renewal again once their premium expires. `user.subscriptionEnd`
-    // is the reliable "currently entitled until" signal.
-    if (user.subscriptionEnd && user.subscriptionEnd > new Date()) {
-      return { success: true, message: 'Already active', status: 'active' };
-    }
-
+    // Used to hard-block submitting a new bank-transfer payment whenever
+    // user.subscriptionEnd was still in the future — the exact bug
+    // createStripeCheckout had (see its comment above) and was fixed for:
+    // it blocked not just accidental double-submits but any legitimate
+    // early renewal or tier upgrade via this payment method, forcing the
+    // user to wait for their subscription to fully lapse first. approvePayment
+    // below now extends off the existing subscriptionEnd (extendedEndDate)
+    // instead of granting a flat 30 days, so there's no time-loss risk in
+    // allowing this.
     const paymentId = `direct_${Date.now()}_${userId.slice(0, 8)}`;
 
     await this.prisma.premiumSubscription.upsert({
@@ -881,7 +893,15 @@ export class PremiumService {
         return { success: false, message: 'Нет ожидающего платежа' };
       }
 
-      const endDate = (sub.endDate && sub.endDate.getTime() > 0) ? sub.endDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      // Was a flat `now + 30 days` (confirmDirectPayment always writes the
+      // epoch sentinel as endDate for a pending row, so the "use sub.endDate
+      // if real" branch this replaced was dead code for this flow) — that
+      // discarded any time still remaining on the user's current
+      // subscription instead of adding on top of it, unlike every other
+      // payment provider's grant logic (extendedEndDate, see its own
+      // comment). A user renewing early or upgrading tier via bank transfer
+      // lost whatever they'd already paid for.
+      const endDate = await this.extendedEndDate(userId, 1);
 
       await tx.premiumSubscription.update({
         where: { userId },

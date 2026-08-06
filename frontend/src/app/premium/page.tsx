@@ -149,13 +149,26 @@ function PremiumPage() {
       // webhook (processed server-side, independent of this redirect)
       // is what actually credits the subscription.
       window.location.href = url;
-    } catch {
+    } catch (err: any) {
+      subscribingRef.current = null;
+      setSubscribeLoading(null);
+
+      // A guest (no session) hitting this always 401s — that used to fall
+      // through to the same generic "Xsolla not configured" handling below,
+      // silently opening the bank-transfer modal instead of telling the
+      // guest they need an account first. That modal's own submit step
+      // (direct-pay) requires auth too, so a guest following it would just
+      // hit a second, more confusing dead end.
+      if (err?.response?.status === 401) {
+        toast.error(t('premium.loginRequired'));
+        router.push('/auth/login');
+        return;
+      }
+
       // Xsolla not configured yet (no live merchant credentials) or the
       // request failed outright — fall back to the manual bank-transfer
       // flow instead of leaving the user stuck with just a loading spinner.
       toast.error(t('premium.checkoutError'));
-      subscribingRef.current = null;
-      setSubscribeLoading(null);
       setPaymentTier(tier);
     }
   };

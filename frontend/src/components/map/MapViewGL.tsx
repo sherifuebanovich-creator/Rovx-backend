@@ -6,11 +6,12 @@ import { useMapStore } from '@/store/map.store';
 import { mapApi, reportsApi } from '@/lib/api';
 import { MapObject, Report } from '@/types';
 import {
-  createCategoryMarker,
-  createReportMarker,
   createPopupContent,
   createReportPopupContent,
-  createTrafficSignalMarker,
+  ensureCategoryIcon,
+  ensureReportIcon,
+  categoryIconId,
+  reportIconId,
 } from '@/lib/maplibreIcons';
 import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
 import UserLocationLayer from './UserLocationLayer';
@@ -22,6 +23,15 @@ import TrafficFlowLayer from './TrafficFlowLayer';
 function escapeHtml(text: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
   return text.replace(/[&<>"']/g, (c) => m[c]);
+}
+
+const POI_SOURCE_ID = 'poi-objects-src';
+const POI_LAYER_ID = 'poi-objects-layer';
+const REPORTS_SOURCE_ID = 'poi-reports-src';
+const REPORTS_LAYER_ID = 'poi-reports-layer';
+
+function emptyFeatureCollection(): GeoJSON.FeatureCollection {
+  return { type: 'FeatureCollection', features: [] };
 }
 
 export default function MapViewGL() {
@@ -44,26 +54,37 @@ export default function MapViewGL() {
   // does afterward.
   const hasCenteredOnUserRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Keyed by object id (rather than a plain array) so a viewport update can
-  // diff against what's already on the map instead of tearing down and
-  // recreating every marker on every pan/zoom settle — with up to 200 POIs
-  // per viewport, a full remove+recreate was a visible, janky pop-in burst
-  // of synchronous DOM/Marker work even when most POIs hadn't changed.
-  const objectMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
-  // Last-seen data per marker id, so a re-render can tell whether the object
-  // behind an unchanged id (name/rating/position edited server-side) needs
-  // its marker rebuilt instead of being skipped as "already on the map".
-  const objectDataRef = useRef<Map<string, MapObject>>(new Map());
-  const reportMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const trafficMarkersRef = useRef<maplibregl.Marker[]>([]);
   const routeSourceRef = useRef<string | null>(null);
   const objectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const reportTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const has3DBuildingsRef = useRef(false);
   const show3DRef = useRef(true);
-  const trafficSignalsRequestIdRef = useRef(0);
   const objectsRequestIdRef = useRef(0);
   const reportsRequestIdRef = useRef(0);
+  // Same bbox-dedupe MapFeaturesLayer/TrafficFlowLayer already use their own
+  // lastBoundsRef for — without it, a single pan/zoom gesture that settles
+  // in two steps (e.g. inertial momentum firing 'moveend' again after the
+  // initial one) re-requests the identical viewport's objects/reports twice.
+  // Objects also key on the active category list so switching categories at
+  // an unmoved viewport still refetches.
+  const lastObjectsFetchKeyRef = useRef('');
+  const lastReportsFetchKeyRef = useRef('');
+  // POI/report markers are rendered as GL symbol layers (GeoJSON source +
+  // pre-baked canvas icons, see maplibreIcons.ts's ensureCategoryIcon/
+  // ensureReportIcon) instead of one DOM `maplibregl.Marker` per object —
+  // with up to 200 POIs and an unbounded number of reports per viewport,
+  // creating/destroying that many real DOM nodes (each with its own
+  // layout/paint cost) on every pan/zoom settle was the dominant cost of
+  // "icons load slowly". A symbol layer's `source.setData()` just hands
+  // MapLibre a full feature list and lets the GPU-side tile index figure out
+  // what changed, so re-rendering ~200 points costs a fraction of what
+  // 200 DOM Marker adds/removes did. Full objects/reports stay in the
+  // zustand store (setVisibleObjects/setReports) and are looked up by id
+  // from there on click via useMapStore.getState() — GeoJSON feature
+  // properties can only hold primitives (arrays/objects get silently
+  // JSON.stringified, see MapFeaturesLayer's onClick comment for the bug
+  // that caused elsewhere), so click popups never build their HTML from
+  // feature.properties directly.
 
   const mapStyle = useMapStore(s => s.mapStyle);
   const mapStyleRef = useRef(mapStyle);
@@ -96,16 +117,6 @@ export default function MapViewGL() {
   // on every map movement for a value this effect only cares about when
   // flyToRequestId actually changes.
   const flyToRequestId = useMapStore(s => s.flyToRequestId);
-
-  const cleanupMarkers = useCallback((markers: maplibregl.Marker[]) => {
-    markers.forEach(m => m.remove());
-    markers.length = 0;
-  }, []);
-
-  const cleanupMarkerMap = useCallback((markers: Map<string, maplibregl.Marker>) => {
-    markers.forEach(m => m.remove());
-    markers.clear();
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -171,10 +182,6 @@ export default function MapViewGL() {
     return () => {
       clearTimeout(objectTimerRef.current);
       clearTimeout(reportTimerRef.current);
-      cleanupMarkerMap(objectMarkersRef.current);
-      objectDataRef.current.clear();
-      cleanupMarkers(reportMarkersRef.current);
-      cleanupMarkers(trafficMarkersRef.current);
       map.remove();
       mapRef.current = null;
       setMapInstance(null);
@@ -326,77 +333,227 @@ export default function MapViewGL() {
     return () => { map.off('style.load', drawRoute); };
   }, [drawRoute]);
 
-  // Render POI markers — diffed by id against what's already on the map, so
-  // panning slightly (the common case) only adds/removes the handful of
-  // markers that entered/left the viewport instead of rebuilding all ~200.
+  // Ensures the POI/report GeoJSON sources + symbol layers exist on the
+  // current style. A style switch (setStyle) wipes all custom sources/layers
+  // (see the style.load reapply effect below), and maplibre throws if you
+  // addSource/addLayer before the style has finished loading — so this is a
+  // no-op (returns false) until `map.isStyleLoaded()` is true, same guard
+  // MapFeaturesLayer uses for the same reason.
+  const ensurePoiLayers = useCallback((map: maplibregl.Map): boolean => {
+    if (!map.isStyleLoaded()) return false;
+
+    if (!map.getSource(POI_SOURCE_ID)) {
+      map.addSource(POI_SOURCE_ID, { type: 'geojson', data: emptyFeatureCollection() });
+    }
+    if (!map.getLayer(POI_LAYER_ID)) {
+      map.addLayer({
+        id: POI_LAYER_ID,
+        type: 'symbol',
+        source: POI_SOURCE_ID,
+        layout: {
+          'icon-image': ['get', 'iconId'],
+          'icon-size': 0.85,
+          'icon-anchor': 'bottom',
+          // POIs never hid each other as DOM markers (every one was always
+          // in the DOM); keep that — overlap is resolved visually by
+          // density/zoom, not by MapLibre's collision index.
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-field': ['get', 'name'],
+          // OpenFreeMap's glyph server (glyphs: tiles.openfreemap.org/fonts/
+          // {fontstack}/{range}.pbf, used by all of MAP_STYLES) only ever
+          // serves single-name font stacks — 'Noto Sans Regular/Bold/Italic',
+          // per its own style JSON. Requesting a comma-joined fallback stack
+          // like the previous ['Open Sans Regular', 'Noto Sans Regular', ...]
+          // 404s the *entire* combined glyph range (verified directly against
+          // the endpoint), so none of the fonts in it render — POI name
+          // labels would have silently never shown at all.
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 10,
+          'text-offset': [0, 0.4],
+          'text-anchor': 'top',
+          'text-max-width': 8,
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': '#111827',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.4,
+        },
+      });
+    }
+
+    if (!map.getSource(REPORTS_SOURCE_ID)) {
+      map.addSource(REPORTS_SOURCE_ID, { type: 'geojson', data: emptyFeatureCollection() });
+    }
+    if (!map.getLayer(REPORTS_LAYER_ID)) {
+      map.addLayer({
+        id: REPORTS_LAYER_ID,
+        type: 'symbol',
+        source: REPORTS_SOURCE_ID,
+        layout: {
+          'icon-image': ['get', 'iconId'],
+          // Severity used to grow the DOM marker's pixel size directly
+          // (21 + severity*2.5, clamped 36); interpolating icon-size off the
+          // baked icon's nominal size reproduces the same "worse hazard
+          // looks bigger" cue without baking a variant image per severity.
+          'icon-size': ['interpolate', ['linear'], ['coalesce', ['get', 'severity'], 3], 1, 0.85, 5, 1.3],
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      });
+    }
+
+    return true;
+  }, []);
+
+  // Render POI markers as a single GL symbol layer instead of one DOM
+  // `maplibregl.Marker` per object — `source.setData()` hands MapLibre the
+  // full feature list and its own tile-based index diffs what actually
+  // changed, which is dramatically cheaper than the add/remove-per-object
+  // DOM work this replaced (see the ref comment near the top of this file).
   const renderObjectMarkers = useCallback(
     (objects: MapObject[]) => {
-      if (!mapRef.current) return;
-      const existing = objectMarkersRef.current;
-      const nextIds = new Set(objects.map(obj => String(obj.id)));
+      const map = mapRef.current;
+      if (!map || !ensurePoiLayers(map)) return;
 
-      const prevData = objectDataRef.current;
+      objects.forEach((obj) => ensureCategoryIcon(map, obj.category));
 
-      for (const [id, marker] of existing) {
-        if (!nextIds.has(id)) {
-          marker.remove();
-          existing.delete(id);
-          prevData.delete(id);
-        }
-      }
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: objects.map((obj) => ({
+          type: 'Feature',
+          properties: { id: obj.id, iconId: categoryIconId(obj.category), name: obj.name },
+          geometry: { type: 'Point', coordinates: [obj.lng, obj.lat] },
+        })),
+      };
 
-      objects.forEach((obj) => {
-        const id = String(obj.id);
-        const prev = prevData.get(id);
-        if (existing.has(id)) {
-          const unchanged = prev
-            && prev.lat === obj.lat && prev.lng === obj.lng
-            && prev.name === obj.name && prev.category === obj.category
-            && prev.rating === obj.rating && prev.address === obj.address
-            && prev.distance === obj.distance;
-          if (unchanged) return;
-          // Same id, but the underlying data changed (name/rating/position/etc.
-          // edited server-side) — rebuild this one marker instead of leaving
-          // it permanently stale.
-          existing.get(id)!.remove();
-          existing.delete(id);
-        }
-
-        const el = createCategoryMarker(obj.category, obj.name);
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([obj.lng, obj.lat])
-          .addTo(mapRef.current!);
-
-        // Popup HTML is only built on first click, not upfront for every
-        // marker — most POIs in a viewport are never clicked, so eagerly
-        // constructing ~200 Popup instances was pure wasted work on every
-        // viewport settle.
-        let popup: maplibregl.Popup | null = null;
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (!popup) {
-            const popupHtml = createPopupContent(
-              obj.name, obj.category,
-              obj.address, obj.rating, obj.distance,
-            );
-            popup = new maplibregl.Popup({
-              offset: [0, -10],
-              closeButton: true,
-              closeOnClick: false,
-              className: 'mapboxgl-popup-custom',
-            }).setHTML(popupHtml);
-            marker.setPopup(popup);
-          }
-          marker.togglePopup();
-          setSelectedObject(obj);
-        });
-
-        existing.set(id, marker);
-        prevData.set(id, obj);
-      });
+      (map.getSource(POI_SOURCE_ID) as maplibregl.GeoJSONSource).setData(geojson);
     },
-    [setSelectedObject],
+    [ensurePoiLayers],
   );
+
+  const renderReportMarkers = useCallback(
+    (reports: Report[]) => {
+      const map = mapRef.current;
+      if (!map || !ensurePoiLayers(map)) return;
+
+      reports.forEach((r) => ensureReportIcon(map, r.type));
+
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: reports.map((r) => ({
+          type: 'Feature',
+          properties: { id: r.id, iconId: reportIconId(r.type), severity: r.severity },
+          geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
+        })),
+      };
+
+      (map.getSource(REPORTS_SOURCE_ID) as maplibregl.GeoJSONSource).setData(geojson);
+    },
+    [ensurePoiLayers],
+  );
+
+  // Click/hover handling for both symbol layers, bound once per map instance
+  // (not re-bound on every render) — mirrors MapFeaturesLayer's own
+  // click-handler effect. `map.on(type, layerId, listener)` resolves the
+  // layer lazily at event time, so binding before the layer exists (or
+  // across a style-reload recreate) is fine. Full object/report data is
+  // looked up from the store by id rather than off the clicked feature's own
+  // properties, since GeoJSON properties can only hold primitives — see the
+  // ref comment near the top of this file.
+  useEffect(() => {
+    if (!mapInstance) return;
+    const map = mapInstance;
+
+    const objectPopup = new maplibregl.Popup({
+      offset: [0, -10], closeButton: true, closeOnClick: false, className: 'mapboxgl-popup-custom',
+    });
+    const reportPopup = new maplibregl.Popup({
+      offset: [0, -10], closeButton: true, closeOnClick: false, className: 'mapboxgl-popup-custom',
+    });
+
+    const onObjectClick = (e: maplibregl.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const id = String(feature.properties?.id);
+      const obj = useMapStore.getState().visibleObjects.find((o) => String(o.id) === id);
+      if (!obj) return;
+      const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+      objectPopup
+        .setLngLat(coords)
+        .setHTML(createPopupContent(obj.name, obj.category, obj.address, obj.rating, obj.distance))
+        .addTo(map);
+      setSelectedObject(obj);
+    };
+
+    const onReportClick = (e: maplibregl.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const id = String(feature.properties?.id);
+      const report = useMapStore.getState().reports.find((r) => String(r.id) === id);
+      if (!report) return;
+      const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+      reportPopup
+        .setLngLat(coords)
+        .setHTML(createReportPopupContent(report.type, report.severity, report.description, report.address))
+        .addTo(map);
+      setSelectedReport(report);
+    };
+
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+    map.on('click', POI_LAYER_ID, onObjectClick);
+    map.on('click', REPORTS_LAYER_ID, onReportClick);
+    map.on('mouseenter', POI_LAYER_ID, onEnter);
+    map.on('mouseleave', POI_LAYER_ID, onLeave);
+    map.on('mouseenter', REPORTS_LAYER_ID, onEnter);
+    map.on('mouseleave', REPORTS_LAYER_ID, onLeave);
+
+    return () => {
+      map.off('click', POI_LAYER_ID, onObjectClick);
+      map.off('click', REPORTS_LAYER_ID, onReportClick);
+      map.off('mouseenter', POI_LAYER_ID, onEnter);
+      map.off('mouseleave', POI_LAYER_ID, onLeave);
+      map.off('mouseenter', REPORTS_LAYER_ID, onEnter);
+      map.off('mouseleave', REPORTS_LAYER_ID, onLeave);
+      objectPopup.remove();
+      reportPopup.remove();
+    };
+  }, [mapInstance, setSelectedObject, setSelectedReport]);
+
+  // A style switch (setStyle) wipes all custom sources/layers, same as the
+  // route line (see drawRoute's own reapply effect below) — re-create them
+  // and immediately re-populate from whatever's currently in the store,
+  // instead of waiting for the next pan/zoom to trigger a fresh fetch.
+  //
+  // Same race MapFeaturesLayer/TrafficFlowLayer already document:
+  // `map.isStyleLoaded()` can still read false for a tick right when
+  // 'style.load' fires (maplibre's internal bookkeeping lags the event by a
+  // frame) — ensurePoiLayers's own isStyleLoaded() guard would then bail
+  // silently with nothing left to retry it until the next pan/zoom, leaving
+  // every POI/report icon gone after a style switch (night mode, satellite)
+  // until the user happened to move the map. Falling back to a one-time
+  // 'idle' wait closes that gap.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const reapply = () => {
+      renderObjectMarkers(useMapStore.getState().visibleObjects);
+      renderReportMarkers(useMapStore.getState().reports);
+    };
+    const onStyleLoad = () => {
+      if (map.isStyleLoaded()) {
+        reapply();
+      } else {
+        map.once('idle', reapply);
+      }
+    };
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
+  }, [renderObjectMarkers, renderReportMarkers]);
 
   // Load objects from API
   const loadObjectsInBounds = useCallback(
@@ -412,11 +569,15 @@ export default function MapViewGL() {
         // just cleared.
         clearTimeout(objectTimerRef.current);
         objectsRequestIdRef.current++;
-        cleanupMarkerMap(objectMarkersRef.current);
-        objectDataRef.current.clear();
+        lastObjectsFetchKeyRef.current = '';
         setVisibleObjects([]);
+        renderObjectMarkers([]);
         return;
       }
+
+      const fetchKey = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}|${cats.join(',')}`;
+      if (fetchKey === lastObjectsFetchKeyRef.current) return;
+      lastObjectsFetchKeyRef.current = fetchKey;
 
       clearTimeout(objectTimerRef.current);
       const requestId = ++objectsRequestIdRef.current;
@@ -444,7 +605,7 @@ export default function MapViewGL() {
         }
       }, 500);
     },
-    [setVisibleObjects, renderObjectMarkers, cleanupMarkerMap],
+    [setVisibleObjects, renderObjectMarkers],
   );
 
   // Load reports
@@ -458,10 +619,15 @@ export default function MapViewGL() {
       if (cats.length === 0) {
         clearTimeout(reportTimerRef.current);
         reportsRequestIdRef.current++;
-        cleanupMarkers(reportMarkersRef.current);
+        lastReportsFetchKeyRef.current = '';
         setReports([]);
+        renderReportMarkers([]);
         return;
       }
+
+      const fetchKey = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+      if (fetchKey === lastReportsFetchKeyRef.current) return;
+      lastReportsFetchKeyRef.current = fetchKey;
 
       clearTimeout(reportTimerRef.current);
       const requestId = ++reportsRequestIdRef.current;
@@ -479,44 +645,13 @@ export default function MapViewGL() {
           if (requestId !== reportsRequestIdRef.current) return;
           const reports: Report[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
           setReports(reports);
-
-          cleanupMarkers(reportMarkersRef.current);
-
-          reports.forEach((r) => {
-            const el = createReportMarker(r.type, r.severity);
-            const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-              .setLngLat([r.lng, r.lat])
-              .addTo(mapRef.current!);
-
-            // Previously just called setSelectedReport(r) with nothing in the
-            // app ever reading that value back out — a tap on a report
-            // marker (including its description, the whole point of writing
-            // one in ReportPanel) produced no visible feedback at all.
-            let popup: maplibregl.Popup | null = null;
-            el.addEventListener('click', (e) => {
-              e.stopPropagation();
-              if (!popup) {
-                const popupHtml = createReportPopupContent(r.type, r.severity, r.description, r.address);
-                popup = new maplibregl.Popup({
-                  offset: [0, -10],
-                  closeButton: true,
-                  closeOnClick: false,
-                  className: 'mapboxgl-popup-custom',
-                }).setHTML(popupHtml);
-                marker.setPopup(popup);
-              }
-              marker.togglePopup();
-              setSelectedReport(r);
-            });
-
-            reportMarkersRef.current.push(marker);
-          });
+          renderReportMarkers(reports);
         } catch (err) {
           console.warn('[MapViewGL] Failed to load reports:', err);
         }
       }, 500);
     },
-    [setReports, setSelectedReport, cleanupMarkers],
+    [setReports, renderReportMarkers],
   );
 
   // 3D toggle effect — defer via idle callback
@@ -545,88 +680,13 @@ export default function MapViewGL() {
     }
   }, [show3D, mapStyle]);
 
-  // Load traffic signals (always, regardless of categories)
-  const loadTrafficSignals = useCallback(
-    (bounds: maplibregl.LngLatBounds) => {
-      if (!mapRef.current) return;
-      const z = mapRef.current.getZoom();
-      if (z < 13) {
-        cleanupMarkers(trafficMarkersRef.current);
-        return;
-      }
-
-      // No debounce/sequence guard here (unlike the object/report loaders)
-      // meant an earlier viewport's response arriving after a later one
-      // would replace the correct markers with ones for the wrong bounds.
-      const requestId = ++trafficSignalsRequestIdRef.current;
-      mapApi.getObjects({
-        minLat: bounds.getSouth(),
-        maxLat: bounds.getNorth(),
-        minLng: bounds.getWest(),
-        maxLng: bounds.getEast(),
-        categories: 'TRAFFIC_LIGHT',
-        limit: 100,
-      }).then((res) => {
-        if (requestId !== trafficSignalsRequestIdRef.current) return;
-        const signals: MapObject[] = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
-        cleanupMarkers(trafficMarkersRef.current);
-
-        signals.forEach((s) => {
-          const el = createTrafficSignalMarker();
-          const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-            .setLngLat([s.lng, s.lat])
-            .addTo(mapRef.current!);
-
-          const popupHtml = createPopupContent(s.name, s.category, s.address);
-          const popup = new maplibregl.Popup({
-            offset: [0, -10],
-            closeButton: true,
-            closeOnClick: false,
-            className: 'mapboxgl-popup-custom',
-          }).setHTML(popupHtml);
-          marker.setPopup(popup);
-
-          el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            marker.togglePopup();
-            setSelectedObject(s);
-          });
-
-          trafficMarkersRef.current.push(marker);
-        });
-      }).catch(() => {});
-    },
-    [setSelectedObject, cleanupMarkers],
-  );
-
-  // Load traffic signals only after idle, throttled to avoid cascade
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    let lastTrafficLoad = 0;
-    const TRAFFIC_THROTTLE_MS = 3000;
-
-    const handler = () => {
-      const now = Date.now();
-      if (now - lastTrafficLoad < TRAFFIC_THROTTLE_MS) return;
-      lastTrafficLoad = now;
-      const bounds = map.getBounds();
-      loadTrafficSignals(bounds);
-    };
-
-    map.on('idle', handler);
-    return () => { map.off('idle', handler); };
-  }, [loadTrafficSignals]);
-
   // Refresh when categories change
   useEffect(() => {
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
     loadObjectsInBounds(bounds);
     loadReportsInBounds(bounds);
-    loadTrafficSignals(bounds);
-  }, [activeCategories, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
+  }, [activeCategories, loadObjectsInBounds, loadReportsInBounds]);
 
   // Refresh markers when navigation state changes
   useEffect(() => {
@@ -634,10 +694,9 @@ export default function MapViewGL() {
     const bounds = mapRef.current.getBounds();
     if (!isNavigating) {
       loadObjectsInBounds(bounds);
-      loadTrafficSignals(bounds);
     }
     loadReportsInBounds(bounds);
-  }, [isNavigating, loadObjectsInBounds, loadReportsInBounds, loadTrafficSignals]);
+  }, [isNavigating, loadObjectsInBounds, loadReportsInBounds]);
 
   // Inject global map styles once
   useEffect(() => {

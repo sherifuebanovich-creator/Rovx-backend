@@ -59,6 +59,23 @@ export default function FriendsPage() {
     };
   }, [user, refetchFriendsAndRequests]);
 
+  // The backend broadcasts a friend's online/offline transition in real
+  // time (roadpilot.gateway.ts#notifyFriendsOnlineStatus), but nothing here
+  // ever listened for it — the green/gray dot below was a one-time snapshot
+  // from the initial GET and stayed stale for the life of this page mount
+  // until a manual refresh. Updates the matching row in place rather than
+  // refetching the whole list, since this can fire frequently.
+  useEffect(() => {
+    if (!user) return;
+    const onOnlineStatus = (e: Event) => {
+      const { userId, isOnline } = (e as CustomEvent).detail || {};
+      if (!userId) return;
+      setFriends((prev) => prev.map((f) => (f.id === userId ? { ...f, isOnline } : f)));
+    };
+    window.addEventListener('rovx:friend-online', onOnlineStatus);
+    return () => window.removeEventListener('rovx:friend-online', onOnlineStatus);
+  }, [user]);
+
   const handleSearch = async (q: string) => {
     setSearchQuery(q);
     if (!q.trim()) { setSearchResults([]); return; }

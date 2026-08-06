@@ -31,18 +31,29 @@ export default function VoiceRoomScreen() {
     if (!user || !roomId || joinAttemptedRef.current === roomId) return;
     joinAttemptedRef.current = roomId;
 
-    voiceRoomsApi.get(roomId)
-      .then((res) => setRoomName((res.data?.data || res.data)?.name || ''))
-      .catch(() => {});
-
+    // joinAndTrack needs the resolved name (it seeds the shared context's
+    // activeRoomName, shown in the minimized "ongoing call" bar on every
+    // other screen) — calling it in parallel with the fetch above used to
+    // pass the `roomName` state var from this render's closure, which is
+    // still '' (the initial value) since setRoomName's own update hadn't
+    // landed yet, permanently leaving the minimized bar's label blank for
+    // the rest of the session. Fetch the name first, then join with it.
+    //
     // joinAndTrack (VoiceRoomProvider) no-ops if already connected to this
     // exact room — the connection now lives above this page (see
     // VoiceRoomProvider), so returning to this screen after minimizing to
     // the map must NOT rejoin from scratch.
-    joinAndTrack(roomId, roomName).then((ok) => {
-      if (!ok) toast.error(t('voiceRooms.joinFailed'));
-      setJoining(false);
-    });
+    voiceRoomsApi.get(roomId)
+      .then((res) => (res.data?.data || res.data)?.name || '')
+      .catch(() => '')
+      .then((name) => {
+        setRoomName(name);
+        return joinAndTrack(roomId, name);
+      })
+      .then((ok) => {
+        if (!ok) toast.error(t('voiceRooms.joinFailed'));
+        setJoining(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, roomId]);
 

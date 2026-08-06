@@ -136,6 +136,18 @@ export function useSocket() {
       }
     });
 
+    // The backend (roadpilot.gateway.ts#notifyFriendsOnlineStatus) already
+    // broadcasts this correctly on every connect/disconnect, but nothing on
+    // the frontend ever listened for it — a friend's online dot/label on
+    // /friends was a one-time snapshot from the initial GET and never
+    // updated again for the life of that page mount, even while the server
+    // kept emitting the real state.
+    socketInstance.on('user:online', (data: any) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rovx:friend-online', { detail: data }));
+      }
+    });
+
     socketInstance.on('report:new', (data: any) => {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('rovx:report-new', { detail: data }));

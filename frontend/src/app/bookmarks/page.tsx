@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { mapApi } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '@/store/auth.store';
 
 interface BookmarkItem {
   id: string;
@@ -21,15 +22,23 @@ interface BookmarkItem {
 export default function BookmarksPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // A guest's 401 here used to fall through to the same empty
+    // `bookmarks: []` state as "you genuinely have none" — the loadFailed
+    // toast fired but disappeared in a few seconds, leaving a permanently
+    // misleading "no bookmarks yet" screen with no indication signing in
+    // would actually show something. Skip the fetch and show a proper
+    // sign-in prompt instead, matching Friends/Groups/Routes.
+    if (!user) { setIsLoading(false); return; }
     mapApi.getBookmarks()
       .then((res) => setBookmarks(res.data.data || res.data || []))
       .catch(() => toast.error(t('bookmarks.loadFailed')))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [user, t]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -48,6 +57,17 @@ export default function BookmarksPage() {
   };
 
   const getEmoji = (cat?: string) => CATEGORY_EMOJI[cat || ''] || '📍';
+
+  if (!user) {
+    return (
+      <div className="min-h-dvh bg-dark-bg flex flex-col items-center justify-center gap-4 px-6">
+        <FaRegBookmark size={48} className="text-gray-600" />
+        <h2 className="text-white font-bold text-xl text-center">{t('bookmarks.loginRequired')}</h2>
+        <button onClick={() => router.push('/auth/login')} className="btn-primary px-6 py-3">{t('bookmarks.signIn')}</button>
+        <button onClick={() => router.back()} className="text-gray-400 text-sm">{t('bookmarks.back')}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-dark-bg">

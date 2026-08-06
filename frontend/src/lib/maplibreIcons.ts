@@ -1,6 +1,6 @@
 'use client';
 import maplibregl from 'maplibre-gl';
-import { MapObjectCategory, ReportType } from '@/types';
+import { ReportType } from '@/types';
 
 const CATEGORY_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
   GAS_STATION:        { emoji: '⛽', color: '#f97316', label: 'АЗС' },
@@ -77,66 +77,69 @@ export function escapeAttr(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function createMarkerElement(emoji: string, color: string, size = 28, label = ''): HTMLDivElement {
-  const el = document.createElement('div');
-  el.style.cssText = `
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    cursor:pointer;
-  `;
+// GPU-rendered POI/report icons — bakes the same white-badge look the old
+// DOM markers used onto an offscreen canvas once per category/type and
+// registers it as a reusable `map.addImage()` sprite, so pan/zoom just moves
+// GPU symbol instances instead of creating/destroying a real DOM node (with
+// its own layout/paint cost) for every one of up to ~200+ POIs and an
+// unbounded number of reports on every viewport settle. Mirrors
+// MapFeaturesLayer's ensureCameraIcon, which already solved the same "emoji
+// via text-field glyphs is unreliable" problem the same way.
+function bakeBadgeIcon(
+  m: maplibregl.Map,
+  imageId: string,
+  emoji: string,
+  color: string,
+  size = 64,
+): void {
+  if (m.hasImage(imageId)) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const center = size / 2;
 
-  const icon = document.createElement('div');
-  icon.style.cssText = `
-    width:${size}px;
-    height:${size}px;
-    background:white;
-    border-radius:50%;
-    border:2.5px solid ${color};
-    box-shadow:0 2px 8px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.5);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:${size > 24 ? '16' : '13'}px;
-    line-height:1;
-    transition:transform 0.2s ease;
-  `;
-  icon.textContent = emoji;
-  el.appendChild(icon);
+  ctx.beginPath();
+  ctx.arc(center, center, center - size * 0.09, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = size * 0.08;
+  ctx.strokeStyle = color;
+  ctx.stroke();
 
-  if (label) {
-    const lbl = document.createElement('span');
-    lbl.style.cssText = `
-      font-size:9px;
-      font-weight:600;
-      color:rgba(0,0,0,0.75);
-      text-shadow:0 0 3px white, 0 0 2px white;
-      white-space:nowrap;
-      max-width:100px;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      line-height:1.3;
-      margin-top:2px;
-      background:rgba(255,255,255,0.7);
-      padding:0 4px;
-      border-radius:4px;
-    `;
-    lbl.textContent = label;
-    el.appendChild(lbl);
+  ctx.font = `${Math.round(size * 0.46)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, center, center + size * 0.02);
+
+  m.addImage(imageId, ctx.getImageData(0, 0, size, size), { pixelRatio: 2.5 });
+}
+
+export function categoryIconId(category: string): string {
+  return `poi-cat-${category}`;
+}
+
+export function reportIconId(type: string): string {
+  return `poi-report-${type}`;
+}
+
+export function ensureCategoryIcon(m: maplibregl.Map, category: string): string {
+  const imageId = categoryIconId(category);
+  if (!m.hasImage(imageId)) {
+    const config = CATEGORY_CONFIG[category] || { emoji: '📍', color: '#6b7280' };
+    bakeBadgeIcon(m, imageId, config.emoji, config.color);
   }
-
-  return el;
+  return imageId;
 }
 
-export function createCategoryMarker(category: MapObjectCategory, name = ''): HTMLDivElement {
-  const config = CATEGORY_CONFIG[category] || { emoji: '📍', color: '#6b7280', label: '' };
-  return createMarkerElement(config.emoji, config.color, 23, name);
-}
-
-export function createReportMarker(type: ReportType, severity = 3): HTMLDivElement {
-  const config = REPORT_CONFIG[type] || { emoji: '⚠️', color: '#f97316' };
-  const size = 21 + severity * 2.5;
-  return createMarkerElement(config.emoji, config.color, Math.min(size, 36));
+export function ensureReportIcon(m: maplibregl.Map, type: string): string {
+  const imageId = reportIconId(type);
+  if (!m.hasImage(imageId)) {
+    const config = REPORT_CONFIG[type] || { emoji: '⚠️', color: '#f97316' };
+    bakeBadgeIcon(m, imageId, config.emoji, config.color);
+  }
+  return imageId;
 }
 
 export function createUserMarkerElement(heading = 0): HTMLDivElement {
@@ -347,9 +350,9 @@ export function createPopupContent(
   `;
 }
 
-// Report markers (createReportMarker below) had no popup at all — tapping
-// one called setSelectedReport() but nothing in the app ever reads that
-// value for display (ObjectDetailPanel only renders selectedObject), so the
+// Report markers used to have no popup at all — tapping one called
+// setSelectedReport() but nothing in the app ever reads that value for
+// display (ObjectDetailPanel only renders selectedObject), so the
 // description a reporter wrote when submitting (see ReportPanel) could never
 // actually be read by anyone it was meant to warn. Mirrors createPopupContent
 // above, just fed from Report's fields instead of MapObject's.
@@ -370,36 +373,6 @@ export function createReportPopupContent(
       ${description ? `<p style="font-size:12px;color:white;margin:2px 0;">${escapeAttr(description)}</p>` : ''}
     </div>
   `;
-}
-
-export function createTrafficSignalMarker(): HTMLDivElement {
-  const el = document.createElement('div');
-  el.style.cssText = `
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    cursor:pointer;
-    gap:2px;
-    padding:3px 3px;
-    background:rgba(0,0,0,0.6);
-    border-radius:4px;
-    backdrop-filter:blur(2px);
-    border:1px solid rgba(255,255,255,0.15);
-  `;
-
-  const colors = ['#ef4444', '#f59e0b', '#22c55e'];
-  colors.forEach((c) => {
-    const bulb = document.createElement('div');
-    bulb.style.cssText = `
-      width:8px;height:8px;border-radius:50%;
-      background:${c};
-      opacity:0.6;
-      box-shadow:0 0 4px ${c}80;
-    `;
-    el.appendChild(bulb);
-  });
-
-  return el;
 }
 
 export { CATEGORY_CONFIG, REPORT_CONFIG };

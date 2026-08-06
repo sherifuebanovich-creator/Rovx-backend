@@ -41,6 +41,7 @@ function TrafficFlowLayer({ map }: Props) {
   const requestIdRef = useRef(0);
   const fetchFailuresRef = useRef(0);
   const disabledRef = useRef(false);
+  const prevShowTrafficRef = useRef(showTraffic);
 
   const cleanup = useCallback(() => {
     if (!map) return;
@@ -141,6 +142,18 @@ function TrafficFlowLayer({ map }: Props) {
 
   useEffect(() => {
     if (!map) return;
+    // The circuit breaker below (disabledRef) trips after MAX_FETCH_FAILURES
+    // consecutive errors and used to stay tripped forever — re-enabling
+    // traffic (this effect's showTraffic: false -> true transition, whether
+    // the user did it or the breaker itself just did via setShowTraffic(false))
+    // gives it a fresh attempt instead of silently no-oping every load for
+    // the rest of the session.
+    if (showTraffic && !prevShowTrafficRef.current) {
+      disabledRef.current = false;
+      fetchFailuresRef.current = 0;
+    }
+    prevShowTrafficRef.current = showTraffic;
+
     lastBoundsRef.current = '';
     if (showTraffic) {
       loadIncidents();
