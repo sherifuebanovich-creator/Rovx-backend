@@ -15,9 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping backend health endpoint
-        # Render's free-tier cold start can take 30-60s+. A short timeout here
-        # fails the exact moment the ping is needed most (waking a sleeping
-        # instance), leaving the backend asleep for hours until the next lucky
-        # run lands while it's already awake. --retry survives a cold start
-        # that's still booting when the first attempt's connection is refused.
-        run: curl -fsS --max-time 90 --retry 3 --retry-delay 5 --retry-connrefused https://rovx-backend-up1u.onrender.com/api/v1/health
+        # Render's free-tier cold start is usually 30-60s+, but a genuinely
+        # cold instance (asleep long enough that the DB pool/Redis/Nest
+        # bootstrap all have to reconnect from scratch) has been observed
+        # taking well over 90s with zero bytes back before it starts
+        # responding — the previous 90s x 4 attempts (~6min total) budget
+        # was exactly what one such run needed and didn't have. --retry
+        # survives a cold start that's still booting when an attempt's
+        # connection is refused/times out; the widened budget below covers
+        # a slow wake instead of just a normal one.
+        run: curl -fsS --max-time 150 --retry 5 --retry-delay 10 --retry-connrefused --retry-max-time 780 https://rovx-backend-up1u.onrender.com/api/v1/health
