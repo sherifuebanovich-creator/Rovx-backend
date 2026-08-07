@@ -601,6 +601,16 @@ export default function MapViewGL() {
           setVisibleObjects(objects);
           renderObjectMarkers(objects);
         } catch (err) {
+          // Otherwise a single failed request (dropped connection, 5xx) wedges
+          // this fetchKey as "already fetched" forever — the viewport's
+          // objects would never load even on the next pan back to it, since
+          // the dedupe guard above short-circuits before ever calling the API
+          // again. Only clear it if this is still the latest request for this
+          // key (a newer, still-in-flight/succeeded fetch must not be undone
+          // by an older one's failure landing after it).
+          if (requestId === objectsRequestIdRef.current) {
+            lastObjectsFetchKeyRef.current = '';
+          }
           console.warn('[MapViewGL] Failed to load objects:', err);
         }
       }, 500);
@@ -647,6 +657,10 @@ export default function MapViewGL() {
           setReports(reports);
           renderReportMarkers(reports);
         } catch (err) {
+          // Same fetchKey-wedging risk as loadObjectsInBounds above.
+          if (requestId === reportsRequestIdRef.current) {
+            lastReportsFetchKeyRef.current = '';
+          }
           console.warn('[MapViewGL] Failed to load reports:', err);
         }
       }, 500);

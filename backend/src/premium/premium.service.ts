@@ -778,13 +778,24 @@ export class PremiumService {
     // was actually buying — DirectPaymentModal shows this "transfer to card"
     // amount right next to the tier's real price (from getTierPrice), and
     // the two disagreed for every tier except whichever one happened to
-    // match the fallback. Resolve to the specific tier's USD price (the
-    // same figure Stripe/Xsolla/Lemon Squeezy charge) when a valid tier is
-    // given; fall back to the flat configured amount otherwise.
+    // match the fallback. Resolve to the specific tier's price in whatever
+    // currency the card is actually configured for (PAYMENT_CURRENCY) when a
+    // valid tier is given — using the USD figure unconditionally would quote
+    // the wrong amount for a RUB/KZT/UZS transfer card, e.g. "5" instead of
+    // "449" for a RUB card on PREMIUM_BASIC; fall back to the flat
+    // configured amount otherwise.
+    const currency = this.config.get('PAYMENT_CURRENCY') || 'USD';
     let amount = this.config.get('PAYMENT_AMOUNT') || '6.49';
     const tier = tierName ? PREMIUM_TIERS.find(t => t.name === tierName) : undefined;
     if (tier && tier.tier > 0) {
-      amount = String(tier.price);
+      const byCurrency: Record<string, number | undefined> = {
+        USD: tier.price,
+        RUB: (tier as any).priceRub,
+        KZT: (tier as any).priceKzt,
+        UZS: (tier as any).priceUzs,
+      };
+      const resolved = byCurrency[String(currency).toUpperCase()];
+      amount = String(resolved ?? tier.price);
     }
 
     return {
@@ -792,7 +803,7 @@ export class PremiumService {
       cardHolder,
       cardBank,
       amount,
-      currency: this.config.get('PAYMENT_CURRENCY') || 'USD',
+      currency,
     };
   }
 
@@ -837,6 +848,11 @@ export class PremiumService {
         tier: tier.tier,
         levelName: tier.name,
         endDate: new Date(0),
+        // Same reasoning as the Xsolla/Lemon Squeezy/Stripe webhook handlers:
+        // a renewal or tier change hits this `update` branch, not `create` —
+        // without refreshing `price` here it stays stuck at whatever the
+        // last tier/provider wrote, skewing getAdminStats' totalRevenue sum.
+        price: tier.price,
         paymentId,
       },
     });
