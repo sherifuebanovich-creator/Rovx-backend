@@ -202,8 +202,12 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     try {
       const isConvoy = await this.redis.get(`convoy:active:${userId}`);
       if (isConvoy === 'true') {
+        // isBanned: false matters — without it a user banned from a group
+        // kept broadcasting their live convoy location into that group's
+        // room forever, since a ban only flips the member row's flag and
+        // evicts their own socket, it doesn't remove them from this query.
         const memberGroups = await this.prisma.groupMember.findMany({
-          where: { userId },
+          where: { userId, isBanned: false },
           select: { groupId: true },
         });
         for (const group of memberGroups) {
@@ -284,7 +288,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!userId) return;
 
     if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number' ||
-        !isFinite(data.lat) || !isFinite(data.lng)) {
+        !isFinite(data.lat) || !isFinite(data.lng) ||
+        data.lat < -90 || data.lat > 90 || data.lng < -180 || data.lng > 180) {
       return;
     }
 
@@ -309,8 +314,11 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         this.server.to(cell).emit('sos:alert', sosAlert);
       }
 
+      // isBanned: false — same reasoning as the convoy broadcast in
+      // location:update: a member row banned from the group must not keep
+      // fanning this user's SOS alert into that group's room.
       const memberGroups = await this.prisma.groupMember.findMany({
-        where: { userId },
+        where: { userId, isBanned: false },
         select: { groupId: true },
       });
       for (const group of memberGroups) {
@@ -417,7 +425,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { groupId: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
+    if (!userId || !data?.groupId) return;
 
     try {
       const member = await this.prisma.groupMember.findFirst({
@@ -482,6 +490,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return { error: 'Not authenticated' };
+    if (!data?.groupId) return { error: 'Group ID required' };
     if (!data.content?.trim() && !data.images?.length && !data.sticker && !data.audioUrl && !data.videoUrl) {
       return { error: 'Empty message' };
     }
@@ -522,7 +531,13 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { groupId: string; isTyping: boolean },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
+    // Missing groupId used to fall through to findFirst({ groupId: undefined, userId })
+    // — Prisma drops an undefined key from the filter instead of matching
+    // nothing, so this matched ANY group the user belongs to and then
+    // broadcast to the bogus room `group:undefined`, which any other client
+    // making the same mistake would also be sitting in — a cross-group
+    // typing-indicator leak between users who share no group.
+    if (!userId || !data?.groupId) return;
 
     const member = await this.prisma.groupMember.findFirst({
       where: { groupId: data.groupId, userId },
@@ -631,7 +646,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() data: { groupId: string; name?: string; description?: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
-    if (!userId) return;
+    if (!userId || !data?.groupId) return;
 
     try {
       const member = await this.prisma.groupMember.findFirst({
@@ -785,10 +800,14 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     // check at all — any authenticated client could terminate an arbitrary
     // user's call UI, or disrupt a group call for a group it never joined.
     if (data.groupId) {
+      // isBanned: false — every other group action in this file strips a
+      // banned member's ability to act in/on the group; this was the one
+      // place that didn't, letting a banned member keep tearing down the
+      // group's active call.
       const member = await this.prisma.groupMember.findFirst({
         where: { groupId: data.groupId, userId },
       });
-      if (!member) return;
+      if (!member || member.isBanned) return;
       this.server.to(`group:${data.groupId}`).emit('voice:end', { userId });
     } else if (data.targetUserId) {
       if (!(await this.areUsersConnected(userId, data.targetUserId))) return;

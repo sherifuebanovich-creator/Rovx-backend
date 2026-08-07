@@ -316,7 +316,11 @@ export class RoutesService {
         destName: dto.destName,
         destLat: dto.destLat,
         destLng: dto.destLng,
-        waypoints: dto.waypoints as any,
+        // `waypoints` is a String? column — writing the WaypointDto[] array
+        // straight through (the previous `as any` cast) made the Prisma
+        // client reject the insert whenever a route with waypoints was
+        // saved, since the DB column isn't a JSON/array type.
+        waypoints: dto.waypoints ? JSON.stringify(dto.waypoints) : undefined,
         routeType: dto.routeType || RouteType.FASTEST,
         distance: dto.distance,
         duration: dto.duration,

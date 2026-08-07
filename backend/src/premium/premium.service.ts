@@ -304,39 +304,59 @@ export class PremiumService {
         }
         const endDate = await this.extendedEndDate(userId, months);
 
-        await this.prisma.$transaction([
-          this.prisma.premiumSubscription.upsert({
-            where: { userId },
-            create: {
-              userId,
-              tier: tier.tier,
-              levelName: tierName,
-              months,
-              endDate,
-              price: body.purchase?.checkout?.amount || tier.price,
-              currency: 'USD',
-              status: 'active',
-              paymentId: transactionId,
-              autoRenew: false,
-            },
-            update: {
-              status: 'active',
-              tier: tier.tier,
-              levelName: tierName,
-              endDate,
-              // A renewal or tier change (e.g. after the prior subscription
-              // expired) hits this `update` branch, not `create` — without
-              // refreshing `price` here it stays stuck at whatever the last
-              // tier/provider wrote, skewing getAdminStats' totalRevenue sum.
-              price: body.purchase?.checkout?.amount || tier.price,
-              paymentId: transactionId,
-            },
-          }),
-          this.prisma.user.update({
-            where: { id: userId },
-            data: { subscription: tierName, subscriptionEnd: endDate },
-          }),
-        ]);
+        // The `existingSub.paymentId === transactionId` check above only
+        // guards against a redelivery arriving after premium_subscriptions
+        // still holds THIS transaction's id — but any other checkout (this
+        // user starting a second payment on any provider, including a
+        // pending bank transfer) upserts that same row with a fresh
+        // paymentId before this transaction's retry/redelivery lands,
+        // silently defeating the check and double-extending the
+        // subscription. Claiming (provider, transactionId) in this
+        // dedicated ledger, inside the same DB transaction as the grant, is
+        // immune to that: the unique constraint catches the redelivery
+        // regardless of what premium_subscriptions currently holds.
+        try {
+          await this.prisma.$transaction([
+            this.prisma.processedPayment.create({ data: { provider: 'xsolla', transactionId, userId } }),
+            this.prisma.premiumSubscription.upsert({
+              where: { userId },
+              create: {
+                userId,
+                tier: tier.tier,
+                levelName: tierName,
+                months,
+                endDate,
+                price: body.purchase?.checkout?.amount || tier.price,
+                currency: 'USD',
+                status: 'active',
+                paymentId: transactionId,
+                autoRenew: false,
+              },
+              update: {
+                status: 'active',
+                tier: tier.tier,
+                levelName: tierName,
+                endDate,
+                // A renewal or tier change (e.g. after the prior subscription
+                // expired) hits this `update` branch, not `create` — without
+                // refreshing `price` here it stays stuck at whatever the last
+                // tier/provider wrote, skewing getAdminStats' totalRevenue sum.
+                price: body.purchase?.checkout?.amount || tier.price,
+                paymentId: transactionId,
+              },
+            }),
+            this.prisma.user.update({
+              where: { id: userId },
+              data: { subscription: tierName, subscriptionEnd: endDate },
+            }),
+          ]);
+        } catch (err: any) {
+          if (err?.code === 'P2002') {
+            this.logger.log(`Xsolla payment ${transactionId} already processed (ledger) — skipping`);
+            return { received: true };
+          }
+          throw err;
+        }
 
         this.logger.log(`User ${userId} subscribed to ${tierName} via Xsolla`);
         } finally {
@@ -489,42 +509,58 @@ export class PremiumService {
       }
       const endDate = await this.extendedEndDate(userId, 1);
 
-      await this.prisma.$transaction([
-        this.prisma.premiumSubscription.upsert({
-          where: { userId },
-          create: {
-            userId,
-            tier: tier.tier,
-            levelName: tierName,
-            endDate,
-            // `orderData.total` is in cents (see paidAmount above) — unlike
-            // Xsolla/Stripe, which store the dollar amount in `price`, this
-            // was storing the raw cents value, inflating admin's
-            // getAdminStats totalRevenue sum 100x for Lemon Squeezy subs.
-            price: orderData?.total ? orderData.total / 100 : tier.price,
-            currency: 'USD',
-            status: 'active',
-            paymentId: orderId,
-            autoRenew: false,
-          },
-          update: {
-            status: 'active',
-            tier: tier.tier,
-            levelName: tierName,
-            endDate,
-            // Same reasoning as the Xsolla handler above: a renewal or tier
-            // change hits `update`, not `create` — refresh `price` here too
-            // or it stays stuck at whatever the last tier/provider wrote,
-            // skewing getAdminStats' totalRevenue sum.
-            price: orderData?.total ? orderData.total / 100 : tier.price,
-            paymentId: orderId,
-          },
-        }),
-        this.prisma.user.update({
-          where: { id: userId },
-          data: { subscription: tierName, subscriptionEnd: endDate },
-        }),
-      ]);
+      // See the matching comment in handleWebhook (Xsolla) above — the
+      // `existingSub.paymentId === String(orderId)` check a few lines up
+      // only catches a redelivery landing while premium_subscriptions still
+      // holds THIS order's id; any other checkout for this user (any
+      // provider, or a pending bank transfer) clobbers that row first and
+      // silently defeats it. Claim (provider, orderId) in the durable ledger
+      // inside the same DB transaction as the grant instead.
+      try {
+        await this.prisma.$transaction([
+          this.prisma.processedPayment.create({ data: { provider: 'lemon-squeezy', transactionId: String(orderId), userId } }),
+          this.prisma.premiumSubscription.upsert({
+            where: { userId },
+            create: {
+              userId,
+              tier: tier.tier,
+              levelName: tierName,
+              endDate,
+              // `orderData.total` is in cents (see paidAmount above) — unlike
+              // Xsolla/Stripe, which store the dollar amount in `price`, this
+              // was storing the raw cents value, inflating admin's
+              // getAdminStats totalRevenue sum 100x for Lemon Squeezy subs.
+              price: orderData?.total ? orderData.total / 100 : tier.price,
+              currency: 'USD',
+              status: 'active',
+              paymentId: orderId,
+              autoRenew: false,
+            },
+            update: {
+              status: 'active',
+              tier: tier.tier,
+              levelName: tierName,
+              endDate,
+              // Same reasoning as the Xsolla handler above: a renewal or tier
+              // change hits `update`, not `create` — refresh `price` here too
+              // or it stays stuck at whatever the last tier/provider wrote,
+              // skewing getAdminStats' totalRevenue sum.
+              price: orderData?.total ? orderData.total / 100 : tier.price,
+              paymentId: orderId,
+            },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: tierName, subscriptionEnd: endDate },
+          }),
+        ]);
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          this.logger.log(`Lemon Squeezy order ${orderId} already processed (ledger) — skipping`);
+          return { received: true };
+        }
+        throw err;
+      }
 
       this.logger.log(`User ${userId} subscribed to ${tierName} via Lemon Squeezy`);
       return { received: true };
@@ -633,44 +669,58 @@ export class PremiumService {
 
       const endDate = await this.extendedEndDate(userId, 1);
 
-      await this.prisma.$transaction([
-        this.prisma.premiumSubscription.upsert({
-          where: { userId },
-          create: {
-            userId,
-            tier: tier.tier,
-            levelName: tier.name,
-            endDate,
-            price: tier.price,
-            currency: 'USD',
-            status: 'active',
-            paymentId,
-            autoRenew: false,
-          },
-          update: {
-            status: 'active',
-            tier: tier.tier,
-            levelName: tier.name,
-            endDate,
-            // Stripe has no pre-webhook "pending" write (unlike Xsolla/Lemon
-            // Squeezy's createCheckoutSession/createLemonSqueezyCheckout,
-            // which upsert `price` at checkout-initiation time) — this
-            // `update` branch is the ONLY place a Stripe payment ever
-            // touches this row when one already exists (e.g. renewing after
-            // the prior subscription expired, or switching tiers), so
-            // without refreshing `price` here it stays stuck at whatever
-            // tier/provider last wrote it, skewing getAdminStats'
-            // totalRevenue sum by the stale amount instead of what was
-            // actually charged this time.
-            price: tier.price,
-            paymentId,
-          },
-        }),
-        this.prisma.user.update({
-          where: { id: userId },
-          data: { subscription: tierName, subscriptionEnd: endDate },
-        }),
-      ]);
+      // See the matching comment in handleWebhook (Xsolla) above — claim
+      // (provider, paymentId) in the durable ledger inside the same DB
+      // transaction as the grant, so a redelivery is caught even if another
+      // checkout (any provider) clobbered premium_subscriptions.paymentId
+      // in the meantime.
+      try {
+        await this.prisma.$transaction([
+          this.prisma.processedPayment.create({ data: { provider: 'stripe', transactionId: paymentId, userId } }),
+          this.prisma.premiumSubscription.upsert({
+            where: { userId },
+            create: {
+              userId,
+              tier: tier.tier,
+              levelName: tier.name,
+              endDate,
+              price: tier.price,
+              currency: 'USD',
+              status: 'active',
+              paymentId,
+              autoRenew: false,
+            },
+            update: {
+              status: 'active',
+              tier: tier.tier,
+              levelName: tier.name,
+              endDate,
+              // Stripe has no pre-webhook "pending" write (unlike Xsolla/Lemon
+              // Squeezy's createCheckoutSession/createLemonSqueezyCheckout,
+              // which upsert `price` at checkout-initiation time) — this
+              // `update` branch is the ONLY place a Stripe payment ever
+              // touches this row when one already exists (e.g. renewing after
+              // the prior subscription expired, or switching tiers), so
+              // without refreshing `price` here it stays stuck at whatever
+              // tier/provider last wrote it, skewing getAdminStats'
+              // totalRevenue sum by the stale amount instead of what was
+              // actually charged this time.
+              price: tier.price,
+              paymentId,
+            },
+          }),
+          this.prisma.user.update({
+            where: { id: userId },
+            data: { subscription: tierName, subscriptionEnd: endDate },
+          }),
+        ]);
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          this.logger.log(`Stripe payment ${paymentId} already processed (ledger) — skipping`);
+          return;
+        }
+        throw err;
+      }
 
       this.logger.log(`Stripe payment confirmed: user=${userId} tier=${tierName}`);
 

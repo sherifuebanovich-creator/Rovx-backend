@@ -51,6 +51,13 @@ export class AiController {
     @CurrentUser('preferredLang') lang: string,
     @Body() data: any,
   ) {
+    // generateTurnInstruction dereferences instruction.type/instruction.text
+    // unguarded — same class of unguarded-field bug fixed in
+    // analyzeRouteAndSuggest, just not sanitized here, so a body without
+    // `instruction` used to throw a raw 500 instead of a 400.
+    if (!data || typeof data !== 'object' || !data.instruction || typeof data.instruction !== 'object') {
+      throw new BadRequestException('instruction is required');
+    }
     return this.aiService.generateTurnInstruction(data.instruction, lang || 'ru', data.context || {});
   }
 }

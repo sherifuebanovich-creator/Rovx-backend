@@ -101,6 +101,26 @@ model PremiumSubscription {
   @@map("premium_subscriptions")
 }
 
+// premium_subscriptions is one mutable row per user, and every checkout
+// (any provider, plus the bank-transfer flow) upserts it immediately at
+// initiation with a fresh paymentId — so a second checkout started while an
+// earlier one's webhook is still in flight (or arrives late/gets retried)
+// overwrites the paymentId the first webhook needs to recognize itself.
+// This table is an append-only, per-transaction ledger independent of that
+// mutable row: each webhook grant claims its (provider, transactionId) here
+// inside the same DB transaction as the grant, so a redelivery is always
+// caught by the unique constraint regardless of what premium_subscriptions
+// currently holds.
+model ProcessedPayment {
+  id            String   @id @default(uuid())
+  provider      String
+  transactionId String
+  userId        String
+  createdAt     DateTime @default(now())
+  @@unique([provider, transactionId])
+  @@map("processed_payments")
+}
+
 model Friend {
   id        String   @id @default(uuid())
   userId    String

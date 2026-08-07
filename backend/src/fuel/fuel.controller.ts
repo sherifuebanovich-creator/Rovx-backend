@@ -40,6 +40,25 @@ export class FuelController {
     if (dto.originLng < -180 || dto.originLng > 180 || dto.destLng < -180 || dto.destLng > 180) {
       throw new BadRequestException('Longitude must be between -180 and 180');
     }
+    // originName/destName are non-nullable columns on FuelCalculation — a
+    // missing/non-string value here used to reach calculateAndSave() and
+    // fail as an unhandled Prisma error (raw 500) instead of a 400.
+    if (typeof dto.originName !== 'string' || !dto.originName.trim()) {
+      throw new BadRequestException('originName is required');
+    }
+    if (typeof dto.destName !== 'string' || !dto.destName.trim()) {
+      throw new BadRequestException('destName is required');
+    }
+    // Unvalidated, these feed fuelConsumed/fuelCost arithmetic directly —
+    // a non-numeric value silently produced NaN (truthy strings pass the
+    // `||` default), and a negative one produced a negative cost, both of
+    // which then get persisted via calculateAndSave.
+    if (dto.vehicleFuelEfficiency !== undefined && (typeof dto.vehicleFuelEfficiency !== 'number' || !isFinite(dto.vehicleFuelEfficiency) || dto.vehicleFuelEfficiency <= 0)) {
+      throw new BadRequestException('vehicleFuelEfficiency must be a positive number');
+    }
+    if (dto.fuelPrice !== undefined && (typeof dto.fuelPrice !== 'number' || !isFinite(dto.fuelPrice) || dto.fuelPrice <= 0)) {
+      throw new BadRequestException('fuelPrice must be a positive number');
+    }
   }
 
   @Get('history')

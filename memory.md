@@ -318,6 +318,40 @@ Two local commits (`d6c3f48`, `e341683`) sat unpushed with a large, never-battle
 - **Route line can render above POI/report icons** now that POIs are GL layers instead of DOM markers (layer stacking order changed) — real behavior change but needs a product decision on explicit `beforeId` layer ordering across route/3D-buildings/POI/MapFeaturesLayer, not fixed blind.
 - Two pre-existing, unmodified-by-this-diff issues noted for future rounds: `TrafficFlowLayer.tsx`/`MapFeaturesLayer.tsx` have the same fetch-failure dedupe-lock bug just fixed in `MapViewGL.tsx`; overlapping POI+report GL layers can both fire click handlers on one tap (old DOM markers only let the topmost element receive it).
 
-Backend (`tsc --noEmit` + `nest build`) and frontend (`tsc --noEmit` + `next build`, all 23 routes) both clean. Pushed `master` → GitHub Actions `deploy-backend.yml`/`deploy-frontend.yml` hit the Render/Vercel deploy hooks.
+Backend (`tsc --noEmit` + `nest build`) and frontend (`tsc --noEmit` + `next build`, all 23 routes) both clean, committed (`f5a056b`). **`git push origin master` failed**: the GitHub PAT embedded in the `origin`/`target` remote URLs (see below) is invalid/expired — `remote: Invalid username or token`. User said they'd push backend themselves once they sort out a valid credential; deploy did not happen this round.
 
-Also noticed (not this session's scope, flagging for whoever touches git config next): `origin`/`target` remotes in `.git/config` have GitHub PATs embedded in plaintext in the URL instead of a credential helper — works, but the token is readable by anything that can read the repo's git config.
+Also noticed (not this session's scope, flagging for whoever touches git config next): `origin`/`target` remotes in `.git/config` have GitHub PATs embedded in plaintext in the URL instead of a credential helper — and per the push failure above, the current one is dead anyway.
+
+## This Session (2026-08-08) — payment double-credit fix, 2nd-round bug hunt, frontend deploy via Vercel CLI
+
+User asked to fix the double-credit race flagged (not touched) at the end of the previous round, search for more bugs, then deploy — frontend handled here, backend deploy left to the user (git push is still blocked by the dead PAT above).
+
+### Fixed — payment double-credit race (`backend/src/premium/premium.service.ts`, `backend/prisma/schema.prisma`)
+Root cause: `premium_subscriptions` is one mutable row per user, and every checkout (any provider, or the bank-transfer flow) upserts it immediately at initiation with a fresh `paymentId` — so a second checkout started while an earlier one's webhook is still in flight (or gets redelivered/retried, which Xsolla/Stripe/Lemon Squeezy all do) silently defeats the `existingSub.paymentId === transactionId` idempotency check, causing `extendedEndDate()` to run twice for one payment.
+
+Added a `ProcessedPayment` model (`processed_payments`, `@@unique([provider, transactionId])`) — an append-only ledger independent of the mutable subscription row. Each of the three webhook grant paths (Xsolla `handleWebhook` status='done', Lemon Squeezy `handleLemonSqueezyWebhook` order_created, Stripe `handleStripeWebhook` checkout.session.completed) now claims `(provider, transactionId)` in this table *inside the same `$transaction` array* as the subscription upsert + user update; a `P2002` unique-constraint error on that create means "already processed," caught and treated as a no-op skip. This is immune to the subscription row being clobbered in between, unlike the old check. No manual migration needed — `backend/entrypoint.sh` runs `prisma db push --accept-data-loss` on every container start, so the new table is created automatically on next deploy. Ran `npx prisma generate` locally so the client picked up the new model; `tsc --noEmit` clean.
+
+Left the original `existingSub.paymentId === transactionId` fast-path checks in place ahead of the ledger claim (cheap early return for the common immediate-retry case); the ledger is now the actual guarantee, not those checks.
+
+### 2nd-round bug hunt — 6 parallel agents (2 waves), full-file reviews of areas untouched by any prior session
+Wave 1 (scoped to what the 2 previously-unpushed commits changed, see round above): map pipeline, payments, realtime/session, misc pages — already logged above.
+
+Wave 2 (fresh full-file reviews, not diff-scoped, of backend/frontend areas with no prior dedicated pass):
+
+**`backend/src/websocket/roadpilot.gateway.ts`** — 6 bugs fixed:
+1. `voice:end` group branch checked membership but not `isBanned` (every other group-mutating handler does) — a banned member could still tear down that group's active call.
+2. `location:update` convoy broadcast and `sos:trigger` group broadcast both queried group membership without filtering `isBanned: false` — a banned user's live location/SOS kept broadcasting into the group indefinitely (a ban only evicts their own socket, doesn't stop them being enumerated as a member for others' broadcasts).
+3. `sos:trigger` lat/lng only checked `typeof`/`isFinite`, missing the `-90..90`/`-180..180` range check its sibling `location:update` handler already has — out-of-range coords could land in `Report`.
+4. Missing `!data?.groupId` guards in `join:group`, `group:message`, `group:typing`, `group:edit` — Prisma treats an `undefined` filter key as "no filter," so an omitted `groupId` silently passed the membership check against *any* group the caller belongs to. Concretely exploitable via `group:typing`: two unrelated users both omitting `groupId` land in the literal room `group:undefined` and see each other's typing indicator — a real cross-group leak needing no shared group.
+
+**`backend/src/routes/`, `ai/`, `fuel/`** — 4 bugs fixed (unhandled-exception/raw-500 and data-integrity class, matching this codebase's established "validate every input, don't crash on malformed data" convention):
+1. `routes.service.ts saveRoute()` — `waypoints: dto.waypoints as any` wrote an array straight into a `String?` Prisma column; the cast was masking a real type mismatch causing an unhandled 500 on any route save with waypoints. Fixed with `JSON.stringify`.
+2. `ai.controller.ts turnInstruction()` had no input validation unlike its sibling handlers in the same file — an unguarded `instruction.type`/`instruction.text` dereference crashed with a raw 500 on a malformed body.
+3. `fuel.controller.ts validateFuelDto()` only checked lat/lng, not `originName`/`destName` (non-nullable columns) or `fuelPrice`/`vehicleFuelEfficiency` (unchecked → `NaN` or negative fuel-cost figures persisted).
+4. `routes.controller.ts startTrip`/`endTrip` took `data: any`/`stats: any` straight to Prisma with zero validation, unlike every other handler in the file — a negative `stats.distance` could decrement a user's own `totalDistance` stat; malformed input crashed `Trip` creation.
+
+**Reviewed, no bugs found**: realtime/session (`useSocket.ts`, `VoiceRoomProvider.tsx`, voice-room page, `api.ts`), misc pages + i18n + CI (`bookmarks`/`friends`/`routes`/`settings` pages, `en.json`/`ru.json` key parity, `keep-alive.yml`), frontend chat/social components (`AudioMessagePlayer`, `AudioRecorderButton`, `VideoMessagePlayer`, `VideoMessageRecorder`, `VoiceChat`, `chats` pages — all already carry fix-comments from an untracked-in-memory prior pass; `components/social/` and `app/dashboard/` are empty, nothing to review), `tasks.service.ts` (Cron overlap guard already correct), `support.service.ts` (already correct), `tts.service.ts` (spawn uses an argv array, not shell string — not injectable).
+
+**Flagged, deliberately left alone**: `routes/routes.controller.ts`'s `POST /routes/calculate` is `@Public()`, so `JwtAuthGuard` never runs the JWT strategy and `@CurrentUser('id')` is always `undefined` even for a logged-in caller — not a security bug (no cross-user leak), just silently-never-personalized fuel-efficiency numbers; proper fix needs an "optional auth" guard variant outside the reviewed file list. `ai.service.ts buildRoutePrompt()` interpolates unsanitized `weather`/`timeOfDay`/`vehicleType` into the LLM prompt — prompt-injection-shaped but the only output channel is advisory text back to the same user, no privilege escalation, left as low-severity.
+
+Backend (`tsc --noEmit` + `nest build`) clean after all fixes (all 4th-round fixes were backend-only; no new frontend bugs found this round).

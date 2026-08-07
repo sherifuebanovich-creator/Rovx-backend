@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { RoutesService } from './routes.service';
@@ -65,6 +66,7 @@ export class RoutesController {
   @Post('trips/start')
   @ApiOperation({ summary: 'Start a trip' })
   async startTrip(@CurrentUser('id') userId: string, @Body() data: any) {
+    this.validateTripStart(data);
     return this.routesService.startTrip(userId, data);
   }
 
@@ -75,6 +77,56 @@ export class RoutesController {
     @CurrentUser('id') userId: string,
     @Body() stats: any,
   ) {
+    this.validateTripStats(stats);
     return this.routesService.endTrip(tripId, userId, stats);
+  }
+
+  // originLat/originLng/destLat/destLng/destName are non-nullable columns
+  // on Trip — unlike every other handler in this controller, this body was
+  // passed straight to Prisma with no checks, so a malformed request failed
+  // as an unhandled Prisma error (raw 500) instead of a 400.
+  private validateTripStart(data: any) {
+    if (!data || typeof data !== 'object') throw new BadRequestException('Invalid request body');
+    const coords = ['originLat', 'originLng', 'destLat', 'destLng'];
+    for (const key of coords) {
+      const val = data[key];
+      if (typeof val !== 'number' || !isFinite(val)) {
+        throw new BadRequestException(`${key} must be a valid number`);
+      }
+    }
+    if (data.originLat < -90 || data.originLat > 90 || data.destLat < -90 || data.destLat > 90) {
+      throw new BadRequestException('Latitude must be between -90 and 90');
+    }
+    if (data.originLng < -180 || data.originLng > 180 || data.destLng < -180 || data.destLng > 180) {
+      throw new BadRequestException('Longitude must be between -180 and 180');
+    }
+    if (typeof data.destName !== 'string' || !data.destName.trim()) {
+      throw new BadRequestException('destName is required');
+    }
+    if (data.duration !== undefined && (typeof data.duration !== 'number' || !Number.isInteger(data.duration) || data.duration < 0)) {
+      throw new BadRequestException('duration must be a non-negative integer');
+    }
+    if (data.distance !== undefined && (typeof data.distance !== 'number' || !isFinite(data.distance) || data.distance < 0)) {
+      throw new BadRequestException('distance must be a non-negative number');
+    }
+  }
+
+  // stats.distance feeds User.totalDistance via an unchecked increment in
+  // endTrip — without a non-negative check here a client could send a
+  // negative distance to decrement their own totalDistance/leaderboard
+  // standing. duration is an Int column, so a non-integer value would
+  // otherwise fail as an unhandled Prisma error.
+  private validateTripStats(stats: any) {
+    if (!stats || typeof stats !== 'object') throw new BadRequestException('Invalid request body');
+    const nonNegativeNumbers = ['fuelUsed', 'avgSpeed', 'maxSpeed', 'distance'];
+    for (const key of nonNegativeNumbers) {
+      const val = stats[key];
+      if (val !== undefined && (typeof val !== 'number' || !isFinite(val) || val < 0)) {
+        throw new BadRequestException(`${key} must be a non-negative number`);
+      }
+    }
+    if (stats.duration !== undefined && (typeof stats.duration !== 'number' || !Number.isInteger(stats.duration) || stats.duration < 0)) {
+      throw new BadRequestException('duration must be a non-negative integer');
+    }
   }
 }
