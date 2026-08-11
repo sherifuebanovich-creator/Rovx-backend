@@ -576,8 +576,15 @@ export class TelegramController implements OnModuleInit {
             await this.telegram.sendMessageToChat(chatId, '❌ Неверный chatId. Должно быть число.');
             return { ok: true };
           }
+          // sendMessageToChat always sends with parse_mode: 'HTML' — an
+          // unescaped `&`, `<` or `>` in the admin's reply made Telegram
+          // return 400, the error was swallowed inside sendMessageToChat,
+          // and the operator was then told "ответ отправлен" for a message
+          // the user never received. Every other user-controlled string in
+          // this file already goes through escapeTelegramHtml; these two
+          // hot paths were missed.
           await this.telegram.sendMessageToChat(targetChatId,
-            `💬 <b>Ответ от поддержки ROVX:</b>\n\n${replyText}`);
+            `💬 <b>Ответ от поддержки ROVX:</b>\n\n${escapeTelegramHtml(replyText)}`);
           await this.telegram.sendMessageToChat(chatId, `✅ Ответ отправлен пользователю ${targetChatId}`);
           return { ok: true };
         }
@@ -587,7 +594,13 @@ export class TelegramController implements OnModuleInit {
           try {
             await this.telegram.sendMessageToChat(chatId, '🤖 Думаю...');
             const reply = await this.ai.chat(chatId, text);
-            await this.telegram.sendMessageToChat(chatId, reply);
+            // LLM replies routinely contain `&`, `<`, `>` (markdown-ish
+            // fragments, "a & b") — sent raw with parse_mode: 'HTML' they
+            // get rejected by Telegram and silently dropped (see the /reply
+            // fix above). Escaping them here is safe because the messages
+            // are plain text; Telegram's markup is only produced by the
+            // template strings, not by the LLM's content.
+            await this.telegram.sendMessageToChat(chatId, escapeTelegramHtml(reply));
           } catch (error) {
             await this.telegram.sendMessageToChat(chatId, '❌ Ошибка AI. Попробуйте позже.');
           }
@@ -638,14 +651,23 @@ export class TelegramController implements OnModuleInit {
           try {
             const sub = await this.admin.getPremiumDetail(id);
             const msg = `📦 <b>Premium</b>\n` +
-              `👤 Покупатель: ${sub.user.displayName || sub.user.username}\n` +
-              `📧 ${sub.user.email}\n` +
-              `🏷 Тариф: ${sub.levelName}\n` +
+              `👤 Покупатель: ${escapeTelegramHtml(sub.user.displayName || sub.user.username || '—')}\n` +
+              `📧 ${escapeTelegramHtml(sub.user.email || '—')}\n` +
+              `🏷 Тариф: ${escapeTelegramHtml(sub.levelName || '—')}\n` +
               `💰 Цена: $${sub.price}\n` +
               `🕐 Куплен: ${sub.createdAt.toISOString().slice(0, 16)}\n` +
               `📅 Действует до: ${sub.endDate.toISOString().slice(0, 10)}\n` +
               `🆔 ID: ${sub.id.slice(0, 8)}...`;
-            await this.telegram.answerCallbackQuery(cbId, msg);
+            // Telegram rejects answerCallbackQuery text over 200 bytes — this
+            // detail message is far longer, so the previous code threw, hit
+            // the catch below, and told the admin "Премиум не найден" for a
+            // subscription that was successfully found. answerCallbackQuery is
+            // only a transient "loading" confirmation; the full detail goes
+            // out as a normal message instead.
+            await this.telegram.answerCallbackQuery(cbId, `📦 ${sub.levelName || 'Premium'} — ${sub.user.displayName || '—'}`);
+            if (chatId) {
+              await this.telegram.sendMessageToChat(chatId, msg);
+            }
           } catch {
             await this.telegram.answerCallbackQuery(cbId, '❌ Премиум не найден');
           }

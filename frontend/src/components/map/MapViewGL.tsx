@@ -474,9 +474,7 @@ export default function MapViewGL() {
       offset: [0, -10], closeButton: true, closeOnClick: false, className: 'mapboxgl-popup-custom',
     });
 
-    const onObjectClick = (e: maplibregl.MapLayerMouseEvent) => {
-      const feature = e.features?.[0];
-      if (!feature) return;
+    const onObjectClick = (feature: maplibregl.MapGeoJSONFeature) => {
       const id = String(feature.properties?.id);
       const obj = useMapStore.getState().visibleObjects.find((o) => String(o.id) === id);
       if (!obj) return;
@@ -488,9 +486,7 @@ export default function MapViewGL() {
       setSelectedObject(obj);
     };
 
-    const onReportClick = (e: maplibregl.MapLayerMouseEvent) => {
-      const feature = e.features?.[0];
-      if (!feature) return;
+    const onReportClick = (feature: maplibregl.MapGeoJSONFeature) => {
       const id = String(feature.properties?.id);
       const report = useMapStore.getState().reports.find((r) => String(r.id) === id);
       if (!report) return;
@@ -502,19 +498,36 @@ export default function MapViewGL() {
       setSelectedReport(report);
     };
 
+    // A single non-layer-scoped click handler that queries both layers
+    // together and only acts on the topmost hit. Two independent
+    // `map.on('click', layerId, ...)` bindings (the previous approach) each
+    // fire on their own layer's hit-test — when a POI and a report icon
+    // overlap (icon-allow-overlap is on for both), a single tap hit both,
+    // opening both popups and setting both selection states at once. The
+    // old DOM-marker implementation never had this problem because a real
+    // DOM click can only ever land on one topmost element.
+    const onMapClick = (e: maplibregl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, { layers: [POI_LAYER_ID, REPORTS_LAYER_ID] });
+      const top = features[0];
+      if (!top) return;
+      if (top.layer.id === POI_LAYER_ID) {
+        onObjectClick(top);
+      } else if (top.layer.id === REPORTS_LAYER_ID) {
+        onReportClick(top);
+      }
+    };
+
     const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
     const onLeave = () => { map.getCanvas().style.cursor = ''; };
 
-    map.on('click', POI_LAYER_ID, onObjectClick);
-    map.on('click', REPORTS_LAYER_ID, onReportClick);
+    map.on('click', onMapClick);
     map.on('mouseenter', POI_LAYER_ID, onEnter);
     map.on('mouseleave', POI_LAYER_ID, onLeave);
     map.on('mouseenter', REPORTS_LAYER_ID, onEnter);
     map.on('mouseleave', REPORTS_LAYER_ID, onLeave);
 
     return () => {
-      map.off('click', POI_LAYER_ID, onObjectClick);
-      map.off('click', REPORTS_LAYER_ID, onReportClick);
+      map.off('click', onMapClick);
       map.off('mouseenter', POI_LAYER_ID, onEnter);
       map.off('mouseleave', POI_LAYER_ID, onLeave);
       map.off('mouseenter', REPORTS_LAYER_ID, onEnter);

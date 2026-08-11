@@ -73,7 +73,6 @@ function TrafficFlowLayer({ map }: Props) {
     const b = map.getBounds();
     const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
     if (bbox === lastBoundsRef.current) return;
-    lastBoundsRef.current = bbox;
 
     try {
       const fields = '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}';
@@ -82,6 +81,14 @@ function TrafficFlowLayer({ map }: Props) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (requestId !== requestIdRef.current) return;
+      // Claimed BEFORE the fetch used to resolve — a transient network/HTTP
+      // error left lastBoundsRef holding the bbox, so every later debounced
+      // load for the same viewport short-circuited at the guard above and
+      // never re-fetched; fetchFailuresRef stopped incrementing and the
+      // circuit breaker could never trip, leaving traffic permanently blank
+      // for that viewport. Only mark it after a successful fetch so the next
+      // debounced load retries the failed viewport.
+      lastBoundsRef.current = bbox;
       fetchFailuresRef.current = 0;
 
       const incidents = (data?.incidents || []) as Array<{

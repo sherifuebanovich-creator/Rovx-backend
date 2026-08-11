@@ -293,19 +293,42 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return;
     }
 
+    // Unlike the normal report path (reports.service.ts#createReport — which
+    // is gated by checkReportLimit + a Redis per-user lock), this handler
+    // created a report via a raw prisma.report.create with zero of those
+    // protections and no cooldown of its own, so an authenticated socket
+    // could spam severity-5 HAZARD reports, flood the live map, and grow the
+    // reports table without bound. A 60s per-user cooldown (same Redis
+    // setnx pattern used everywhere else in this codebase) closes that hole.
     try {
+      const lockKey = `sos:cooldown:${userId}`;
+      let locked = true;
+      try {
+        locked = await this.redis.setnx(lockKey, '1', 60);
+      } catch (e) {
+        this.logger.warn(`Redis unavailable for SOS cooldown, proceeding without it: ${(e as Error).message}`);
+      }
+      if (!locked) {
+        return { success: false, error: 'SOS already triggered recently, wait a minute' };
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: { emergencyContacts: true },
       });
-      if (!user) return;
+      if (!user || user.isBanned) return { success: false, error: 'Not allowed' };
 
+      // Arbitrary unbounded user-controlled strings used to flow into the
+      // report description and every broadcast payload — cap it so a single
+      // (or repeated) trigger can't stuff the DB and every socket room with
+      // a megabyte of text.
+      const message = (data.message || '').toString().trim().slice(0, 200);
       const sosAlert = {
         userId,
         userName: user.displayName,
         lat: data.lat,
         lng: data.lng,
-        message: data.message || 'EMERGENCY: SOS Triggered!',
+        message: message || 'EMERGENCY: SOS Triggered!',
         timestamp: Date.now(),
       };
 
@@ -340,7 +363,12 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       });
 
       this.logger.warn(`SOS Triggered by user ${userId} at ${data.lat}, ${data.lng}`);
-      return { success: true, alertedContacts: user.emergencyContacts.length };
+      // The previous `alertedContacts: N` implied the user's emergency
+      // contacts were actually notified — they never were (EmergencyContact
+      // rows only hold a name/phone with no in-app delivery channel, and no
+      // SMS/push path exists). Return the honest count instead so the
+      // client doesn't present "contacts alerted" that never happened.
+      return { success: true, emergencyContactsOnFile: user.emergencyContacts.length };
     } catch (err) {
       this.logger.error(`SOS handler failed for ${userId}: ${(err as Error).message}`);
       return { success: false, error: 'Failed to process SOS' };
@@ -459,8 +487,14 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.content?.trim() || !data.receiverId) return;
+    if (data.content.trim().length > 2000) return { error: 'Message too long' };
 
     try {
+      // Mirrors the group-message handler: don't let a banned user keep
+      // messaging from their revoked account.
+      const sender = await this.prisma.user.findUnique({ where: { id: userId }, select: { isBanned: true } });
+      if (!sender || sender.isBanned) return { error: 'Not allowed' };
+
       const receiver = await this.prisma.user.findUnique({ where: { id: data.receiverId }, select: { id: true } });
       if (!receiver) return { error: 'Receiver not found' };
 
@@ -497,10 +531,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (data.content && data.content.trim().length > 2000) return { error: 'Message too long' };
 
     try {
-      const member = await this.prisma.groupMember.findFirst({
-        where: { groupId: data.groupId, userId },
-      });
-      if (!member || member.isBanned) return { error: 'Not a member' };
+      const member = await this.getActiveGroupMember(data.groupId, userId);
+      if (!member) return { error: 'Not a member' };
 
       const message = await this.prisma.groupMessage.create({
         data: {
@@ -539,10 +571,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     // typing-indicator leak between users who share no group.
     if (!userId || !data?.groupId) return;
 
-    const member = await this.prisma.groupMember.findFirst({
-      where: { groupId: data.groupId, userId },
-    });
-    if (!member || member.isBanned) return;
+    const member = await this.getActiveGroupMember(data.groupId, userId);
+    if (!member) return;
 
     client.to(`group:${data.groupId}`).emit('group:typing', {
       userId,
@@ -559,10 +589,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!userId) return;
 
     try {
-      const member = await this.prisma.groupMember.findFirst({
-        where: { groupId: data.groupId, userId },
-      });
-      if (!member || member.isBanned) return;
+      const member = await this.getActiveGroupMember(data.groupId, userId);
+      if (!member) return;
 
       const msg = await this.prisma.groupMessage.findUnique({ where: { id: data.messageId } });
       if (!msg || msg.groupId !== data.groupId || msg.senderId === userId) return;
@@ -593,10 +621,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!userId) return;
 
     try {
-      const member = await this.prisma.groupMember.findFirst({
-        where: { groupId: data.groupId, userId },
-      });
-      if (!member || member.isBanned) return;
+      const member = await this.getActiveGroupMember(data.groupId, userId);
+      if (!member) return;
 
       // Plain findUnique-then-update was a read-modify-write race: two users
       // reacting within milliseconds both read the same row, and the second
@@ -710,6 +736,18 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
+  // Shared by the group message/typing/reaction/call-end handlers below,
+  // which all need the identical "is this user an active (non-banned)
+  // member of this group" check before letting them act on it. Previously
+  // each handler hand-rolled its own `findFirst` + `!member || member.isBanned`
+  // check; factoring it here means the next new handler can't reintroduce
+  // the banned-member bypass this file's other fixes closed by simply
+  // forgetting to repeat the inline check.
+  private async getActiveGroupMember(groupId: string, userId: string) {
+    const member = await this.prisma.groupMember.findFirst({ where: { groupId, userId } });
+    return member && !member.isBanned ? member : null;
+  }
+
   /** True if `userId` and `otherUserId` are accepted friends or share at least one (non-banned) group. */
   private async areUsersConnected(userId: string, otherUserId: string): Promise<boolean> {
     if (userId === otherUserId) return true;
@@ -804,10 +842,8 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       // banned member's ability to act in/on the group; this was the one
       // place that didn't, letting a banned member keep tearing down the
       // group's active call.
-      const member = await this.prisma.groupMember.findFirst({
-        where: { groupId: data.groupId, userId },
-      });
-      if (!member || member.isBanned) return;
+      const member = await this.getActiveGroupMember(data.groupId, userId);
+      if (!member) return;
       this.server.to(`group:${data.groupId}`).emit('voice:end', { userId });
     } else if (data.targetUserId) {
       if (!(await this.areUsersConnected(userId, data.targetUserId))) return;

@@ -21,11 +21,15 @@ export class FuelController {
   @Post('estimate')
   @ApiOperation({ summary: 'Quick estimate without saving' })
   estimate(@Body() dto: any) {
-    this.validateFuelDto(dto);
+    // `requireNames: false` — unlike /calculate, this never reaches
+    // calculateAndSave()'s Prisma write, so originName/destName aren't
+    // needed; requiring them here rejected coords-only quick-estimate
+    // requests that previously worked.
+    this.validateFuelDto(dto, false);
     return this.fuelService.calculate(dto);
   }
 
-  private validateFuelDto(dto: any) {
+  private validateFuelDto(dto: any, requireNames = true) {
     if (!dto || typeof dto !== 'object') throw new BadRequestException('Invalid request body');
     const coords = ['originLat', 'originLng', 'destLat', 'destLng'];
     for (const key of coords) {
@@ -42,12 +46,16 @@ export class FuelController {
     }
     // originName/destName are non-nullable columns on FuelCalculation — a
     // missing/non-string value here used to reach calculateAndSave() and
-    // fail as an unhandled Prisma error (raw 500) instead of a 400.
-    if (typeof dto.originName !== 'string' || !dto.originName.trim()) {
-      throw new BadRequestException('originName is required');
-    }
-    if (typeof dto.destName !== 'string' || !dto.destName.trim()) {
-      throw new BadRequestException('destName is required');
+    // fail as an unhandled Prisma error (raw 500) instead of a 400. Only
+    // /calculate persists via calculateAndSave; /estimate never touches
+    // this table, so it opts out via requireNames=false.
+    if (requireNames) {
+      if (typeof dto.originName !== 'string' || !dto.originName.trim()) {
+        throw new BadRequestException('originName is required');
+      }
+      if (typeof dto.destName !== 'string' || !dto.destName.trim()) {
+        throw new BadRequestException('destName is required');
+      }
     }
     // Unvalidated, these feed fuelConsumed/fuelCost arithmetic directly —
     // a non-numeric value silently produced NaN (truthy strings pass the

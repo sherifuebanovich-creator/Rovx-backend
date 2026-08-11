@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { XsollaService } from './xsolla.service';
 import { LemonSqueezyService } from './lemon-squeezy.service';
@@ -100,8 +101,21 @@ export class PremiumService {
   // days the moment the webhook fires. `user.subscriptionEnd` (not the
   // shared, checkout-mutated `premiumSubscription` row) is the only
   // reliable "currently entitled until" signal — see getMySubscription.
-  private async extendedEndDate(userId: string, months: number): Promise<Date> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { subscriptionEnd: true } });
+  // Accepts an optional interactive-transaction client so callers that hold
+  // a row lock (e.g. approvePayment's `SELECT ... FOR UPDATE`) can read
+  // subscriptionEnd through that same transaction/connection instead of a
+  // fresh `this.prisma` connection — reading outside the lock let a
+  // concurrent grant (a webhook landing mid-transaction) write
+  // subscriptionEnd in between the read and this transaction's own
+  // tx.user.update, and get silently overwritten by this transaction's
+  // stale-based endDate, losing whatever time that concurrent payment paid
+  // for.
+  private async extendedEndDate(
+    userId: string,
+    months: number,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ): Promise<Date> {
+    const user = await db.user.findUnique({ where: { id: userId }, select: { subscriptionEnd: true } });
     const now = new Date();
     const base = user?.subscriptionEnd && user.subscriptionEnd > now ? user.subscriptionEnd : now;
     return new Date(base.getTime() + 30 * months * 24 * 60 * 60 * 1000);
@@ -236,6 +250,16 @@ export class PremiumService {
       }
 
       if (status === 'done') {
+        if (!transactionId) {
+          // transactionId feeds a required, non-nullable ProcessedPayment.transactionId
+          // column below — writing it as undefined throws a PrismaClientValidationError
+          // (not the P2002 the redelivery-guard below expects), which was left uncaught
+          // and propagated as an unhandled 500. Xsolla retries on any non-2xx response,
+          // so that turned a malformed webhook into an infinite retry loop that never
+          // grants the subscription. Reject cleanly instead.
+          this.logger.warn(`Xsolla payment webhook missing transaction.id for user ${userId}`);
+          return { received: true };
+        }
         // The `status === 'active' && paymentId === transactionId` check
         // below only catches a redelivery of a transaction whose FIRST
         // delivery has already committed — it does nothing for two
@@ -302,8 +326,6 @@ export class PremiumService {
           this.logger.error(`Xsolla payment ${transactionId} REJECTED: paid ${paidAmount} does not cover tier ${tierName || 'unknown'} x${months}mo for user ${userId}`);
           return { received: true };
         }
-        const endDate = await this.extendedEndDate(userId, months);
-
         // The `existingSub.paymentId === transactionId` check above only
         // guards against a redelivery arriving after premium_subscriptions
         // still holds THIS transaction's id — but any other checkout (this
@@ -315,10 +337,30 @@ export class PremiumService {
         // dedicated ledger, inside the same DB transaction as the grant, is
         // immune to that: the unique constraint catches the redelivery
         // regardless of what premium_subscriptions currently holds.
+        //
+        // This is now an interactive transaction (not the previous
+        // array-form `$transaction([...])`) that FOR-UPDATE-locks the user's
+        // subscription row — same lock approvePayment already takes — and
+        // only reads subscriptionEnd (via extendedEndDate's `tx` parameter)
+        // after acquiring it. Array-form transactions can't branch/read
+        // mid-transaction, so the previous code computed `endDate` from a
+        // plain, unlocked `this.prisma` read before the transaction even
+        // opened — a concurrent grant for this same user (a different
+        // provider's webhook, or a bank-transfer approval) could write
+        // subscriptionEnd in between that read and this write, and get
+        // silently overwritten by this stale-based endDate. Locking here
+        // closes that race for every grant path that also locks (all four
+        // now do — see handleLemonSqueezyWebhook, handleStripeWebhook,
+        // approvePayment).
         try {
-          await this.prisma.$transaction([
-            this.prisma.processedPayment.create({ data: { provider: 'xsolla', transactionId, userId } }),
-            this.prisma.premiumSubscription.upsert({
+          await this.prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
+
+            await tx.processedPayment.create({ data: { provider: 'xsolla', transactionId, userId } });
+
+            const endDate = await this.extendedEndDate(userId, months, tx);
+
+            await tx.premiumSubscription.upsert({
               where: { userId },
               create: {
                 userId,
@@ -344,12 +386,12 @@ export class PremiumService {
                 price: body.purchase?.checkout?.amount || tier.price,
                 paymentId: transactionId,
               },
-            }),
-            this.prisma.user.update({
+            });
+            await tx.user.update({
               where: { id: userId },
               data: { subscription: tierName, subscriptionEnd: endDate },
-            }),
-          ]);
+            });
+          });
         } catch (err: any) {
           if (err?.code === 'P2002') {
             this.logger.log(`Xsolla payment ${transactionId} already processed (ledger) — skipping`);
@@ -477,6 +519,15 @@ export class PremiumService {
         this.logger.warn('Lemon Squeezy webhook missing user_id in custom data');
         return { received: true };
       }
+      if (!orderId) {
+        // Without a real orderId, `String(orderId)` below would write the
+        // literal string "undefined" into the (provider, transactionId)
+        // ledger — a second, unrelated malformed webhook would then collide
+        // on that same ("lemon-squeezy", "undefined") key and be misread as
+        // an already-processed redelivery, silently dropping a real payment.
+        this.logger.warn('Lemon Squeezy webhook missing order id in payload');
+        return { received: true };
+      }
 
       const existingSub = await this.prisma.premiumSubscription.findUnique({ where: { userId } });
       if (existingSub?.status === 'active' && orderId && existingSub.paymentId === String(orderId)) {
@@ -507,19 +558,26 @@ export class PremiumService {
         this.logger.error(`Lemon Squeezy order ${orderId} REJECTED: paid ${paidAmount} does not cover tier ${tierName || 'unknown'} for user ${userId}`);
         return { received: true };
       }
-      const endDate = await this.extendedEndDate(userId, 1);
-
       // See the matching comment in handleWebhook (Xsolla) above — the
       // `existingSub.paymentId === String(orderId)` check a few lines up
       // only catches a redelivery landing while premium_subscriptions still
       // holds THIS order's id; any other checkout for this user (any
       // provider, or a pending bank transfer) clobbers that row first and
       // silently defeats it. Claim (provider, orderId) in the durable ledger
-      // inside the same DB transaction as the grant instead.
+      // inside the same DB transaction as the grant instead. Also FOR-UPDATE
+      // locks the user's subscription row (same as Xsolla/Stripe/
+      // approvePayment) so `extendedEndDate`'s read happens after the lock
+      // is held, closing the same cross-provider stale-read race described
+      // in handleWebhook's comment above.
       try {
-        await this.prisma.$transaction([
-          this.prisma.processedPayment.create({ data: { provider: 'lemon-squeezy', transactionId: String(orderId), userId } }),
-          this.prisma.premiumSubscription.upsert({
+        await this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
+
+          await tx.processedPayment.create({ data: { provider: 'lemon-squeezy', transactionId: String(orderId), userId } });
+
+          const endDate = await this.extendedEndDate(userId, 1, tx);
+
+          await tx.premiumSubscription.upsert({
             where: { userId },
             create: {
               userId,
@@ -548,12 +606,12 @@ export class PremiumService {
               price: orderData?.total ? orderData.total / 100 : tier.price,
               paymentId: orderId,
             },
-          }),
-          this.prisma.user.update({
+          });
+          await tx.user.update({
             where: { id: userId },
             data: { subscription: tierName, subscriptionEnd: endDate },
-          }),
-        ]);
+          });
+        });
       } catch (err: any) {
         if (err?.code === 'P2002') {
           this.logger.log(`Lemon Squeezy order ${orderId} already processed (ledger) — skipping`);
@@ -667,23 +725,31 @@ export class PremiumService {
         return;
       }
 
-      const endDate = await this.extendedEndDate(userId, 1);
-
       // See the matching comment in handleWebhook (Xsolla) above — claim
       // (provider, paymentId) in the durable ledger inside the same DB
       // transaction as the grant, so a redelivery is caught even if another
       // checkout (any provider) clobbered premium_subscriptions.paymentId
-      // in the meantime.
+      // in the meantime. Also FOR-UPDATE locks the user's subscription row
+      // (same as Xsolla/Lemon Squeezy/approvePayment) so `extendedEndDate`'s
+      // read happens after the lock is held, closing the same cross-provider
+      // stale-read race described in handleWebhook's comment above. Returns
+      // the computed endDate for the Telegram notification below.
+      let endDate: Date;
       try {
-        await this.prisma.$transaction([
-          this.prisma.processedPayment.create({ data: { provider: 'stripe', transactionId: paymentId, userId } }),
-          this.prisma.premiumSubscription.upsert({
+        endDate = await this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
+
+          await tx.processedPayment.create({ data: { provider: 'stripe', transactionId: paymentId, userId } });
+
+          const computedEndDate = await this.extendedEndDate(userId, 1, tx);
+
+          await tx.premiumSubscription.upsert({
             where: { userId },
             create: {
               userId,
               tier: tier.tier,
               levelName: tier.name,
-              endDate,
+              endDate: computedEndDate,
               price: tier.price,
               currency: 'USD',
               status: 'active',
@@ -694,7 +760,7 @@ export class PremiumService {
               status: 'active',
               tier: tier.tier,
               levelName: tier.name,
-              endDate,
+              endDate: computedEndDate,
               // Stripe has no pre-webhook "pending" write (unlike Xsolla/Lemon
               // Squeezy's createCheckoutSession/createLemonSqueezyCheckout,
               // which upsert `price` at checkout-initiation time) — this
@@ -708,12 +774,14 @@ export class PremiumService {
               price: tier.price,
               paymentId,
             },
-          }),
-          this.prisma.user.update({
+          });
+          await tx.user.update({
             where: { id: userId },
-            data: { subscription: tierName, subscriptionEnd: endDate },
-          }),
-        ]);
+            data: { subscription: tierName, subscriptionEnd: computedEndDate },
+          });
+
+          return computedEndDate;
+        });
       } catch (err: any) {
         if (err?.code === 'P2002') {
           this.logger.log(`Stripe payment ${paymentId} already processed (ledger) — skipping`);
@@ -920,7 +988,7 @@ export class PremiumService {
           `🔢 Последние 4 цифры карты: <b>${proof}</b>\n` +
           `⏳ Статус: <b>Ожидает подтверждения</b>\n\n` +
           `🆔 <code>${userId}</code>`;
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -938,6 +1006,23 @@ export class PremiumService {
           }),
           signal: AbortSignal.timeout(10000),
         });
+        // The approve/reject buttons above only carry `userId`, not which
+        // specific pending payment (paymentId) they were sent for — Telegram
+        // caps callback_data at 64 bytes, too small to also fit the paymentId
+        // safely. Instead, remember which paymentId THIS message's buttons
+        // refer to, keyed by Telegram's own message_id, so approvePayment/
+        // rejectPayment can detect a stale button: one whose payment has
+        // since been superseded by a newer submission for the same user
+        // (confirmDirectPayment upserts the same row again with a fresh
+        // paymentId) before this button was pressed. 30-day TTL comfortably
+        // outlives any realistic admin review delay; a missing/expired entry
+        // just means the staleness check is skipped (fail open), same as
+        // this file's other best-effort Redis usage (see the Xsolla lock).
+        const json: any = await res.json().catch(() => null);
+        const messageId = json?.result?.message_id;
+        if (messageId) {
+          await this.redis.set(`telegram:payment-msg:${messageId}`, paymentId, 30 * 24 * 60 * 60);
+        }
       }
     } catch (e) {
       this.logger.warn(`Failed to send admin payment notification: ${e}`);
@@ -967,7 +1052,7 @@ export class PremiumService {
       // payment provider's grant logic (extendedEndDate, see its own
       // comment). A user renewing early or upgrading tier via bank transfer
       // lost whatever they'd already paid for.
-      const endDate = await this.extendedEndDate(userId, 1);
+      const endDate = await this.extendedEndDate(userId, 1, tx);
 
       await tx.premiumSubscription.update({
         where: { userId },
@@ -991,13 +1076,27 @@ export class PremiumService {
         return { success: false, message: 'Нет ожидающего платежа' };
       }
 
+      // confirmDirectPayment deliberately allows early renewals / tier
+      // upgrades while a subscription is still active (see its comment), so
+      // the pending row this payment created may sit on top of time the user
+      // already paid for. Rejecting it must only drop the pending payment —
+      // unconditionally resetting the user to FREE/null (the previous code)
+      // threw away the remaining days/weeks of an existing subscription,
+      // while approvePayment for the same situation preserves that time via
+      // extendedEndDate. The user's subscription/subscriptionEnd row is only
+      // ever written by a confirmed grant, so it still reflects the last
+      // genuinely-paid tier; leave it alone unless it's already expired.
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { subscriptionEnd: true } });
       await tx.premiumSubscription.delete({ where: { userId } });
-      await tx.user.update({
-        where: { id: userId },
-        data: { subscription: 'FREE', subscriptionEnd: null },
-      });
+      const stillEntitled = !!user?.subscriptionEnd && user.subscriptionEnd > new Date();
+      if (!stillEntitled) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { subscription: 'FREE', subscriptionEnd: null },
+        });
+      }
 
-      return { success: true, message: `Платёж отклонён, подписка сброшена` };
+      return { success: true, message: stillEntitled ? `Платёж отклонён, текущая подписка сохранена` : `Платёж отклонён, подписка сброшена` };
     });
   }
 

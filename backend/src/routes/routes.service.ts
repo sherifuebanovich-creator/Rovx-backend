@@ -439,7 +439,11 @@ export class RoutesService {
         where: { id: userId },
         data: {
           totalTrips: { increment: 1 },
-          totalDistance: { increment: stats.distance || trip.distance || 0 },
+          // `||` would treat a legitimate 0 (e.g. GPS never registered
+          // movement before cancel) as missing and fall back to the trip's
+          // originally-planned distance, inflating totalDistance/leaderboard
+          // stats for a trip that covered no real distance.
+          totalDistance: { increment: typeof stats.distance === 'number' ? stats.distance : (trip.distance || 0) },
         },
         select: { totalTrips: true, totalDistance: true, driverScore: true, reputation: true },
       });

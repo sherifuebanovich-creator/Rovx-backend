@@ -618,6 +618,23 @@ export class ReportsService {
       throw new ForbiddenException('Cannot delete this report');
     }
     await this.prisma.report.delete({ where: { id } });
+    // Creating a report grants +5 reputation (createReportRecord) but
+    // deleting it used to revoke nothing — a user could create→delete in a
+    // loop (the 60s create-lock is the only brake) to farm unlimited
+    // reputation and climb the leaderboard. Reverting the grant keeps the
+    // two sides symmetric. Only applies to reports that were still ACTIVE
+    // (never confirmed/rejected): a CONFIRMED report already netted +10 at
+    // vote time on top of the +5, so a later delete shouldn't claw back more
+    // than what creation granted.
+    if (report.status === ReportStatus.ACTIVE) {
+      const owner = await this.prisma.user.findUnique({ where: { id: report.userId }, select: { reputation: true } });
+      if (owner && owner.reputation > 0) {
+        await this.prisma.user.update({
+          where: { id: report.userId },
+          data: { reputation: Math.max(0, owner.reputation - 5) },
+        });
+      }
+    }
     return { deleted: true };
   }
 

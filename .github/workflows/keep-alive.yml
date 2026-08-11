@@ -10,6 +10,14 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch: {}
 
+# A worst-case retry run (--retry-max-time 780 below, ~13min) outlives the
+# 10-minute cron interval, so without this the next scheduled run can start
+# while the previous one is still retrying — two runs hammering the same
+# waking instance at once and burning CI minutes twice for one wake cycle.
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
 jobs:
   ping:
     runs-on: ubuntu-latest

@@ -37,6 +37,15 @@ export default function VoiceChat() {
   // connection/stream, leaking the first (mic indicator stuck on, orphaned
   // RTCPeerConnection).
   const isConnectingRef = useRef(false);
+  // Live mirror of isInCall. The incoming-call toast captures the acceptCall
+  // (and its isInCall guard) from the render that created it; if the user
+  // started a *different* call before tapping that old toast's Accept
+  // button, the stale closure still saw isInCall === false and let the click
+  // create a second RTCPeerConnection — overwriting peerIdRef/pcRef, orphaning
+  // the active call's PC (never closed, mic still held), and breaking audio.
+  // Refs always read the live state, so the guard works regardless of which
+  // render the button was captured in.
+  const inCallRef = useRef(false);
   // endCall is defined further down (it needs targetUserId/groupId), but
   // createPeerConnection needs to call it from an ICE state handler — a
   // ref avoids a circular useCallback dependency.
@@ -73,9 +82,23 @@ export default function VoiceChat() {
     // or drop mid-call while the UI kept showing "connected" indefinitely,
     // with no path back to endCall().
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+      // Only `failed` (and `closed`) are terminal in WebRTC — `disconnected`
+      // means ICE temporarily can't reach the peer and routinely recovers
+      // (ICE restart / the next connectivity check), e.g. a mobile user
+      // switching between cell towers. Tearing the call down on the first
+      // transient `disconnected` killed otherwise-fine calls; give it a
+      // grace period, then only end if it's STILL disconnected (not, say,
+      // reconnected mid-wait) and this is still the current connection.
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
         toast.error('Соединение прервано');
         endCallRef.current();
+      } else if (pc.iceConnectionState === 'disconnected') {
+        setTimeout(() => {
+          if (pcRef.current === pc && pc.iceConnectionState === 'disconnected') {
+            toast.error('Соединение прервано');
+            endCallRef.current();
+          }
+        }, 3000);
       }
     };
 
@@ -122,6 +145,7 @@ export default function VoiceChat() {
       setRemoteUser(targetName);
       durationRef.current = 0;
       setCallDuration(0);
+      inCallRef.current = true;
 
       timerRef.current = setInterval(() => {
         durationRef.current += 1;
@@ -165,6 +189,7 @@ export default function VoiceChat() {
     setRemoteUser(null);
     setCallDuration(0);
     durationRef.current = 0;
+    inCallRef.current = false;
   }, []);
   endCallRef.current = endCall;
 
@@ -193,7 +218,7 @@ export default function VoiceChat() {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail;
       if (!data) return;
-      if (isInCall) {
+      if (inCallRef.current) {
         // Previously just returned — the caller's UI was left showing
         // "calling..." with a running timer indefinitely, with no signal
         // telling them the line was busy (mirrors the decline path below,
@@ -227,12 +252,23 @@ export default function VoiceChat() {
     };
 
     const acceptCall = async (data: any) => {
-      if (isConnectingRef.current || isInCall) return;
+      if (isConnectingRef.current || inCallRef.current) return;
       isConnectingRef.current = true;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
+        // Mirrors startCall's guard: if the socket dropped between the
+        // incoming-call toast and the Accept click, emitting 'accepted' goes
+        // nowhere and both sides end up in a "connected-looking" call with no
+        // offer/answer ever exchanged and no audio. Bail out (releasing the
+        // just-obtained mic stream) instead of entering the in-call UI.
+        const socket = getSocket();
+        if (!socket?.connected) {
+          toast.error('Нет соединения');
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
         localStreamRef.current = stream;
         peerIdRef.current = data.callerId;
         createPeerConnection(data.callerId);
@@ -241,14 +277,14 @@ export default function VoiceChat() {
         setRemoteUser(data.callerName);
         durationRef.current = 0;
         setCallDuration(0);
+        inCallRef.current = true;
 
         timerRef.current = setInterval(() => {
           durationRef.current += 1;
           setCallDuration(durationRef.current);
         }, 1000);
 
-        const socket = getSocket();
-        socket?.emit('voice:signal', {
+        socket.emit('voice:signal', {
           targetUserId: data.callerId,
           signal: { type: 'accepted' },
         });
@@ -357,7 +393,17 @@ export default function VoiceChat() {
 
   // Listen for call end
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      const fromUserId = data?.userId;
+      // The backend relays voice:end with the sender's id (the one who hung
+      // up). A delayed/stale voice:end from a previously ended or declined
+      // call arriving after the user started a *new* call used to kill the
+      // new call and show a spurious "Звонок завершён" — mirror the
+      // voice:signal handler's peer guard. Fail open when the payload lacks
+      // a userId (no peer to compare against).
+      if (peerIdRef.current && fromUserId && fromUserId !== peerIdRef.current) return;
+      if (!peerIdRef.current) return;
       endCall();
       toast('Звонок завершён');
     };

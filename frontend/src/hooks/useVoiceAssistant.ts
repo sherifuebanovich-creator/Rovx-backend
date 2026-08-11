@@ -902,7 +902,13 @@ function playAudioBlob(audioBlob: Blob, currentAudioRef: MutableRefObject<HTMLAu
     };
     audio.onended = cleanup;
     audio.onerror = cleanup;
-    audio.play();
+    // A blocked `play()` (autoplay policy → NotAllowedError) rejects its
+    // promise but fires neither `error` nor `ended`, so without handling
+    // the rejection `cleanup` never ran: the promise never settled,
+    // speak() hung at `await playAudioBlob(...)`, and isSpeaking stayed
+    // stuck true forever (the 🔊 "Говорит..." indicator, per failed speak).
+    // Also revokes the blob URL on the failure path instead of leaking it.
+    audio.play().then(() => {}).catch(cleanup);
   });
 }
 
@@ -912,6 +918,15 @@ export function useVoiceAssistant() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
+  // Tracks whether the most recent recognition result was final. onend fires
+  // (and setIsListening(false) runs) both after a proper final result AND
+  // when the user taps stop mid-utterance / recognition aborts — in the
+  // latter case the last transcript is only an interim fragment, and
+  // dispatching it as a real voice command made the assistant act on
+  // truncated speech (see AiAssistantPanel's `transcript && !isListening`).
+  // onend clears the transcript unless the last result was final, so that
+  // effect has nothing to fire on for an interrupted utterance.
+  const finalResultRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastInstructionRef = useRef('');
   const voicesLoadedRef = useRef(false);
@@ -1020,15 +1035,25 @@ export function useVoiceAssistant() {
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = true;
     recognitionRef.current.maxAlternatives = 1;
-    recognitionRef.current.onstart = () => { setIsListening(true); setTranscript(''); };
+    recognitionRef.current.onstart = () => { setIsListening(true); setTranscript(''); finalResultRef.current = false; };
     recognitionRef.current.onresult = (event: any) => {
       const last = event.results.length - 1;
+      const isFinal = event.results[last].isFinal;
       const text = event.results[last][0].transcript;
       setTranscript(text);
-      if (event.results[last].isFinal) setIsListening(false);
+      if (isFinal) {
+        finalResultRef.current = true;
+        setIsListening(false);
+      }
     };
     recognitionRef.current.onerror = () => setIsListening(false);
-    recognitionRef.current.onend = () => setIsListening(false);
+    recognitionRef.current.onend = () => {
+      setIsListening(false);
+      // Only clear an interrupted (non-final) transcript — a final result
+      // must survive onend so AiAssistantPanel can process it.
+      if (!finalResultRef.current) setTranscript('');
+      finalResultRef.current = false;
+    };
     recognitionRef.current.start();
   }, [langCfg.speechLang]);
 

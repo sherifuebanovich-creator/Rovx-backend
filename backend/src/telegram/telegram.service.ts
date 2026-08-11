@@ -157,6 +157,14 @@ export class TelegramService {
     }
   }
 
+  // `buttons === undefined` leaves the message's existing keyboard alone
+  // (Telegram's editMessageText only touches reply_markup when the field is
+  // present in the payload); pass `[]` explicitly to clear it. Previously
+  // this only ever set reply_markup for a non-empty array, so there was no
+  // way for a caller to remove an existing keyboard (e.g. disabling a
+  // one-time-use approve/reject button after it's been acted on) — callers
+  // needed `editMessageReplyMarkup` with an empty inline_keyboard, which
+  // didn't exist here.
   async editMessageText(chatId: number, messageId: number, text: string, buttons?: Array<{ text: string; callback_data: string } | Array<{ text: string; callback_data: string }>>) {
     if (!this.botToken) return;
     try {
@@ -167,7 +175,7 @@ export class TelegramService {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       };
-      if (buttons && buttons.length > 0) {
+      if (buttons !== undefined) {
         payload.reply_markup = { inline_keyboard: buttons.map(b => Array.isArray(b) ? b : [b]) };
       }
       await axios.post(`https://api.telegram.org/bot${this.botToken}/editMessageText`, payload, { timeout: 15000 });

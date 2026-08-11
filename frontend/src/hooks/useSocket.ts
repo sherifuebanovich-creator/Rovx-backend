@@ -12,6 +12,14 @@ let socketInstance: Socket | null = null;
 // server. Track the last city joined so it can be rejoined automatically
 // whenever the socket (re)connects, instead of only on the initial mount.
 let lastJoinedCity: string | null = null;
+// The same reconnect problem hits the user's location/area subscriptions:
+// socket.io clears the socket's rooms on disconnect, and the backend's
+// location:update/subscribe:area handlers rebuild `area:*` membership from
+// these events. The location effect below only runs when the coords change,
+// so a stationary user never re-registers after a reconnect and silently
+// drops off the live map / friend-location broadcasts until they move.
+// lastLocation mirrors lastJoinedCity so the 'connect' handler can replay it.
+let lastLocation: { lat: number; lng: number } | null = null;
 // The token the current socketInstance was last (re)connected with — a
 // mutable module-level value rather than a captured `const` so the
 // mismatch check below doesn't need a new closure (and therefore a whole
@@ -73,6 +81,10 @@ export function useSocket() {
       }
       if (lastJoinedCity) {
         socketInstance?.emit('city:join', { city: lastJoinedCity });
+      }
+      if (lastLocation) {
+        socketInstance?.emit('location:update', { lat: lastLocation.lat, lng: lastLocation.lng });
+        socketInstance?.emit('subscribe:area', { lat: lastLocation.lat, lng: lastLocation.lng, radius: 20 });
       }
     });
 
@@ -245,6 +257,7 @@ export function useSocket() {
     const now = Date.now();
     if (now - lastSocketUpdateRef.current < 5000) return;
     lastSocketUpdateRef.current = now;
+    lastLocation = { lat: userLocationLat, lng: userLocationLng };
     updateLocation(userLocationLat, userLocationLng);
     subscribeToArea(userLocationLat, userLocationLng);
   }, [userLocationLat, userLocationLng, updateLocation, subscribeToArea]);

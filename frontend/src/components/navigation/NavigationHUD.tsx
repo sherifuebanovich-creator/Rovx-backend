@@ -105,7 +105,14 @@ export function NavigationHUD() {
         const rem = userLocation && selectedRoute
           ? getRemainingDistance(userLocation.lat, userLocation.lng, selectedRoute.polyline)
           : 0;
-        const traveled = selectedRoute ? selectedRoute.distance - rem / 1000 : 0;
+        // Clamp to 0 — `selectedRoute.distance` (backend/OSRM total, rounded)
+        // and `rem` (frontend Haversine remaining-along-polyline) are computed
+        // independently and routinely disagree by a few meters, so an early
+        // cancel/arrival can make this go slightly negative. The backend
+        // rejects a negative `distance` with a 400, which endTrip's own
+        // `catch {}` below swallows — silently leaving the trip stuck at
+        // status: 'active' forever instead of completing with 0 traveled.
+        const traveled = selectedRoute ? Math.max(0, selectedRoute.distance - rem / 1000) : 0;
         const res = await routesApi.endTrip(activeTrip, {
           distance: traveled,
           duration: 0,
