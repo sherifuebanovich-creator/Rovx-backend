@@ -180,7 +180,7 @@ export class UsersService {
   // UserPreference columns closes that off.
   private static readonly PREFERENCE_FIELDS = [
     'avoidTolls', 'avoidHighways', 'avoidFerries', 'preferScenicRoutes',
-    'nightMode', 'voiceEnabled', 'voiceLanguage', 'voiceVolume',
+    'nightMode', 'voiceEnabled', 'voiceGender', 'voiceLanguage', 'voiceVolume',
     'speedAlerts', 'cameraAlerts', 'trafficAlerts', 'hazardAlerts',
     'restStopInterval', 'fuelWarningLevel', 'units', 'mapStyle', 'defaultRouteType',
     'limitTrafficSignalsRadius',

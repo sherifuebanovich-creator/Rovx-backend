@@ -319,6 +319,7 @@ export interface UserPreferences {
   nightMode: boolean;
   voiceEnabled: boolean;
   voiceLanguage: string;
+  voiceGender: 'MALE' | 'FEMALE';
   voiceVolume: number;
   speedAlerts: boolean;
   cameraAlerts: boolean;

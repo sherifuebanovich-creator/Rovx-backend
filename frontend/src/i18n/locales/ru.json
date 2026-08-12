@@ -426,6 +426,7 @@
       "passwordLabel": "Пароль",
       "passwordPlaceholder": "Мин. 8 символов",
       "language": "Language / Язык",
+      "voiceGender": "Голос ассистента",
       "vehicleSection": "Ваше ТС",
       "car": "Авто",
       "truck": "Грузовик",
@@ -484,6 +485,9 @@
     "preferences": "Настройки",
     "notifications": "Уведомления",
     "sound": "Звук",
+    "voiceGender": "Голос",
+    "voiceGenderMale": "Мужской",
+    "voiceGenderFemale": "Женский",
     "darkMode": "Тема",
     "theme": {
       "light": "Светлая",

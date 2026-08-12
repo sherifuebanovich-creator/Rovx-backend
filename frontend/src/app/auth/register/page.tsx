@@ -24,6 +24,7 @@ export default function RegisterPage() {
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [form, setForm] = useState({
     email: '', username: '', displayName: '', password: '', lang: 'ru',
+    voiceGender: 'FEMALE' as 'MALE' | 'FEMALE',
     vehicleType: 'CAR' as VehicleType,
     vehicleMake: '', vehicleModel: '', vehicleYear: currentYear,
   });
@@ -125,6 +126,8 @@ export default function RegisterPage() {
           name: `${form.vehicleMake} ${form.vehicleModel}`,
         }).catch(() => {});
       }
+
+      usersApi.updatePreferences({ voiceGender: form.voiceGender }).catch(() => {});
 
       toast.success(t('auth.register.welcome'));
       router.push('/');
@@ -230,6 +233,28 @@ export default function RegisterPage() {
               <div>
                 <label htmlFor="register-lang" className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.language')}</label>
                 <LanguagePicker id="register-lang" value={form.lang} onChange={(code) => { setForm((p) => ({ ...p, lang: code })); i18n.changeLanguage(code); }} />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">{t('auth.register.voiceGender')}</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setForm((p) => ({ ...p, voiceGender: 'FEMALE' }))}
+                    className={`h-10 rounded-xl text-sm font-medium transition-all border ${
+                      form.voiceGender === 'FEMALE'
+                        ? 'bg-primary-600/30 border-primary-500/50 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                    }`}>
+                    {t('settings.voiceGenderFemale')}
+                  </button>
+                  <button type="button" onClick={() => setForm((p) => ({ ...p, voiceGender: 'MALE' }))}
+                    className={`h-10 rounded-xl text-sm font-medium transition-all border ${
+                      form.voiceGender === 'MALE'
+                        ? 'bg-primary-600/30 border-primary-500/50 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                    }`}>
+                    {t('settings.voiceGenderMale')}
+                  </button>
+                </div>
               </div>
 
               {/* Vehicle section */}

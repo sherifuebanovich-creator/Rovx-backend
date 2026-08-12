@@ -53,12 +53,70 @@ const VOICE_MAP: Record<string, string> = {
   am: 'am-ET-MekdesNeural',
 };
 
+// Verified against a live `edge-tts --list-voices` run in this repo's dev
+// environment (edge-tts 7.2.8) — every short-name below was confirmed to
+// exist and be tagged "Male" at that time. Four VOICE_MAP locales — ha
+// (Hausa), yo (Yoruba), ig (Igbo), hy (Armenian) — have NO corresponding
+// voice in edge-tts at all currently (not male, not female; this looks like
+// a pre-existing bug in VOICE_MAP itself, unrelated to gender support), so
+// they're intentionally left out here and fall back to the VOICE_MAP entry
+// regardless of requested gender rather than risk an invalid --voice value.
+const MALE_VOICE_MAP: Record<string, string> = {
+  ru: 'ru-RU-DmitryNeural',
+  en: 'en-US-GuyNeural',
+  uz: 'uz-UZ-SardorNeural',
+  kk: 'kk-KZ-DauletNeural',
+  tr: 'tr-TR-AhmetNeural',
+  de: 'de-DE-ConradNeural',
+  fr: 'fr-FR-HenriNeural',
+  es: 'es-ES-AlvaroNeural',
+  it: 'it-IT-DiegoNeural',
+  pt: 'pt-BR-AntonioNeural',
+  pl: 'pl-PL-MarekNeural',
+  nl: 'nl-NL-MaartenNeural',
+  sv: 'sv-SE-MattiasNeural',
+  da: 'da-DK-JeppeNeural',
+  nb: 'nb-NO-FinnNeural',
+  fi: 'fi-FI-HarriNeural',
+  cs: 'cs-CZ-AntoninNeural',
+  hu: 'hu-HU-TamasNeural',
+  ro: 'ro-RO-EmilNeural',
+  bg: 'bg-BG-BorislavNeural',
+  el: 'el-GR-NestorasNeural',
+  sr: 'sr-RS-NicholasNeural',
+  hr: 'hr-HR-SreckoNeural',
+  uk: 'uk-UA-OstapNeural',
+  ar: 'ar-SA-HamedNeural',
+  he: 'he-IL-AvriNeural',
+  hi: 'hi-IN-MadhurNeural',
+  bn: 'bn-IN-BashkarNeural',
+  ta: 'ta-IN-ValluvarNeural',
+  th: 'th-TH-NiwatNeural',
+  vi: 'vi-VN-NamMinhNeural',
+  id: 'id-ID-ArdiNeural',
+  ms: 'ms-MY-OsmanNeural',
+  tl: 'fil-PH-AngeloNeural',
+  zh: 'zh-CN-YunxiNeural',
+  ja: 'ja-JP-KeitaNeural',
+  ko: 'ko-KR-InJoonNeural',
+  az: 'az-AZ-BabekNeural',
+  ka: 'ka-GE-GiorgiNeural',
+  // hy: no edge-tts voice exists for hy-AM at all (see comment above) — falls back to VOICE_MAP.
+  sw: 'sw-KE-RafikiNeural',
+  // ha: no edge-tts voice exists for ha-NG at all (see comment above) — falls back to VOICE_MAP.
+  // yo: no edge-tts voice exists for yo-NG at all (see comment above) — falls back to VOICE_MAP.
+  // ig: no edge-tts voice exists for ig-NG at all (see comment above) — falls back to VOICE_MAP.
+  zu: 'zu-ZA-ThembaNeural',
+  am: 'am-ET-AmehaNeural',
+};
+
 @Injectable()
 export class TtsService {
   private readonly logger = new Logger(TtsService.name);
 
-  async synthesize(text: string, lang: string = 'ru'): Promise<Buffer> {
-    const voice = VOICE_MAP[lang] || VOICE_MAP.en || 'en-US-AriaNeural';
+  async synthesize(text: string, lang: string = 'ru', gender: string = 'FEMALE'): Promise<Buffer> {
+    const voice = (gender === 'MALE' ? MALE_VOICE_MAP[lang] : undefined)
+      || VOICE_MAP[lang] || VOICE_MAP.en || 'en-US-AriaNeural';
     const tmpFile = join(tmpdir(), `rovx_tts_${Date.now()}_${Math.random().toString(36).slice(2)}.mp3`);
 
     try {

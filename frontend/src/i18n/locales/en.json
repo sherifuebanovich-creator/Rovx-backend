@@ -451,6 +451,7 @@
       "passwordLabel": "Password",
       "passwordPlaceholder": "Min 8 characters",
       "language": "Language / Язык",
+      "voiceGender": "Assistant Voice",
       "vehicleSection": "Your Vehicle",
       "car": "Car",
       "truck": "Truck",
@@ -480,6 +481,9 @@
     "preferences": "Preferences",
     "notifications": "Notifications",
     "sound": "Sound",
+    "voiceGender": "Voice",
+    "voiceGenderMale": "Male",
+    "voiceGenderFemale": "Female",
     "darkMode": "Theme",
     "theme": {
       "light": "Light",

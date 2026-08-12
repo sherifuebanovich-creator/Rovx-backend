@@ -580,6 +580,21 @@ export class MapService {
   }
 
   private async fetchExternalResults(query: string, limit: number, lat?: number, lng?: number) {
+    // Unlike every other external-data call in this file (getApproxLocationFromIp,
+    // getOSMPOIs), this had no caching at all — every autocomplete keystroke
+    // (frontend debounces at 250ms) fired a fresh, uncached hit against Photon
+    // and its Nominatim fallback. Under real usage that trips their rate
+    // limiting, and with no cache every retry was a fresh roll of the dice —
+    // why search only "worked" intermittently, often needing several tries.
+    // Coarse-rounded lat/lng (like getOSMPOIs' ~1km grid) so nearby requests
+    // for the same text still share a cache entry; limit is included because
+    // searchObjects (limit=10) and getSuggestions (limit=8) both call this and
+    // neither slices/pads a cached result back to its own requested size.
+    const normalizedQuery = query.trim().toLowerCase();
+    const cacheKey = `extsearch:${normalizedQuery}:${lat?.toFixed(2) ?? ''}:${lng?.toFixed(2) ?? ''}:${limit}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
     // Photon only accepts lang=default|de|en|fr — "ru" is rejected with a 400
     // on every single call, silently forcing every search through the
     // Nominatim fallback (1 req/sec, weaker partial-match autocomplete),
@@ -597,6 +612,9 @@ export class MapService {
       const results = this.parsePhotonFeatures(response.data.features || [], query);
       if (results.length > 0) {
         this.logger.log(`Photon returned ${results.length} results`);
+        // Places don't move — cache successful results for a while so repeat
+        // and near-duplicate queries (every keystroke) don't re-hit Photon.
+        await this.redis.set(cacheKey, JSON.stringify(results), 900).catch(() => {});
         return results;
       }
       this.logger.warn('Photon returned 0 results, trying Nominatim');
@@ -613,7 +631,7 @@ export class MapService {
       }
       this.logger.log(`Nominatim fallback: ${nomUrl}`);
       const response = await axios.get(nomUrl, { timeout: 8000, headers: { 'User-Agent': 'RovxApp/1.0' } });
-      return (response.data || []).map((r: any) => {
+      const results = (response.data || []).map((r: any) => {
         const addrParts = [r.address?.road, r.address?.house_number, r.address?.city || r.address?.town, r.address?.state, r.address?.country].filter(Boolean);
         return {
           id: `nom-${r.place_id}`,
@@ -625,8 +643,19 @@ export class MapService {
           source: 'external',
         };
       });
+      // Non-empty: same longer success TTL as the Photon path above. Empty:
+      // a legitimate "no results for this query" shouldn't be cached for
+      // long, so it gets the same short negative-cache TTL as the throw path
+      // below instead of the 900s success TTL.
+      await this.redis.set(cacheKey, JSON.stringify(results), results.length > 0 ? 900 : 45).catch(() => {});
+      return results;
     } catch (e) {
       this.logger.error(`Nominatim failed: ${e instanceof Error ? e.message : String(e)}`);
+      // Both Photon and Nominatim failed — briefly negative-cache so a burst
+      // of retries during a rate-limited/outage window doesn't keep
+      // hammering both services, matching getOSMPOIs' 45s negative-cache
+      // pattern for the same failure mode.
+      await this.redis.set(cacheKey, JSON.stringify([]), 45).catch(() => {});
       return [];
     }
   }

@@ -868,6 +868,18 @@ function getVoiceByLang(voices: SpeechSynthesisVoice[], langCode: string): Speec
   return voices.find((v) => v.lang.startsWith(langCode)) || null;
 }
 
+// Browser SpeechSynthesisVoice objects don't expose a reliable gender field,
+// so this is a best-effort heuristic based on well-known male voice names
+// that show up in Chrome/Edge/Windows voice lists (Google/Microsoft TTS
+// engines). Only used by the browser-fallback path below — the primary
+// path is the backend TTS call, which is told the gender directly.
+const MALE_VOICE_NAME_PATTERN = /\bmale\b|\bdavid\b|\bguy\b|\bmark\b|\bdmitry\b|\bdaniel\b|\bpavel\b|\byuri\b|\bfilip\b|\bstefan\b|\bmatthew\b|\bbrian\b/i;
+
+function isMaleVoiceName(name: string): boolean {
+  if (/\bfemale\b/i.test(name)) return false;
+  return MALE_VOICE_NAME_PATTERN.test(name);
+}
+
 function pickBestVoice(voices: SpeechSynthesisVoice[], targetLang: string): SpeechSynthesisVoice | null {
   const langShort = targetLang.split('-')[0];
   const candidates = voices.filter((v) => v.lang.startsWith(langShort));
@@ -977,11 +989,12 @@ export function useVoiceAssistant() {
     }
     setIsSpeaking(true);
 
+    const voiceGender = useAuthStore.getState().preferences?.voiceGender || 'FEMALE';
     try {
       const response = await fetch(`${BASE_URL}/tts/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: normalizedText, lang }),
+        body: JSON.stringify({ text: normalizedText, lang, gender: voiceGender }),
       });
       if (!response.ok) throw new Error('TTS API error');
       const audioBlob = await response.blob();
@@ -995,7 +1008,18 @@ export function useVoiceAssistant() {
       if (requestId !== speakRequestIdRef.current) return;
       const utterance = new SpeechSynthesisUtterance(normalizedText);
       const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith(langCfg.voiceLang.split('-')[0]));
-      const best = voices.find(v => v.name.includes('Neural') || v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Microsoft'))
+      const qualityVoices = voices.filter(v => v.name.includes('Neural') || v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Microsoft'));
+      // Most default browser voices already skew female for most languages
+      // (e.g. Zira, Aria, Svetlana), so a male request is the only case that
+      // needs an extra pass — prefer a name-matched male voice among the
+      // quality-heuristic candidates, then among all matching-lang voices,
+      // before falling back to the existing name-only heuristic.
+      let best: SpeechSynthesisVoice | null = null;
+      if (voiceGender === 'MALE') {
+        best = qualityVoices.find(v => isMaleVoiceName(v.name)) || voices.find(v => isMaleVoiceName(v.name)) || null;
+      }
+      best = best
+        || qualityVoices[0]
         || voices[0]
         || pickBestVoice(window.speechSynthesis.getVoices(), langCfg.voiceLang);
       utterance.voice = best || null;

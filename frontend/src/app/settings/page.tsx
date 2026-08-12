@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const { themeMode, setDarkMode, setThemeMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
   const [notifications, setNotifications] = useState(preferences?.trafficAlerts ?? true);
   const [sound, setSound] = useState(preferences?.voiceEnabled ?? true);
+  const [voiceGender, setVoiceGender] = useState<'MALE' | 'FEMALE'>(preferences?.voiceGender ?? 'FEMALE');
   // Off by default — out of the box every traffic-signal icon shows,
   // regardless of distance; other icon types (cameras, hazards) are never
   // affected by this setting either way.
@@ -59,6 +60,7 @@ export default function SettingsPage() {
     if (preferences) {
       setNotifications(preferences.trafficAlerts ?? true);
       setSound(preferences.voiceEnabled ?? true);
+      setVoiceGender(preferences.voiceGender ?? 'FEMALE');
       setLimitSignals(preferences.limitTrafficSignalsRadius ?? false);
     }
   }, [preferences]);
@@ -180,7 +182,7 @@ export default function SettingsPage() {
     toast.success(`${getLanguageConfig(code).flag} ${getLanguageConfig(code).nativeName}`);
   };
 
-  const updatePreference = (key: string, value: boolean) => {
+  const updatePreference = (key: string, value: boolean | string) => {
     const prevPreferences = preferences;
     const updated = { ...(preferences ?? {}), [key]: value } as any;
     setPreferences(updated);
@@ -226,6 +228,22 @@ export default function SettingsPage() {
       items: [
         { icon: <FaBell size={16} className="text-yellow-400" />, label: t('settings.notifications'), right: <Toggle value={notifications} onChange={() => { const v = !notifications; setNotifications(v); updatePreference('trafficAlerts', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.sound'), right: <Toggle value={sound} onChange={() => { const v = !sound; setSound(v); updatePreference('voiceEnabled', v); }} /> },
+        { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.voiceGender'),
+          right: (
+            <div className="flex items-center gap-1.5">
+              {(['MALE', 'FEMALE'] as const).map((g) => (
+                <button key={g} type="button" onClick={() => { setVoiceGender(g); updatePreference('voiceGender', g); }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                    voiceGender === g
+                      ? 'bg-primary-600/30 border-primary-500/50 text-white'
+                      : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                  }`}>
+                  {t(g === 'MALE' ? 'settings.voiceGenderMale' : 'settings.voiceGenderFemale')}
+                </button>
+              ))}
+            </div>
+          ),
+        },
         { icon: <FaMoon size={16} className="text-purple-400" />, label: t('settings.darkMode'),
           right: (
             <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">

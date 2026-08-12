@@ -35,8 +35,23 @@ let lastRerouteTime = 0;
 // retried sooner instead of leaving the driver stuck on a stale route.
 const REROUTE_COOLDOWN_MS = 7000;
 
+// OFF_ROUTE_THRESHOLD_METERS (18m) sits barely above the ~5-15m GPS noise
+// floor called out on that constant, so a single noisy fix (multipath near
+// buildings, a highway interchange, a bridge) used to be enough to flip
+// isOffRoute true and fire a full reroute — cooldown-gated to at most every
+// REROUTE_COOLDOWN_MS, but that still read as "recalculating..." popping up
+// on its own every several seconds while genuinely on the route. Requiring
+// the deviation to persist for MIN_OFF_ROUTE_PERSIST_MS filters out
+// single-fix noise (which self-corrects on the very next fix) while adding
+// only a small, fixed delay before a *real* departure from the route is
+// confirmed — genuine off-route driving keeps producing consecutive
+// off-route fixes, so it still clears this bar quickly.
+let offRouteSinceTime = 0;
+const MIN_OFF_ROUTE_PERSIST_MS = 2500;
+
 export function resetRerouteCooldown() {
   lastRerouteTime = 0;
+  offRouteSinceTime = 0;
 }
 
 function normalizeAngle(deg: number): number {
@@ -223,7 +238,14 @@ export function computeNavigationUpdate(
   const isArrived = distToDest < ARRIVAL_THRESHOLD_METERS && newLeg === instructions.length - 1;
 
   const now = Date.now();
-  const shouldReroute = (isOffRoute || fwd.isWrongWay) && !isArrived && (now - lastRerouteTime > REROUTE_COOLDOWN_MS);
+  const currentlyOffRoute = (isOffRoute || fwd.isWrongWay) && !isArrived;
+  if (currentlyOffRoute) {
+    if (offRouteSinceTime === 0) offRouteSinceTime = now;
+  } else {
+    offRouteSinceTime = 0;
+  }
+  const sustainedOffRoute = offRouteSinceTime !== 0 && (now - offRouteSinceTime >= MIN_OFF_ROUTE_PERSIST_MS);
+  const shouldReroute = sustainedOffRoute && (now - lastRerouteTime > REROUTE_COOLDOWN_MS);
   if (shouldReroute) lastRerouteTime = now;
 
   return {

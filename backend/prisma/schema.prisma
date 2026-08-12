@@ -204,6 +204,7 @@ model UserPreference {
   preferScenicRoutes Boolean @default(false)
   nightMode          Boolean @default(false)
   voiceEnabled       Boolean @default(true)
+  voiceGender        String  @default("FEMALE")
   voiceLanguage      String  @default("ru")
   voiceVolume        Float   @default(1.0)
   speedAlerts        Boolean @default(true)
