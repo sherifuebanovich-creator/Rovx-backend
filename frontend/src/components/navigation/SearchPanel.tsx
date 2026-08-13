@@ -938,6 +938,9 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
                       {i === 0 && <span className="text-[10px] bg-primary-600/40 text-primary-300 px-2 py-0.5 rounded-full">{t('searchPanel.recommended')}</span>}
                     </div>
                     <p className="text-xs text-gray-400">{route.summary}</p>
+                    {route.isEstimate && (
+                      <p className="text-[11px] text-amber-400 mt-1">⚠ {t('searchPanel.routeIsEstimate')}</p>
+                    )}
                     <div className="flex gap-3 mt-2 text-[11px] text-gray-400">
                       <span>⏱ {durationMin < 60 ? `${durationMin} ${t('routePanel.formatDuration.min')}` : `${Math.floor(durationMin / 60)}${t('routePanel.formatDuration.h')} ${durationMin % 60}${t('routePanel.formatDuration.m')}`}</span>
                       <span>⛽ {route.fuelEstimate} {t('routePanel.liters')}</span>

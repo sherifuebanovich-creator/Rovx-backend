@@ -193,12 +193,17 @@ export function TopBar() {
                   <div className="border-t border-dark-border my-1.5 mx-2" />
                   <p className="text-[10px] text-gray-500 uppercase font-bold px-3 py-1.5 tracking-wider">{t('topbar.view')}</p>
                   <button
+                    disabled={mapStyle === 'satellite'}
+                    title={mapStyle === 'satellite' ? t('topbar.view3dUnavailableSatellite') : undefined}
                     onClick={() => {
+                      if (mapStyle === 'satellite') return;
                       useMapStore.getState().toggle3D();
                       setShowModeMenu(false);
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all text-left ${
-                      show3D && mapStyle !== 'satellite' ? 'bg-primary-600/20 text-primary-300' : 'text-gray-300 hover:bg-white/5'
+                      mapStyle === 'satellite'
+                        ? 'text-gray-600 opacity-40 cursor-not-allowed'
+                        : show3D ? 'bg-primary-600/20 text-primary-300' : 'text-gray-300 hover:bg-white/5'
                     }`}
                   >
                     <FaCube size={13} />

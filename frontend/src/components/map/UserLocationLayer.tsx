@@ -8,7 +8,7 @@ import {
   accuracyCircleGeoJSON,
   type BlueDotElements,
 } from '@/lib/maplibreIcons';
-import { speedToAutoZoom } from '@/lib/navigationEngine';
+import { speedToAutoZoom, MIN_RELIABLE_HEADING_SPEED_KMH } from '@/lib/navigationEngine';
 
 const MIN_INTERPOLATION_DURATION_MS = 300;
 const MAX_INTERPOLATION_DURATION_MS = 1500;
@@ -61,6 +61,12 @@ function UserLocationLayer({ map }: Props) {
   const isNavigatingRef = useRef(false);
   const prevPitchRef = useRef(0);
   const prevBearingRef = useRef(0);
+  // Smooths raw GPS course-over-ground for the camera's heading-up rotation
+  // only — kept local to this component rather than smoothed centrally in
+  // useGeolocation.ts because navigationEngine.ts's off-route/wrong-way
+  // detection consumes the raw, unsmoothed userHeading and must not gain the
+  // extra latency a shared smoother would add to that safety-relevant check.
+  const smoothedBearingRef = useRef<number | null>(null);
 
   const initAccuracySource = useCallback(
     (m: maplibregl.Map) => {
@@ -190,9 +196,10 @@ function UserLocationLayer({ map }: Props) {
     } else if (!isNavigating && wasNavigating) {
       map.easeTo({
         pitch: prevPitchRef.current,
-        bearing: 0,
+        bearing: prevBearingRef.current,
         duration: 600,
       });
+      smoothedBearingRef.current = null;
     }
   }, [isNavigating, map, setFollowUser]);
 
@@ -288,7 +295,29 @@ function UserLocationLayer({ map }: Props) {
     const currentZoom = map.getZoom();
     const zoomDiff = targetZoom != null ? Math.abs(currentZoom - targetZoom) : 0;
 
-    if (distPx > FOLLOW_THRESHOLD_PX || (isNav && zoomDiff > 0.3)) {
+    // Heading-up rotation (Waze/Yandex-style "chase cam") while navigating.
+    // Below MIN_RELIABLE_HEADING_SPEED_KMH the raw course-over-ground is
+    // noise (same floor navigationEngine.ts uses for wrong-way detection),
+    // so the camera holds its last bearing instead of spinning at a red
+    // light. smoothedBearingRef keeps rotating internally off raw fixes even
+    // while below that speed or while follow is disengaged, so the camera
+    // doesn't jump to a stale bearing whenever it resumes.
+    let targetBearing: number | null = null;
+    if (isNav && userSpeed >= MIN_RELIABLE_HEADING_SPEED_KMH) {
+      const prev = smoothedBearingRef.current;
+      if (prev == null) {
+        smoothedBearingRef.current = userHeading;
+      } else {
+        let diff = userHeading - prev;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        smoothedBearingRef.current = ((prev + diff * 0.3) % 360 + 360) % 360;
+      }
+      targetBearing = smoothedBearingRef.current;
+    }
+    const bearingDiff = targetBearing != null ? Math.abs(map.getBearing() - targetBearing) : 0;
+
+    if (distPx > FOLLOW_THRESHOLD_PX || (isNav && zoomDiff > 0.3) || (targetBearing != null && bearingDiff > 1)) {
       const opts: maplibregl.CameraOptions & maplibregl.AnimationOptions = {
         center: [userLocation.lng, userLocation.lat],
         duration: isNav ? 300 : 800,
@@ -297,9 +326,12 @@ function UserLocationLayer({ map }: Props) {
       if (isNav && targetZoom != null && zoomDiff > 0.3) {
         opts.zoom = targetZoom;
       }
+      if (targetBearing != null) {
+        opts.bearing = targetBearing;
+      }
       map.easeTo(opts);
     }
-  }, [map, userLocation, followActive, userSpeed]);
+  }, [map, userLocation, followActive, userSpeed, userHeading]);
 
   // Inject pulse animation once
   useEffect(() => {

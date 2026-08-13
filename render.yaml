@@ -116,9 +116,5 @@ services:
         sync: false
       - key: LAVA_TOP_WEBHOOK_KEY
         sync: false
-      - key: GOVERNMENT_API_URL
-        sync: false
-      - key: GOVERNMENT_API_KEY
-        sync: false
-      - key: GOVERNMENT_DATA_SOURCES
+      - key: TOMTOM_API_KEY
         sync: false

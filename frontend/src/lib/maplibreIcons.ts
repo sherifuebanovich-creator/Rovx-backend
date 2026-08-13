@@ -142,70 +142,6 @@ export function ensureReportIcon(m: maplibregl.Map, type: string): string {
   return imageId;
 }
 
-export function createUserMarkerElement(heading = 0): HTMLDivElement {
-  const el = document.createElement('div');
-  el.style.cssText = `
-    position:relative;
-    width:36px;
-    height:36px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  `;
-
-  const pulse = document.createElement('div');
-  pulse.style.cssText = `
-    position:absolute;
-    inset:-3px;
-    border-radius:50%;
-    background:rgba(14,165,233,0.15);
-    animation:gl-pulse 2s cubic-bezier(0,0,0.2,1) infinite;
-  `;
-  el.appendChild(pulse);
-
-  const outer = document.createElement('div');
-  outer.style.cssText = `
-    width:20px;
-    height:20px;
-    border-radius:50%;
-    background:#0ea5e9;
-    box-shadow:0 2px 8px rgba(14,165,233,0.6);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    position:relative;
-  `;
-  el.appendChild(outer);
-
-  const inner = document.createElement('div');
-  inner.style.cssText = `
-    width:8px;
-    height:8px;
-    border-radius:50%;
-    background:white;
-  `;
-  outer.appendChild(inner);
-
-  const headArrow = document.createElement('div');
-  headArrow.style.cssText = `
-    position:absolute;
-    top:-12px;
-    left:50%;
-    margin-left:-5px;
-    width:0;height:0;
-    border-left:5px solid transparent;
-    border-right:5px solid transparent;
-    border-bottom:10px solid #0ea5e9;
-    transform:rotate(${heading}deg);
-    transform-origin:center 22px;
-    transition:transform 0.3s ease;
-    filter:drop-shadow(0 1px 3px rgba(14,165,233,0.5));
-  `;
-  outer.appendChild(headArrow);
-
-  return el;
-}
-
 export interface BlueDotElements {
   container: HTMLDivElement;
   pulseRing: HTMLDivElement;
@@ -289,10 +225,6 @@ export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: numbe
 
   el.accuracyCircle.style.width = `${clamped}px`;
   el.accuracyCircle.style.height = `${clamped}px`;
-}
-
-export function updateBlueDotHeading(_el: BlueDotElements, _heading: number) {
-  // Heading cone removed — user marker is now a plain dot
 }
 
 export function metersToPixelsAtLat(meters: number, lat: number, zoom: number): number {

@@ -315,14 +315,12 @@ export const mapApi = {
     api.get('/map/nearby', { params: { lat, lng, radius, category } }),
   getObject: (id: string) => api.get(`/map/objects/${id}`),
   getTraffic: (params: any) => api.get('/map/traffic', { params }),
+  getTrafficIncidents: (minLng: number, minLat: number, maxLng: number, maxLat: number) =>
+    api.get('/map/traffic-incidents', { params: { minLng, minLat, maxLng, maxLat } }),
   getSpeedCameras: (lat: number, lng: number, radius = 10) =>
     api.get('/map/speed-cameras', { params: { lat, lng, radius } }),
-  getGovernmentSpeedCameras: (lat: number, lng: number, radius = 10) =>
-    api.get('/map/government-speed-cameras', { params: { lat, lng, radius } }),
   getTrafficSignals: (lat: number, lng: number, radius = 2) =>
     api.get('/map/traffic-signals', { params: { lat, lng, radius } }),
-  getGovernmentTrafficSignals: (lat: number, lng: number, radius = 2) =>
-    api.get('/map/government-traffic-signals', { params: { lat, lng, radius } }),
   getFeatures: (bbox: string, types?: string) =>
     api.get('/map-features', { params: { bbox, types } }),
   search: (q: string, lat?: number, lng?: number, radius?: number) =>

@@ -133,7 +133,30 @@ export class RoutesService {
 
     try {
       const url = `${osrmBase}/route/v1/${profile}/${waypoints}`;
-      const response = await axios.get(url, { params, timeout: 10000 });
+      let response;
+      try {
+        response = await axios.get(url, { params, timeout: 10000 });
+      } catch (err) {
+        // The public OSRM demo instance (the default OSRM_URL, and still
+        // what's configured everywhere in this deploy) answers any
+        // `exclude` combination — `motorway` for every truck request,
+        // `toll` whenever avoidTolls is set — with HTTP 400
+        // "Exclude flag combination is not supported.". That was silently
+        // sending 100% of truck routing (and any avoid-tolls request)
+        // straight to getFallbackRoute()'s straight-line Haversine
+        // estimate below: no turn-by-turn instructions, no real distance,
+        // for every single truck driver using the app. A self-hosted OSRM
+        // instance with a real truck profile would let `exclude=motorway`
+        // mean something; until then, retrying the same request without it
+        // at least gets a real routed path instead of a fake straight line.
+        if (axios.isAxiosError(err) && err.response?.status === 400 && params.exclude) {
+          this.logger.warn(`OSRM rejected exclude=${params.exclude} (likely unsupported on this instance) — retrying without it`);
+          const { exclude, ...paramsWithoutExclude } = params;
+          response = await axios.get(url, { params: paramsWithoutExclude, timeout: 10000 });
+        } else {
+          throw err;
+        }
+      }
       const route = response.data.routes[0];
 
       if (!route) {

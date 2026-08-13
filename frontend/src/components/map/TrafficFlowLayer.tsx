@@ -3,6 +3,8 @@ import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { escapeAttr } from '@/lib/maplibreIcons';
+import { beforeTopTier } from '@/lib/mapLayerOrder';
+import { mapApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -17,9 +19,6 @@ const LINE_LAYER_ID = 'tomtom-traffic-incidents-line';
 const MIN_ZOOM = 6;
 const DEBOUNCE_MS = 500;
 const MAX_FETCH_FAILURES = 3;
-
-const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
-let warnedMissingKey = false;
 
 // iconCategory 6 = Jam in TomTom's traffic model. magnitudeOfDelay: 0
 // unknown, 1 minor, 2 moderate, 3 major, 4 undefined — only surfacing
@@ -53,13 +52,6 @@ function TrafficFlowLayer({ map }: Props) {
 
   const loadIncidents = useCallback(async () => {
     if (!map || !showTraffic) return;
-    if (!TOMTOM_KEY) {
-      if (!warnedMissingKey) {
-        console.warn('[TrafficFlowLayer] NEXT_PUBLIC_TOMTOM_API_KEY is not set — traffic layer disabled.');
-        warnedMissingKey = true;
-      }
-      return;
-    }
     if (disabledRef.current) return;
 
     const requestId = ++requestIdRef.current;
@@ -75,11 +67,11 @@ function TrafficFlowLayer({ map }: Props) {
     if (bbox === lastBoundsRef.current) return;
 
     try {
-      const fields = '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}';
-      const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${TOMTOM_KEY}&bbox=${bbox}&fields=${encodeURIComponent(fields)}&language=ru-RU`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      // Proxied through the backend (see MapService.getTrafficIncidents) so
+      // the TomTom API key stays server-side instead of being embedded in
+      // the client bundle, where it was fully exposed/scrapable.
+      const res = await mapApi.getTrafficIncidents(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
+      const data = res.data;
       if (requestId !== requestIdRef.current) return;
       // Claimed BEFORE the fetch used to resolve — a transient network/HTTP
       // error left lastBoundsRef holding the bbox, so every later debounced
@@ -120,6 +112,10 @@ function TrafficFlowLayer({ map }: Props) {
 
       map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
 
+      // Anchor below the route line / POI-report icons / camera-signal
+      // clusters (see mapLayerOrder.ts) — previously added with no `before`
+      // at all, so it landed wherever it happened to be in mount order
+      // relative to those layers, sometimes drawing over the active route.
       map.addLayer({
         id: LINE_LAYER_ID,
         type: 'line',
@@ -133,7 +129,7 @@ function TrafficFlowLayer({ map }: Props) {
           'line-width': ['case', ['==', ['get', 'magnitudeOfDelay'], 2], 5, 7],
           'line-opacity': 0.85,
         },
-      });
+      }, beforeTopTier(map));
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
       fetchFailuresRef.current += 1;

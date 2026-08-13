@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { mapApi } from '@/lib/api';
 import { escapeAttr } from '@/lib/maplibreIcons';
 import { haversineDist } from '@/lib/geo';
+import { MAP_FEATURES_CLUSTER_LAYER_ID, MAP_FEATURES_CAMERA_LAYER_ID, MAP_FEATURES_SIGNAL_LAYER_ID } from '@/lib/mapLayerOrder';
 
 const MIN_ZOOM = 8;
 const DEBOUNCE_MS = 400;
@@ -17,10 +18,10 @@ interface Props {
 
 function MapFeaturesLayer({ map }: Props) {
   const sourceId = 'map-features-src';
-  const clusterLayerId = 'map-features-clusters';
+  const clusterLayerId = MAP_FEATURES_CLUSTER_LAYER_ID;
   const clusterCountId = 'map-features-cluster-count';
-  const cameraLayerId = 'map-features-cameras';
-  const signalLayerId = 'map-features-signals';
+  const cameraLayerId = MAP_FEATURES_CAMERA_LAYER_ID;
+  const signalLayerId = MAP_FEATURES_SIGNAL_LAYER_ID;
   // Off by default (matches UserPreference.limitTrafficSignalsRadius) — read
   // via refs, not deps on loadFeatures, so a GPS tick or a settings toggle
   // doesn't recreate the callback (and its moveend/zoomend listeners) on

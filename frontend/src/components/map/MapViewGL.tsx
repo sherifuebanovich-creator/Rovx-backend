@@ -14,6 +14,7 @@ import {
   reportIconId,
 } from '@/lib/maplibreIcons';
 import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
+import { ROUTE_LINE_ID, ROUTE_TRAVELED_ID, ROUTE_REMAINING_ID, POI_LAYER_ID, REPORTS_LAYER_ID } from '@/lib/mapLayerOrder';
 import UserLocationLayer from './UserLocationLayer';
 import MapFeaturesLayer from './MapFeaturesLayer';
 import FriendMarkers from './FriendMarkers';
@@ -26,9 +27,7 @@ function escapeHtml(text: string): string {
 }
 
 const POI_SOURCE_ID = 'poi-objects-src';
-const POI_LAYER_ID = 'poi-objects-layer';
 const REPORTS_SOURCE_ID = 'poi-reports-src';
-const REPORTS_LAYER_ID = 'poi-reports-layer';
 
 function emptyFeatureCollection(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
@@ -161,7 +160,7 @@ export default function MapViewGL() {
     map.on('idle', () => {
       if (!has3DBuildingsRef.current && mapStyleRef.current !== 'satellite' && show3DRef.current) {
         try {
-          add3DBuildings(map);
+          add3DBuildings(map, mapStyleRef.current === 'night');
           has3DBuildingsRef.current = true;
         } catch { /* ignore */ }
       }
@@ -170,7 +169,7 @@ export default function MapViewGL() {
     map.on('style.load', () => {
       has3DBuildingsRef.current = false;
       if (mapStyleRef.current !== 'satellite' && show3DRef.current) {
-        add3DBuildings(map);
+        add3DBuildings(map, mapStyleRef.current === 'night');
         has3DBuildingsRef.current = true;
       }
     });
@@ -230,7 +229,7 @@ export default function MapViewGL() {
 
     mapRef.current.once('style.load', () => {
       if (mapStyle !== 'satellite' && show3DRef.current) {
-        add3DBuildings(mapRef.current!);
+        add3DBuildings(mapRef.current!, mapStyle === 'night');
         has3DBuildingsRef.current = true;
       }
     });
@@ -243,9 +242,9 @@ export default function MapViewGL() {
     const map = mapRef.current;
     if (!map) return;
 
-    const routeId = 'route-line';
-    const routeTraveledId = 'route-line-traveled';
-    const routeRemainingId = 'route-line-remaining';
+    const routeId = ROUTE_LINE_ID;
+    const routeTraveledId = ROUTE_TRAVELED_ID;
+    const routeRemainingId = ROUTE_REMAINING_ID;
 
     const cleanupRoute = () => {
       [routeId, routeTraveledId, routeRemainingId].forEach(id => {
@@ -691,7 +690,7 @@ export default function MapViewGL() {
       if (!mapRef.current) return;
       try {
         if (show3D && mapStyle !== 'satellite') {
-          add3DBuildings(mapRef.current);
+          add3DBuildings(mapRef.current, mapStyle === 'night');
           has3DBuildingsRef.current = true;
         } else if (has3DBuildingsRef.current) {
           remove3DBuildings(mapRef.current);

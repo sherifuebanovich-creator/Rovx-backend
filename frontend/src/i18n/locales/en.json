@@ -33,6 +33,7 @@
     "style3d": "3D",
     "view": "View",
     "view3dBuildings": "3D Buildings",
+    "view3dUnavailableSatellite": "3D buildings aren't available in satellite view",
     "myLocation": "My location",
     "lightTheme": "Light theme",
     "darkTheme": "Dark theme",
@@ -139,6 +140,7 @@
     "routesFound_one": "Route found: {{count}}",
     "routesFound_other": "Routes found: {{count}}",
     "recommended": "Recommended",
+    "routeIsEstimate": "Rough estimate — couldn't build an exact route",
     "start": "Start",
     "back": "Back",
     "from": "From",
@@ -185,6 +187,7 @@
     "departure": "Departure",
     "destination": "Destination",
     "recommended": "Recommended",
+    "routeIsEstimate": "Rough estimate — couldn't build an exact route",
     "liters": "L",
     "risks": "risks",
     "startNavigation": "Start Navigation",
@@ -871,7 +874,9 @@
     "members": "Members",
     "signInRequired": "Sign in to use chats",
     "noGroups": "You don't have any groups yet",
-    "groupsNotFound": "No groups found"
+    "groupsNotFound": "No groups found",
+    "filteredByCity": "Groups in {{city}}",
+    "clearFilter": "Clear"
   },
   "createGroup": {
     "title": "Create Group",
@@ -927,7 +932,7 @@
       "voiceNav": "Voice navigation with TTS",
       "instantReports": "Instant report submission on map",
       "aiAssistant": "AI Co-Driver in real-time",
-      "camerasOnline": "Traffic lights, radars and cameras online",
+      "camerasOnline": "Traffic lights, radars and cameras on the map",
       "weatherTraffic": "Weather and traffic along the route",
       "groups": "Up to 3 groups and City chats",
       "unlimitedAI": "Unlimited AI voice commands",

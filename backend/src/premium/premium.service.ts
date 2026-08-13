@@ -20,8 +20,8 @@ export const PREMIUM_TIERS = [
     tier: 1, name: 'PREMIUM_BASIC', price: 5, maxGroups: 1, priceRub: 449, priceKzt: 2290, priceUzs: 49900, supportLimit: 3,
     canCreateGroups: false, canReceiveReports: true,
     label_en: 'Premium Basic', label_ru: 'Премиум Базовый',
-    desc_en: 'Navigation with instant road reports, voice guidance, a real-time AI Co-Driver, live traffic lights/radars/cameras, and weather & traffic along your route',
-    desc_ru: 'Навигация: мгновенные репорты, голосовые подсказки, AI-ассистент Co-Driver в реальном времени, светофоры/радары/камеры онлайн, погода и пробки по маршруту',
+    desc_en: 'Navigation with instant road reports, voice guidance, a real-time AI Co-Driver, traffic lights/radars/cameras on the map, and weather & traffic along your route',
+    desc_ru: 'Навигация: мгновенные репорты, голосовые подсказки, AI-ассистент Co-Driver в реальном времени, светофоры/радары/камеры на карте, погода и пробки по маршруту',
   },
   {
     tier: 2, name: 'PREMIUM_STANDARD', price: 10, maxGroups: 3, priceRub: 899, priceKzt: 4490, priceUzs: 99900, supportLimit: 5,

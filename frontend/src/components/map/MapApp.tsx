@@ -14,6 +14,8 @@ import { NavigationHUD } from '@/components/navigation/NavigationHUD';
 import { ObjectDetailPanel } from '@/components/map/ObjectDetailPanel';
 import { ReportPanel } from '@/components/map/ReportPanel';
 import { FriendLocation, Report } from '@/types';
+import { routesApi, usersApi } from '@/lib/api';
+import { resetRerouteCooldown } from '@/lib/navigationEngine';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -113,6 +115,102 @@ export default function MapApp() {
     if (!user?.city) return;
     joinCity(user.city);
   }, [user?.city, joinCity]);
+
+  // Executes AI Co-Driver voice commands. AiAssistantPanel.tsx dispatches
+  // this event after every parsed voice command (navigate home, avoid
+  // tolls, switch route type, recalculate, find nearby X) — previously
+  // dispatched into the void with no listener anywhere in the app, so the
+  // paid AI Co-Driver spoke a confirmation and showed a chat bubble
+  // claiming the action happened, then did nothing at all to the map,
+  // route, or preferences.
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent<{ intent?: string; params?: Record<string, any> }>).detail;
+      if (!detail?.intent) return;
+      const { intent, params = {} } = detail;
+      const store = useMapStore.getState();
+      const authUser = useAuthStore.getState().user;
+      const loc = store.userLocation;
+
+      try {
+        switch (intent) {
+          case 'navigate_home': {
+            if (!authUser?.homeLat || !authUser?.homeLng || !loc) return;
+            const origin = store.origin || { ...loc, name: t('searchPanel.myLocation') };
+            if (!store.origin) store.setOrigin(origin);
+            const destName = authUser.homeAddress || t('searchPanel.home');
+            store.setDestination({ lat: authUser.homeLat, lng: authUser.homeLng, name: destName });
+            const res = await routesApi.calculate({
+              originLat: origin.lat, originLng: origin.lng,
+              destLat: authUser.homeLat, destLng: authUser.homeLng,
+              routeType: 'FASTEST', vehicleType: store.vehicleMode,
+            });
+            const route = res.data.data?.[0];
+            if (!route) return;
+            store.setCalculatedRoutes([route]);
+            store.setSelectedRoute(route);
+            resetRerouteCooldown();
+            store.setNavigation({ isNavigating: true, currentLeg: 0 });
+            const trip = await routesApi.startTrip({
+              originName: origin.name, originLat: origin.lat, originLng: origin.lng,
+              destName, destLat: authUser.homeLat, destLng: authUser.homeLng,
+              distance: route.distance, duration: route.duration,
+            });
+            store.setActiveTrip(trip.data.data.id);
+            break;
+          }
+          case 'find_nearby': {
+            if (params.category && !store.activeCategories.includes(params.category)) {
+              store.toggleCategory(params.category);
+            }
+            break;
+          }
+          case 'update_preference': {
+            if (!authUser || !params.preference) return;
+            await usersApi.updatePreferences({ [params.preference]: params.value });
+            useAuthStore.setState((s) => ({
+              preferences: s.preferences ? { ...s.preferences, [params.preference]: params.value } : s.preferences,
+            }));
+            break;
+          }
+          case 'change_route': {
+            if (!params.routeType) return;
+            store.setActiveRouteType(params.routeType);
+            // If already navigating, recompute with the new type right away
+            // instead of only remembering it for the next time the search
+            // panel happens to open.
+            if (store.navigation.isNavigating && loc && store.destination) {
+              const res = await routesApi.calculate({
+                originLat: loc.lat, originLng: loc.lng,
+                destLat: store.destination.lat, destLng: store.destination.lng,
+                routeType: params.routeType, vehicleType: store.vehicleMode,
+              });
+              const route = res.data.data?.[0];
+              if (route) store.setSelectedRoute(route);
+            }
+            break;
+          }
+          case 'recalculate': {
+            if (!store.navigation.isNavigating || !loc || !store.destination) return;
+            const res = await routesApi.calculate({
+              originLat: loc.lat, originLng: loc.lng,
+              destLat: store.destination.lat, destLng: store.destination.lng,
+              routeType: store.activeRouteType, vehicleType: store.vehicleMode,
+            });
+            const route = res.data.data?.[0];
+            if (route) {
+              store.setSelectedRoute(route);
+              store.setNavigation({ currentLeg: 0, isOffRoute: false });
+              resetRerouteCooldown();
+            }
+            break;
+          }
+        }
+      } catch { /* voice actions are best-effort — failure is already surfaced via the spoken response */ }
+    };
+    window.addEventListener('roadpilot:voice-action', handler);
+    return () => window.removeEventListener('roadpilot:voice-action', handler);
+  }, [t]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-dark-bg" style={{ isolation: 'isolate' }}>

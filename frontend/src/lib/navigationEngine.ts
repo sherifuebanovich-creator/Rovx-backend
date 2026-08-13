@@ -27,7 +27,7 @@ const FORWARD_SEARCH_RADIUS_M = 200;
 // available — without this gate, a stationary car at trip start (heading
 // not yet meaningful) could get flagged wrong-way and reroute before it
 // ever moved.
-const MIN_RELIABLE_HEADING_SPEED_KMH = 3;
+export const MIN_RELIABLE_HEADING_SPEED_KMH = 3;
 
 let lastRerouteTime = 0;
 // Shorter than before so a reroute that doesn't fully resolve the

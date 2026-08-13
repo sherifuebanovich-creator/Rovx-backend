@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { GovernmentDataService } from './government-data.service';
 const MapObjectCategory = {
   GAS_STATION: 'GAS_STATION',
   EV_CHARGER: 'EV_CHARGER',
@@ -114,7 +114,7 @@ export class MapService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
-    private governmentData: GovernmentDataService,
+    private config: ConfigService,
   ) {}
 
   /**
@@ -556,6 +556,40 @@ export class MapService {
 
     await this.redis.set(cacheKey, JSON.stringify(segments), 30);
     return segments;
+  }
+
+  // Proxies TomTom's Incidents API server-side so TOMTOM_API_KEY never
+  // reaches the browser — the frontend used to call api.tomtom.com directly
+  // with NEXT_PUBLIC_TOMTOM_API_KEY embedded in the bundle, fully exposed
+  // and scrapable, with no way to rate-limit or attribute usage per client.
+  async getTrafficIncidents(minLng: number, minLat: number, maxLng: number, maxLat: number) {
+    const apiKey = this.config.get<string>('TOMTOM_API_KEY');
+    if (!apiKey) {
+      this.logger.warn('TOMTOM_API_KEY is not set — traffic incidents disabled');
+      return { incidents: [] };
+    }
+
+    // Same rounding/TTL tradeoff as getTrafficInBounds above (30s) — jam
+    // state changes fast enough that a longer cache would show stale
+    // incidents, but every client panning the same area within a few
+    // seconds shouldn't each trigger their own TomTom call.
+    const cacheKey = `traffic:tomtom:${minLng.toFixed(2)},${minLat.toFixed(2)},${maxLng.toFixed(2)},${maxLat.toFixed(2)}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
+    const fields = '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}';
+    const bbox = `${minLng},${minLat},${maxLng},${maxLat}`;
+    const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${apiKey}&bbox=${bbox}&fields=${encodeURIComponent(fields)}&language=ru-RU`;
+
+    try {
+      const res = await axios.get(url, { timeout: 8000 });
+      const result = { incidents: res.data?.incidents || [] };
+      await this.redis.set(cacheKey, JSON.stringify(result), 30);
+      return result;
+    } catch (err) {
+      this.logger.warn(`TomTom traffic incidents fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+      return { incidents: [] };
+    }
   }
 
   private parsePhotonFeatures(features: any[], query: string) {

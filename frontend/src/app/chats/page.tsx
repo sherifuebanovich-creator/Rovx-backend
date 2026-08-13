@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { socialApi } from '@/lib/api';
@@ -10,10 +10,14 @@ import { motion } from 'framer-motion';
 import { FaArrowLeft, FaUsers, FaSearch, FaPlus } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
-export default function ChatsPage() {
+function ChatsPageContent() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuthStore();
+  // Deep-linked from ReportPanel's "discuss in city chat" button — without
+  // this the button just opened the same unfiltered list every other entry
+  // point does, silently dropping the "city" part of what it promised.
+  const cityFilter = useSearchParams().get('city') || undefined;
 
   return (
     <div className="min-h-dvh bg-dark-bg pb-safe-bottom">
@@ -32,14 +36,23 @@ export default function ChatsPage() {
           </button>
         </div>
 
-        <GroupsListSection />
+        <GroupsListSection cityFilter={cityFilter} />
       </div>
     </div>
   );
 }
 
-function GroupsListSection() {
+export default function ChatsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-dark-bg flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>}>
+      <ChatsPageContent />
+    </Suspense>
+  );
+}
+
+function GroupsListSection({ cityFilter }: { cityFilter?: string }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,10 +62,15 @@ function GroupsListSection() {
   const searchFetchId = useRef(0);
 
   useEffect(() => {
-    Promise.all([
-      socialApi.getGroups(1, undefined, undefined, ''),
-      socialApi.getMyGroups(),
-    ]).then(([gRes, mRes]) => {
+    setLoading(true);
+    // cityFilter uses the backend's dedicated `city` param (searchGroups'
+    // second argument, matched against Group.city) rather than folding it
+    // into the free-text `query` param — a group named e.g. "Дальнобои РФ"
+    // with city="Москва" would never match a plain text search for "Москва".
+    const groupsPromise = cityFilter
+      ? socialApi.searchGroups('', cityFilter)
+      : socialApi.getGroups(1, undefined, undefined, '');
+    Promise.all([groupsPromise, socialApi.getMyGroups()]).then(([gRes, mRes]) => {
       const gData = gRes.data?.data || gRes.data;
       const mData = mRes.data?.data || mRes.data;
       const loaded: Group[] = gData?.groups || gData || [];
@@ -60,7 +78,7 @@ function GroupsListSection() {
       setGroups(loaded);
       setMyGroups(mData || []);
     }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [cityFilter]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -91,6 +109,14 @@ function GroupsListSection() {
 
   return (
     <div className="space-y-2">
+      {cityFilter && (
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-1 px-1">
+          <span>{t('chats.filteredByCity', { city: cityFilter })}</span>
+          <button onClick={() => router.push('/chats')} className="text-primary-400 hover:text-primary-300">
+            {t('chats.clearFilter')}
+          </button>
+        </div>
+      )}
       {/* Search */}
       <div className="relative mb-4">
         <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />

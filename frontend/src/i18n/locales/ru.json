@@ -33,6 +33,7 @@
     "style3d": "3D",
     "view": "Вид",
     "view3dBuildings": "3D здания",
+    "view3dUnavailableSatellite": "3D здания недоступны в режиме спутника",
     "myLocation": "Моё местоположение",
     "lightTheme": "Светлая тема",
     "darkTheme": "Тёмная тема",
@@ -140,6 +141,7 @@
     "routesFound_few": "Найдено {{count}} маршрута",
     "routesFound_many": "Найдено {{count}} маршрутов",
     "recommended": "Рекомендуемый",
+    "routeIsEstimate": "Приблизительная оценка — построение точного маршрута не удалось",
     "start": "Начать",
     "back": "Назад",
     "from": "Откуда",
@@ -189,6 +191,7 @@
     "departure": "Отправление",
     "destination": "Назначение",
     "recommended": "Рекомендуемый",
+    "routeIsEstimate": "Приблизительная оценка — построение точного маршрута не удалось",
     "liters": "л",
     "risks": "опасностей",
     "startNavigation": "Начать навигацию",
@@ -876,7 +879,9 @@
     "members": "Участники",
     "signInRequired": "Войдите, чтобы использовать чаты",
     "noGroups": "У вас пока нет групп",
-    "groupsNotFound": "Группы не найдены"
+    "groupsNotFound": "Группы не найдены",
+    "filteredByCity": "Группы города: {{city}}",
+    "clearFilter": "Сбросить"
   },
   "createGroup": {
     "title": "Создать группу",
@@ -932,7 +937,7 @@
       "voiceNav": "Голосовая навигация с TTS-озвучкой",
       "instantReports": "Мгновенная отправка репортов на карту",
       "aiAssistant": "AI-ассистент Co-Driver в реальном времени",
-      "camerasOnline": "Светофоры, радары и камеры онлайн",
+      "camerasOnline": "Светофоры, радары и камеры на карте",
       "weatherTraffic": "Погода и пробки по маршруту",
       "groups": "До 3 групп и City-чаты",
       "unlimitedAI": "Безлимитные AI голосовые команды",

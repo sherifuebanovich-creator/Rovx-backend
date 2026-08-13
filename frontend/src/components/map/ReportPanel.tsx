@@ -250,9 +250,9 @@ export function ReportPanel() {
               )}
               <button
                 onClick={() => {
-                  const city = submittedData?.address?.split(',')[0]?.trim() || 'chat';
+                  const city = submittedData?.address?.split(',')[0]?.trim();
                   useMapStore.setState({ isReportPanelOpen: false });
-                  router.push(`/chats`);
+                  router.push(city ? `/chats?city=${encodeURIComponent(city)}` : '/chats');
                 }}
                 className="mt-3 w-full py-3 rounded-xl bg-primary-600/20 text-primary-400 border border-primary-500/30 text-sm font-medium flex items-center justify-center gap-2 hover:bg-primary-600/30 transition-all"
               >

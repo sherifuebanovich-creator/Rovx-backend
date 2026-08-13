@@ -58,11 +58,11 @@ export function getBuildingLayer(map: maplibregl.Map): boolean {
   }
 }
 
-export function add3DBuildings(map: maplibregl.Map) {
+export function add3DBuildings(map: maplibregl.Map, isDark = false) {
   if (map.getLayer(BUILDINGS_LAYER_ID)) return;
 
   if (!map.isStyleLoaded()) {
-    map.once('style.load', () => add3DBuildings(map));
+    map.once('style.load', () => add3DBuildings(map, isDark));
     return;
   }
 
@@ -90,15 +90,24 @@ export function add3DBuildings(map: maplibregl.Map) {
         'source-layer': 'building',
         minzoom: 15,
         paint: {
-          'fill-extrusion-color': [
-            'interpolate',
-            ['linear'],
-            ['get', 'render_height'],
-            0, '#e2e8f0',
-            30, '#cbd5e1',
-            60, '#94a3b8',
-            100, '#64748b',
-          ],
+          // The light pastel ramp looked washed out against the dark
+          // basemap when switched to the night style — a mid-slate ramp
+          // reads as buildings again instead of a grey haze.
+          'fill-extrusion-color': isDark
+            ? [
+                'interpolate', ['linear'], ['get', 'render_height'],
+                0, '#1e293b',
+                30, '#334155',
+                60, '#475569',
+                100, '#64748b',
+              ]
+            : [
+                'interpolate', ['linear'], ['get', 'render_height'],
+                0, '#e2e8f0',
+                30, '#cbd5e1',
+                60, '#94a3b8',
+                100, '#64748b',
+              ],
           'fill-extrusion-height': [
             'interpolate',
             ['linear'],

@@ -5,6 +5,7 @@ import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
 import { friendsApi } from '@/lib/api';
 import { FriendLocation } from '@/types';
+import { escapeAttr } from '@/lib/maplibreIcons';
 
 interface Props {
   map: maplibregl.Map | null;
@@ -12,11 +13,6 @@ interface Props {
 
 const STALE_MS = 5 * 60 * 1000;
 const PREMIUM_TIERS = ['PREMIUM_STANDARD', 'PREMIUM_MAX'];
-
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-  return text.replace(/[&<>"']/g, (c) => map[c]);
-}
 
 function createMarkerEl(displayName: string): HTMLElement {
   const el = document.createElement('div');
@@ -63,13 +59,46 @@ function FriendMarkers({ map }: Props) {
       } catch { /* 403 if no premium, ignore */ }
     };
 
+    // Every other poller in this codebase is moveend/zoomend/style-event
+    // driven and only fires while the tab is actually visible; this was the
+    // one flat setInterval that kept firing on a fixed cadence even while
+    // backgrounded, matching the visibility-pause pattern useGeolocation.ts
+    // already uses for its own watch.
+    const startInterval = () => {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = setInterval(fetchLocations, 15000);
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearInterval(refreshTimerRef.current);
+      } else {
+        fetchLocations();
+        startInterval();
+      }
+    };
+
     fetchLocations();
-    refreshTimerRef.current = setInterval(fetchLocations, 15000);
-    return () => clearInterval(refreshTimerRef.current);
+    startInterval();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(refreshTimerRef.current);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [map, user, hasPremium, setFriendLocations]);
 
   useEffect(() => {
-    if (!map || !hasPremium) return;
+    if (!map) return;
+
+    // Must run even when hasPremium is false — a mid-session downgrade
+    // (subscription expires/is cancelled while friend markers are already
+    // on screen) previously left every existing DOM marker behind forever,
+    // since this whole effect used to bail out before ever reaching the
+    // removal loop below.
+    if (!hasPremium) {
+      for (const marker of markersRef.current.values()) marker.remove();
+      markersRef.current.clear();
+      return;
+    }
 
     for (const [userId, marker] of markersRef.current) {
       const loc = friendLocations.find((f) => f.userId === userId);
@@ -88,7 +117,7 @@ function FriendMarkers({ map }: Props) {
       } else {
         const el = createMarkerEl(loc.displayName);
         const popup = new maplibregl.Popup({ closeButton: false, offset: 20, className: 'friend-popup' })
-          .setHTML(`<div style="padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;">${escapeHtml(loc.displayName)}</div>`);
+          .setHTML(`<div style="padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;">${escapeAttr(loc.displayName)}</div>`);
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([loc.lng, loc.lat])

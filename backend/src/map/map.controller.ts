@@ -152,6 +152,31 @@ export class MapController {
     return this.mapService.getTrafficInBounds(nMinLat, nMaxLat, nMinLng, nMaxLng);
   }
 
+  @Get('traffic-incidents')
+  @Throttle({ short: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'Get live traffic jam incidents (TomTom, proxied server-side)' })
+  async getTrafficIncidents(
+    @Query('minLng') minLng: number,
+    @Query('minLat') minLat: number,
+    @Query('maxLng') maxLng: number,
+    @Query('maxLat') maxLat: number,
+  ) {
+    const nMinLng = +minLng, nMinLat = +minLat, nMaxLng = +maxLng, nMaxLat = +maxLat;
+    if ([nMinLng, nMinLat, nMaxLng, nMaxLat].some(v => !isFinite(v))) {
+      throw new BadRequestException('Invalid coordinates');
+    }
+    if (nMinLat < -90 || nMaxLat > 90 || nMinLng < -180 || nMaxLng > 180) {
+      throw new BadRequestException('Coordinates out of range');
+    }
+    if (nMinLat >= nMaxLat || nMinLng >= nMaxLng) {
+      throw new BadRequestException('minLat must be less than maxLat, minLng less than maxLng');
+    }
+    if (nMaxLat - nMinLat > 10 || nMaxLng - nMinLng > 10) {
+      throw new BadRequestException('Bounding box too large (max 10° per axis)');
+    }
+    return this.mapService.getTrafficIncidents(nMinLng, nMinLat, nMaxLng, nMaxLat);
+  }
+
   @Get('speed-cameras')
   @ApiOperation({ summary: 'Get real OSM speed cameras near a point' })
   async getSpeedCameras(

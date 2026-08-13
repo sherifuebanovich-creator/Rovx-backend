@@ -77,8 +77,7 @@ services:
 | `SMTP_HOST` | SMTP-сервер для писем |
 | `SMTP_USER` | Логин SMTP |
 | `SMTP_PASS` | Пароль SMTP |
-| `GOVERNMENT_API_URL` | URL правительственного API |
-| `GOVERNMENT_API_KEY` | Ключ API |
+| `TOMTOM_API_KEY` | Ключ TomTom Traffic Incidents API |
 
 ---
 
@@ -122,8 +121,7 @@ DATABASE_URL_DIRECT="postgresql://..." npx prisma migrate deploy
 | `STRIPE_WEBHOOK_SECRET` | Backend | Для премиума |
 | `TELEGRAM_BOT_TOKEN` | Backend | Для уведомлений |
 | `TELEGRAM_CHAT_ID` | Backend | Для уведомлений |
-| `GOVERNMENT_API_URL` | Backend | Для гос. данных |
-| `GOVERNMENT_API_KEY` | Backend | Для гос. данных |
+| `TOMTOM_API_KEY` | Backend | Для пробок (TomTom) |
 
 ---
 

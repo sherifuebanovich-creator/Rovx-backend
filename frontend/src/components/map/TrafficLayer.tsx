@@ -2,14 +2,13 @@
 import { useEffect, useRef, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
+import { ensureReportIcon, reportIconId } from '@/lib/maplibreIcons';
+import { beforeTopTier } from '@/lib/mapLayerOrder';
 
 const TRAFFIC_SOURCE = 'traffic-jam-source';
 const TRAFFIC_HEATMAP = 'traffic-jam-heatmap';
 const TRAFFIC_CIRCLES = 'traffic-jam-circles';
 const TRAFFIC_LABELS = 'traffic-jam-labels';
-// Matches MapFeaturesLayer's cameraLayerId — kept as a literal there too, so
-// this is just the same id, not an import (no shared module owns it).
-const CAMERA_LAYER_ID = 'map-features-cameras';
 
 function severityToColor(severity: number): string {
   if (severity >= 4) return '#ef4444';
@@ -73,16 +72,16 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
       data: geojson,
     });
 
-    // Anchor below MapFeaturesLayer's camera layer when it actually exists —
-    // but that layer is added asynchronously (after its own network fetch)
-    // and only when the current viewport has at least one camera/signal
-    // feature, so it's frequently missing exactly when this runs (every
-    // mount, every style.load). addLayer(layer, before) with a non-existent
-    // `before` id doesn't throw — maplibre-gl fires a silent 'error' event
-    // and skips adding the layer entirely — so without this check the whole
-    // heatmap/circles/labels stack would just never appear, with nothing to
-    // ever retry it since renderTraffic's dataKey memo still gets set.
-    const beforeId = map.getLayer(CAMERA_LAYER_ID) ? CAMERA_LAYER_ID : undefined;
+    // Anchor below the route line / POI-report icons / camera-signal
+    // clusters (see mapLayerOrder.ts) so this heatmap/circles/labels stack
+    // never covers the primary navigation cues — whichever of those layers
+    // happens to exist yet, since they're added by independent sibling
+    // components on their own async schedules. addLayer(layer, before) with
+    // a non-existent `before` id doesn't throw — maplibre-gl fires a silent
+    // 'error' event and skips adding the layer entirely — so this has to be
+    // existence-checked, which beforeTopTier already does.
+    ensureReportIcon(map, 'TRAFFIC_JAM');
+    const beforeId = beforeTopTier(map);
 
     // Heatmap layer (Yandex-style glow)
     map.addLayer({
@@ -154,18 +153,21 @@ function TrafficLayer({ map }: { map: maplibregl.Map | null }) {
       },
     }, beforeId);
 
-    // Label layer
+    // Label layer — a baked canvas icon (see maplibreIcons.ts's
+    // ensureReportIcon), not a raw `text-field` emoji. Text-field glyphs are
+    // rasterized by the style's own glyph server, which most vector styles
+    // (including this app's) don't ship emoji ranges for — the glyph
+    // silently fails to resolve depending on which tiles happen to be
+    // cached, the same failure class already fixed for camera/POI icons
+    // elsewhere (see MapFeaturesLayer.tsx's ensureCameraIcon comment).
     map.addLayer({
       id: TRAFFIC_LABELS,
       type: 'symbol',
       source: TRAFFIC_SOURCE,
       minzoom: 15,
       layout: {
-        'text-field': '🚗',
-        'text-size': 12,
-      },
-      paint: {
-        'text-opacity': 0.9,
+        'icon-image': reportIconId('TRAFFIC_JAM'),
+        'icon-size': 0.5,
       },
     }, beforeId);
 

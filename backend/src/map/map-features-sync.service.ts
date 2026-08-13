@@ -287,7 +287,11 @@ out body;
     maxLng: number,
     types?: string[],
   ) {
-    const typeFilter = types?.length ? types : ['traffic_signals'];
+    // No `types` filter means "give me everything this endpoint tracks" —
+    // used to default to traffic_signals only, so a caller that omitted
+    // `types` (unlike MapFeaturesLayer.tsx, which always passes both
+    // explicitly) got signals with speed cameras silently missing.
+    const typeFilter = types?.length ? types : ['traffic_signals', 'speed_camera'];
     const wantSpeedCameras = typeFilter.includes('speed_camera');
     const wantSignals = typeFilter.includes('traffic_signals');
 
@@ -430,15 +434,19 @@ out body;
   }
 
   async getStats() {
-    const [total, byType, byCountry] = await Promise.all([
+    const [total, byType, byCountry, cameraCount] = await Promise.all([
       this.prisma.mapFeature.count(),
       this.prisma.mapFeature.groupBy({ by: ['type'], _count: true }),
       this.prisma.mapFeature.groupBy({ by: ['countryCode'], _count: true }),
+      // SpeedCamera is a separate model from MapFeature (traffic signals),
+      // so it was silently excluded from `total`/`byType` above even though
+      // getFeaturesByBbox tracks it as a feature type just the same.
+      this.prisma.speedCamera.count(),
     ]);
 
     return {
-      total,
-      byType: Object.fromEntries(byType.map(r => [r.type, r._count])),
+      total: total + cameraCount,
+      byType: { ...Object.fromEntries(byType.map(r => [r.type, r._count])), speed_camera: cameraCount },
       byCountry: Object.fromEntries(byCountry.map(r => [r.countryCode, r._count])),
     };
   }

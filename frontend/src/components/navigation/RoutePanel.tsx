@@ -396,6 +396,9 @@ export function RoutePanel() {
                             )}
                           </div>
                           <p className="text-xs text-gray-400">{route.summary}</p>
+                          {route.isEstimate && (
+                            <p className="text-[11px] text-amber-400 mt-1">⚠ {t('routePanel.routeIsEstimate')}</p>
+                          )}
                         </div>
                         <FaChevronRight size={16} className={isSelected ? 'text-primary-400' : 'text-gray-600'} />
                       </div>
