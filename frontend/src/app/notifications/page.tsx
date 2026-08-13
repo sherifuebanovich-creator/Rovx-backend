@@ -49,10 +49,12 @@ export default function NotificationsPage() {
 
   const unread = notifs.filter(n => !n.isRead).length;
 
-  // Report notifications carry the report's lat/lng in `data` (a JSON
-  // string, see reports.service.ts's notificationData) — previously nothing
-  // ever read it, so tapping a report notification did nothing at all.
-  const parseNotificationData = (raw: unknown): { lat?: number; lng?: number } | null => {
+  // Report notifications carry the report's lat/lng/address in `data` (a
+  // JSON string, see reports.service.ts's notificationData) — previously
+  // nothing ever read it, so tapping a report notification did nothing at
+  // all, and the precise address was never shown even though it's the one
+  // field the city name in the title can't convey.
+  const parseNotificationData = (raw: unknown): { lat?: number; lng?: number; address?: string } | null => {
     if (!raw) return null;
     if (typeof raw === 'object') return raw as any;
     try { return JSON.parse(raw as string); } catch { return null; }
@@ -151,8 +153,8 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {notifs.map((n, i) => {
-              const isLocatable = (n.type === 'report' || n.type === 'report_premium') &&
-                parseNotificationData(n.data)?.lat !== undefined;
+              const data = (n.type === 'report' || n.type === 'report_premium') ? parseNotificationData(n.data) : null;
+              const isLocatable = data?.lat !== undefined;
               return (
                 <motion.div key={n.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
                   onClick={isLocatable ? () => handleNotificationClick(n) : undefined}
@@ -166,6 +168,11 @@ export default function NotificationsPage() {
                       {!n.isRead && <span className="w-2 h-2 rounded-full bg-primary-400 flex-shrink-0" />}
                     </div>
                     <p className="text-gray-400 text-xs mt-0.5">{n.body}</p>
+                    {data?.address && (
+                      <p className="text-gray-500 text-[11px] mt-0.5 flex items-center gap-1">
+                        <FaMapMarkerAlt size={9} className="flex-shrink-0" /> {data.address}
+                      </p>
+                    )}
                     <p className="text-gray-600 text-[11px] mt-1">{formatTime(n.createdAt)}</p>
                   </div>
                   {isLocatable && <FaMapMarkerAlt size={12} className="text-gray-600 flex-shrink-0 mt-1" />}

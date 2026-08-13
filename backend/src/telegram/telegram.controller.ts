@@ -65,6 +65,11 @@ export class TelegramController implements OnModuleInit {
       this.logger.log(`Loaded ${ids.length} authorized Telegram chats from Redis`);
     } catch {}
 
+    // Previously missing about a dozen real, working commands (report,
+    // payments, stats, ban/unban, groups, approve/reject, deactivate,
+    // answer, reply) — anyone relying on the `/` autocomplete menu instead
+    // of the full-text `/help` listing couldn't discover roughly half of
+    // what the bot actually does.
     await this.telegram.setMyCommands([
       { command: 'start', description: 'Начать / Меню' },
       { command: 'help', description: 'Помощь / Все команды' },
@@ -72,16 +77,28 @@ export class TelegramController implements OnModuleInit {
       { command: 'find', description: 'Поиск пользователя' },
       { command: 'userinfo', description: 'Инфо + пароль' },
       { command: 'setpass', description: 'Сменить пароль' },
+      { command: 'ban', description: 'Забанить пользователя' },
+      { command: 'unban', description: 'Разбанить пользователя' },
+      { command: 'setrole', description: 'Сменить роль пользователя' },
+      { command: 'grant', description: 'Выдать премиум' },
+      { command: 'deactivate', description: 'Деактивировать подписку' },
+      { command: 'deleteuser', description: 'Удалить пользователя навсегда' },
+      { command: 'purgetest', description: 'Удалить все тестовые аккаунты' },
       { command: 'reports', description: 'Репорты по городам' },
+      { command: 'report', description: 'Репорт по ID' },
       { command: 'search', description: 'Поиск репортов' },
       { command: 'online', description: 'Кто онлайн' },
       { command: 'premium', description: 'Статистика премиума' },
+      { command: 'payments', description: 'Платежи на подтверждении' },
+      { command: 'approve', description: 'Подтвердить платёж' },
+      { command: 'reject', description: 'Отклонить платёж' },
+      { command: 'stats', description: 'Статистика подписок' },
       { command: 'server', description: 'Нагрузка сервера' },
       { command: 'dashboard', description: 'Полная статистика' },
-      { command: 'grant', description: 'Выдать премиум' },
-      { command: 'setrole', description: 'Сменить роль пользователя' },
-      { command: 'deleteuser', description: 'Удалить пользователя навсегда' },
-      { command: 'purgetest', description: 'Удалить все тестовые аккаунты' },
+      { command: 'groups', description: 'Список групп' },
+      { command: 'group', description: 'Инфо о группе' },
+      { command: 'answer', description: 'Ответить на обращение в поддержку' },
+      { command: 'reply', description: 'Ответить в Telegram-чат' },
       { command: 'logout', description: 'Выйти из бота' },
     ]);
   }

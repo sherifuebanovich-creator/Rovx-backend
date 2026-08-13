@@ -27,8 +27,8 @@ vercel --prod
 | Переменная | Значение |
 |---|---|
 | `NEXTAUTH_URL` | `https://rovx-app-livid.vercel.app` |
-| `NEXT_PUBLIC_API_URL` | `https://rovx-backend.onrender.com/api/v1` |
-| `NEXT_PUBLIC_WS_URL` | `wss://rovx-backend.onrender.com` |
+| `NEXT_PUBLIC_API_URL` | `https://rovx-backend-up1u.onrender.com/api/v1` |
+| `NEXT_PUBLIC_WS_URL` | `wss://rovx-backend-up1u.onrender.com` |
 
 ---
 
@@ -129,6 +129,6 @@ DATABASE_URL_DIRECT="postgresql://..." npx prisma migrate deploy
 
 После деплоя проверьте:
 
-- Backend: `https://rovx-backend.onrender.com/api/v1/health`
+- Backend: `https://rovx-backend-up1u.onrender.com/api/v1/health`
 - Frontend: `https://rovx-app-livid.vercel.app`
-- Swagger: `https://rovx-backend.onrender.com/docs` (если включено)
+- Swagger: `https://rovx-backend-up1u.onrender.com/docs` (если включено)

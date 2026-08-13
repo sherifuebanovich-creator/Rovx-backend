@@ -305,10 +305,19 @@ export class RoutesService {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c * 1.3; // road factor
 
+    // Was a flat 80 km/h for every vehicle, including trucks — this fallback
+    // only ever fires when the real OSRM call fails/times out, so a loaded
+    // truck (which is also the vehicle type most likely to hit this path,
+    // per the exclude=motorway retry above) got an ETA assuming highway car
+    // speeds. Matches the frontend's own AVERAGE_SPEED_KMH
+    // (navigationEngine.ts) used for the identical "no real route, estimate
+    // from distance" purpose, so the two don't silently disagree.
+    const avgSpeedKmh = dto.vehicleType === 'TRUCK' ? 48 : 60;
+
     return {
       type,
       distance: Math.round(distance * 10) / 10,
-      duration: Math.round((distance / 80) * 60),
+      duration: Math.round((distance / avgSpeedKmh) * 60),
       polyline: [
         { lat: lat1, lng: lng1 },
         { lat: lat2, lng: lng2 },
@@ -320,10 +329,10 @@ export class RoutesService {
       ecoScore: 70,
       hazardCount: 0,
       instructions: [
-        { type: 'depart', text: 'Head to destination', distance, duration: (distance / 80) * 3600, lat: lat1, lng: lng1 },
+        { type: 'depart', text: 'Head to destination', distance, duration: (distance / avgSpeedKmh) * 3600, lat: lat1, lng: lng1 },
         { type: 'arrive', text: 'Arrive at destination', distance: 0, duration: 0, lat: lat2, lng: lng2 },
       ],
-      summary: `${Math.round(distance)} km · ${Math.round((distance / 80) * 60)} min`,
+      summary: `${Math.round(distance)} km · ${Math.round((distance / avgSpeedKmh) * 60)} min`,
       isEstimate: true,
     };
   }

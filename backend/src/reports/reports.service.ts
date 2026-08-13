@@ -740,6 +740,23 @@ export class ReportsService {
       }
     }
 
+    // 3. Notify the admin Telegram chat — TelegramService.sendReportNotification
+    // was built for exactly this (severity emoji, map link, photo) but had no
+    // caller anywhere in the codebase, so new reports never reached Telegram
+    // despite the app advertising Telegram integration for report alerts.
+    this.telegram.sendReportNotification({
+      type: typeLabel,
+      description: dto.description,
+      lat: dto.lat,
+      lng: dto.lng,
+      severity: dto.severity || 3,
+      images: dto.images,
+      address: dto.address,
+      city: reportCity || undefined,
+      time: timeStr,
+      userDisplayName: report.user?.displayName,
+    }).catch(() => {});
+
     // 4. Emit to city room for real-time delivery (users subscribed via city:subscribe)
     const city = reportCity;
     if (city) {
