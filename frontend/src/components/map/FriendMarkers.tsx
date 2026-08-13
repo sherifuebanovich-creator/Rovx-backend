@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, memo } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -12,22 +12,17 @@ interface Props {
 }
 
 const STALE_MS = 5 * 60 * 1000;
-const PREMIUM_TIERS = ['PREMIUM_STANDARD', 'PREMIUM_MAX'];
 
-function createMarkerEl(displayName: string): HTMLElement {
+// A plain green dot, not an avatar — the name only appears on hover, not
+// as a permanently-visible label, so a screenful of online friends doesn't
+// turn into a wall of text.
+function createMarkerEl(): HTMLElement {
   const el = document.createElement('div');
-  el.style.cssText = 'position:relative;cursor:pointer;';
-  el.innerHTML = `
-    <div style="
-      width:32px;height:32px;border-radius:50%;
-      background:linear-gradient(135deg,#22c55e,#16a34a);
-      border:2.5px solid #fff;
-      display:flex;align-items:center;justify-content:center;
-      color:#fff;font-weight:700;font-size:13px;
-      font-family:system-ui,sans-serif;
-      box-shadow:0 2px 8px rgba(0,0,0,0.3);
-      line-height:1;
-    ">${(displayName?.[0] ?? '?').toUpperCase()}</div>
+  el.style.cssText = `
+    width:14px;height:14px;border-radius:50%;
+    background:#22c55e;
+    border:2px solid #fff;
+    box-shadow:0 0 0 2px rgba(34,197,94,0.35),0 1px 4px rgba(0,0,0,0.4);
   `;
   return el;
 }
@@ -38,25 +33,16 @@ function FriendMarkers({ map }: Props) {
   const user = useAuthStore((s) => s.user);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>();
-  const [hasPremium, setHasPremium] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setHasPremium(false);
-      return;
-    }
-    setHasPremium(PREMIUM_TIERS.includes(user.subscription));
-  }, [user]);
-
-  useEffect(() => {
-    if (!map || !user || !hasPremium) return;
+    if (!map || !user) return;
 
     const fetchLocations = async () => {
       try {
         const res = await friendsApi.getLocations();
         const data = res.data?.data || res.data || [];
         setFriendLocations(data);
-      } catch { /* 403 if no premium, ignore */ }
+      } catch { /* transient network error, next poll retries */ }
     };
 
     // Every other poller in this codebase is moveend/zoomend/style-event
@@ -84,21 +70,10 @@ function FriendMarkers({ map }: Props) {
       clearInterval(refreshTimerRef.current);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [map, user, hasPremium, setFriendLocations]);
+  }, [map, user, setFriendLocations]);
 
   useEffect(() => {
     if (!map) return;
-
-    // Must run even when hasPremium is false — a mid-session downgrade
-    // (subscription expires/is cancelled while friend markers are already
-    // on screen) previously left every existing DOM marker behind forever,
-    // since this whole effect used to bail out before ever reaching the
-    // removal loop below.
-    if (!hasPremium) {
-      for (const marker of markersRef.current.values()) marker.remove();
-      markersRef.current.clear();
-      return;
-    }
 
     for (const [userId, marker] of markersRef.current) {
       const loc = friendLocations.find((f) => f.userId === userId);
@@ -115,18 +90,23 @@ function FriendMarkers({ map }: Props) {
       if (existing) {
         existing.setLngLat([loc.lng, loc.lat]);
       } else {
-        const el = createMarkerEl(loc.displayName);
-        const popup = new maplibregl.Popup({ closeButton: false, offset: 20, className: 'friend-popup' })
+        const el = createMarkerEl();
+        // Hover, not click — a click-to-open popup meant the name was
+        // hidden behind an extra tap; a small dot with a name that only
+        // needs a glance should show it the same way a native map pin's
+        // tooltip does.
+        const popup = new maplibregl.Popup({ closeButton: false, offset: 14, className: 'friend-popup' })
           .setHTML(`<div style="padding:4px 8px;font-size:12px;font-weight:600;white-space:nowrap;">${escapeAttr(loc.displayName)}</div>`);
+        el.addEventListener('mouseenter', () => popup.setLngLat([loc.lng, loc.lat]).addTo(map));
+        el.addEventListener('mouseleave', () => popup.remove());
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([loc.lng, loc.lat])
-          .setPopup(popup)
           .addTo(map);
         markersRef.current.set(loc.userId, marker);
       }
     }
-  }, [map, friendLocations, hasPremium]);
+  }, [map, friendLocations]);
 
   useEffect(() => {
     if (!map) return;
@@ -138,7 +118,6 @@ function FriendMarkers({ map }: Props) {
     };
   }, [map]);
 
-  if (!hasPremium) return null;
   return null;
 }
 

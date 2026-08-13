@@ -298,12 +298,32 @@ function MapFeaturesLayer({ map }: Props) {
     const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
     const onLeave = () => { map.getCanvas().style.cursor = ''; };
 
+    // The cluster circle (orange/red badge with a count) had no click
+    // handler at all — tapping it did nothing, which read as a dead/fake
+    // UI element. Standard cluster behavior: zoom in to the point where the
+    // cluster's own source expands it into its individual features.
+    const onClusterClick = async (e: maplibregl.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const clusterId = feature.properties?.cluster_id;
+      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+      if (clusterId == null || !source) return;
+      try {
+        const zoom = await source.getClusterExpansionZoom(clusterId);
+        const coords = (feature.geometry as any).coordinates;
+        map.easeTo({ center: coords, zoom });
+      } catch { /* ignore */ }
+    };
+
     map.on('click', cameraLayerId, onClick);
     map.on('click', signalLayerId, onClick);
+    map.on('click', clusterLayerId, onClusterClick);
     map.on('mouseenter', cameraLayerId, onEnter);
     map.on('mouseleave', cameraLayerId, onLeave);
     map.on('mouseenter', signalLayerId, onEnter);
     map.on('mouseleave', signalLayerId, onLeave);
+    map.on('mouseenter', clusterLayerId, onEnter);
+    map.on('mouseleave', clusterLayerId, onLeave);
 
     // A style switch (setStyle) wipes all custom sources/layers just like it
     // does for the route line in MapViewGL — but unlike that redraw, this one
@@ -343,10 +363,13 @@ function MapFeaturesLayer({ map }: Props) {
       map.off('style.load', onStyleLoad);
       map.off('click', cameraLayerId, onClick);
       map.off('click', signalLayerId, onClick);
+      map.off('click', clusterLayerId, onClusterClick);
       map.off('mouseenter', cameraLayerId, onEnter);
       map.off('mouseleave', cameraLayerId, onLeave);
       map.off('mouseenter', signalLayerId, onEnter);
       map.off('mouseleave', signalLayerId, onLeave);
+      map.off('mouseenter', clusterLayerId, onEnter);
+      map.off('mouseleave', clusterLayerId, onLeave);
       popup.remove();
       cleanup();
     };

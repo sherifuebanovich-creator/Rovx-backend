@@ -331,6 +331,7 @@ export interface UserPreferences {
   mapStyle: string;
   defaultRouteType: RouteType;
   limitTrafficSignalsRadius: boolean;
+  shareLocationWithFriends: boolean;
 }
 
 export interface VoiceRoom {

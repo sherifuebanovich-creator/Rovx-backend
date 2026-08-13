@@ -457,10 +457,21 @@ export class ReportsService {
     });
 
     // --- Common data for notifications ---
-    const timeStr = new Date().toLocaleString('ru-RU', {
+    // `toLocaleString` with no `timeZone` formats in the SERVER's own
+    // timezone (Render runs in UTC), unlabeled — a report filed at 12:30 in
+    // Tashkent (UTC+5) rendered as "07:30" with nothing to say it wasn't
+    // local time, exactly the offset a driver would actually be confused
+    // by. There's no per-report timezone lookup here, so approximate one
+    // from longitude (15° of longitude ≈ 1 hour) — rough near timezone
+    // boundaries, but far closer than bare UTC, and the explicit "UTC+N"
+    // suffix means it's never silently wrong about which zone it's in.
+    const tzOffsetHours = Math.round(dto.lng / 15);
+    const localTime = new Date(Date.now() + tzOffsetHours * 60 * 60 * 1000);
+    const timeStr = localTime.toLocaleString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
-    });
+      timeZone: 'UTC',
+    }) + ` (UTC${tzOffsetHours >= 0 ? '+' : ''}${tzOffsetHours})`;
     const typeLabel = REPORT_TYPE_LABELS[dto.type] || dto.type;
 
     // Background notifications (don't block response)
@@ -684,12 +695,31 @@ export class ReportsService {
     this.logger.log(`Expired ${count.count} reports`);
   }
 
+  // The Settings page's "Notifications" toggle (bound to trafficAlerts —
+  // it's the only general notification preference actually exposed in the
+  // UI) saved to the DB but nothing ever read it back: every report went
+  // out to every eligible user regardless of this setting. Excludes only
+  // users with an explicit opt-out row; a user with no UserPreference row
+  // yet defaults to receiving notifications, matching the schema's own
+  // `trafficAlerts @default(true)`.
+  private async filterByNotificationPref(userIds: string[]): Promise<string[]> {
+    if (userIds.length === 0) return userIds;
+    const optedOut = await this.prisma.userPreference.findMany({
+      where: { userId: { in: userIds }, trafficAlerts: false },
+      select: { userId: true },
+    });
+    const optedOutSet = new Set(optedOut.map((p) => p.userId));
+    return userIds.filter((id) => !optedOutSet.has(id));
+  }
+
   private async sendReportNotifications(report: any, dto: CreateReportDto, userId: string, typeLabel: string, timeStr: string, reportCity: string | null) {
     // 1. Broadcast via WebSocket to nearby area
     await this.gateway.broadcastReport(report).catch(() => {});
 
     // 2. Send to all Premium users (tier 1+)
-    const premiumUserIds = await this.getPremiumUsers().catch(() => []);
+    const premiumUserIds = await this.getPremiumUsers()
+      .then((ids) => this.filterByNotificationPref(ids))
+      .catch(() => []);
 
     const notificationData = JSON.stringify({
       reportId: report.id,
@@ -769,7 +799,9 @@ export class ReportsService {
       });
 
       // 5. Send to users in the same city
-      const cityUserIds = await this.getUsersInCity(city).catch(() => []);
+      const cityUserIds = await this.getUsersInCity(city)
+        .then((ids) => this.filterByNotificationPref(ids))
+        .catch(() => []);
       const premiumSet = new Set(premiumUserIds);
       const uniqueIds = [...new Set(cityUserIds.filter(uid => uid !== userId && !premiumSet.has(uid)))];
       if (uniqueIds.length > 0) {

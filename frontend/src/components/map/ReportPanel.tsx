@@ -2,10 +2,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaCamera, FaCheckCircle, FaExclamationTriangle, FaTimes, FaSpinner, FaImage, FaCommentDots } from 'react-icons/fa';
+import { FaCamera, FaCheckCircle, FaExclamationTriangle, FaTimes, FaSpinner, FaImage, FaCommentDots, FaMapMarkerAlt, FaLocationArrow } from 'react-icons/fa';
 import { useMapStore } from '@/store/map.store';
 import { reportsApi, mapApi } from '@/lib/api';
-import { ReportType } from '@/types';
+import { ReportType, SearchSuggestion } from '@/types';
+import { MapAddressPickerModal } from '@/components/settings/MapAddressPickerModal';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 
@@ -53,6 +54,14 @@ export function ReportPanel() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [reportLimit, setReportLimit] = useState<{ used: number; max: number } | null>(null);
+  // Defaults to the driver's own GPS fix, but a report is about where the
+  // hazard/incident IS, not necessarily where the reporting device happens
+  // to be right now (already passed it, reporting on someone else's
+  // behalf, etc.) — null here means "still following live GPS", a picked
+  // location pins it and stops tracking further GPS updates.
+  const [pickedLocation, setPickedLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const reportLocation = pickedLocation || (userLocation ? { ...userLocation, label: t('reportPanel.myLocation') } : null);
 
   // Photo state
   const [photos, setPhotos] = useState<string[]>([]);
@@ -120,7 +129,7 @@ export function ReportPanel() {
 
   const handleSubmit = async () => {
     if (submittingRef.current) return;
-    if (!selectedType || !userLocation) {
+    if (!selectedType || !reportLocation) {
       toast.error(t('reportPanel.needLocation'));
       return;
     }
@@ -142,7 +151,7 @@ export function ReportPanel() {
       let address: string | undefined;
       let city: string | undefined;
       try {
-        const geo = await mapApi.reverseGeocode(userLocation.lat, userLocation.lng);
+        const geo = await mapApi.reverseGeocode(reportLocation.lat, reportLocation.lng);
         const geoData = geo.data?.data || geo.data;
         address = geoData?.address || undefined;
         city = geoData?.city || undefined;
@@ -150,8 +159,8 @@ export function ReportPanel() {
 
       const res = await reportsApi.create({
         type: selectedType,
-        lat: userLocation.lat,
-        lng: userLocation.lng,
+        lat: reportLocation.lat,
+        lng: reportLocation.lng,
         address,
         city,
         description: description.trim() || undefined,
@@ -173,6 +182,7 @@ export function ReportPanel() {
         setSeverity(3);
         setPhotos([]);
         setPhotoFiles([]);
+        setPickedLocation(null);
       }, 3000);
     } catch (err: any) {
       const msg = err?.response?.data?.message || t('reportPanel.submitFailed');
@@ -383,11 +393,37 @@ export function ReportPanel() {
                 />
               </div>
 
+              {/* Location — defaults to live GPS, but the incident isn't
+                  always where the reporting device currently is. */}
+              <div className="mt-4">
+                <p className="text-xs text-gray-400 mb-1.5">{t('reportPanel.location')}</p>
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPicker(true)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-left"
+                >
+                  <FaMapMarkerAlt size={14} className="text-primary-400 flex-shrink-0" />
+                  <span className="flex-1 min-w-0 text-sm text-white truncate">
+                    {reportLocation?.label || t('reportPanel.locatingYou')}
+                  </span>
+                  <span className="text-[11px] text-primary-400 flex-shrink-0">{t('reportPanel.change')}</span>
+                </button>
+                {pickedLocation && userLocation && (
+                  <button
+                    type="button"
+                    onClick={() => setPickedLocation(null)}
+                    className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-300 transition-all"
+                  >
+                    <FaLocationArrow size={9} /> {t('reportPanel.useMyLocation')}
+                  </button>
+                )}
+              </div>
+
               {/* Submit */}
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSubmit}
-                disabled={!selectedType || !userLocation || isSubmitting || photoChecking || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
+                disabled={!selectedType || !reportLocation || isSubmitting || photoChecking || (reportLimit?.used ?? 0) >= (reportLimit?.max ?? 3)}
                 className="mt-4 w-full btn-accent py-4 flex items-center justify-center gap-2
                            font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -404,6 +440,17 @@ export function ReportPanel() {
           )}
         </div>
       </div>
+
+      {showLocationPicker && (
+        <MapAddressPickerModal
+          initial={reportLocation ? { lat: reportLocation.lat, lng: reportLocation.lng } : null}
+          onConfirm={(s: SearchSuggestion) => {
+            setPickedLocation({ lat: s.lat, lng: s.lng, label: s.address || s.name });
+            setShowLocationPicker(false);
+          }}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
     </motion.div>
   );
 }

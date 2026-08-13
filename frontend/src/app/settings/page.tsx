@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useAuthStore } from '@/store/auth.store';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n/i18n';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase, FaUser, FaIdBadge, FaKey } from 'react-icons/fa';
+import { FaArrowLeft, FaBell, FaVolumeUp, FaMoon, FaGlobe, FaTrash, FaSignOutAlt, FaChevronRight, FaToggleOn, FaToggleOff, FaCheck, FaSearch, FaCar, FaTruck, FaPlus, FaTimes, FaCube, FaSatellite, FaRoad, FaHome, FaBriefcase, FaUser, FaIdBadge, FaKey, FaMapMarkerAlt, FaUsers } from 'react-icons/fa';
 import { signOut } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -17,12 +18,22 @@ import { AddressPicker } from '@/components/settings/AddressPicker';
 import { Vehicle } from '@/types';
 import { getStoredThemeMode, resolveIsDark } from '@/lib/theme';
 
+// Pulls in maplibre-gl (~300KB+) — dynamic+ssr:false so that weight only
+// loads if/when the user actually opens the map picker, instead of bloating
+// every settings page load (this page has no map on it otherwise). Same
+// pattern MapApp.tsx already uses for MapViewGL.
+const MapAddressPickerModal = dynamic(
+  () => import('@/components/settings/MapAddressPickerModal').then((m) => m.MapAddressPickerModal),
+  { ssr: false },
+);
+
 export default function SettingsPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, setUser, preferences, setPreferences } = useAuthStore();
   const { themeMode, setDarkMode, setThemeMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
   const [notifications, setNotifications] = useState(preferences?.trafficAlerts ?? true);
+  const [shareLocation, setShareLocation] = useState(preferences?.shareLocationWithFriends ?? true);
   const [sound, setSound] = useState(preferences?.voiceEnabled ?? true);
   const [voiceGender, setVoiceGender] = useState<'MALE' | 'FEMALE'>(preferences?.voiceGender ?? 'FEMALE');
   // Off by default — out of the box every traffic-signal icon shows,
@@ -36,6 +47,7 @@ export default function SettingsPage() {
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [vehiclesError, setVehiclesError] = useState(false);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [mapPickerField, setMapPickerField] = useState<'home' | 'work' | null>(null);
   // Tracks the last SERVER-CONFIRMED address/coords per field, separate
   // from `user` (which the address inputs' onChange updates optimistically
   // on every keystroke) — needed to revert to a known-good value if a save
@@ -59,6 +71,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (preferences) {
       setNotifications(preferences.trafficAlerts ?? true);
+      setShareLocation(preferences.shareLocationWithFriends ?? true);
       setSound(preferences.voiceEnabled ?? true);
       setVoiceGender(preferences.voiceGender ?? 'FEMALE');
       setLimitSignals(preferences.limitTrafficSignalsRadius ?? false);
@@ -227,6 +240,7 @@ export default function SettingsPage() {
       title: t('settings.preferences'),
       items: [
         { icon: <FaBell size={16} className="text-yellow-400" />, label: t('settings.notifications'), right: <Toggle value={notifications} onChange={() => { const v = !notifications; setNotifications(v); updatePreference('trafficAlerts', v); }} /> },
+        { icon: <FaUsers size={16} className="text-green-400" />, label: t('settings.shareLocation'), right: <Toggle value={shareLocation} onChange={() => { const v = !shareLocation; setShareLocation(v); updatePreference('shareLocationWithFriends', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.sound'), right: <Toggle value={sound} onChange={() => { const v = !sound; setSound(v); updatePreference('voiceEnabled', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.voiceGender'),
           right: (
@@ -396,6 +410,14 @@ export default function SettingsPage() {
                       onClear={() => handleAddressClear('home')}
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setMapPickerField('home')}
+                    title={t('settings.pickOnMap')}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-primary-400 transition-all flex-shrink-0"
+                  >
+                    <FaMapMarkerAlt size={14} />
+                  </button>
                   {user.homeLat && user.homeLng && (
                     <span className="text-[10px] text-green-400 bg-green-600/20 px-2 py-0.5 rounded-full flex-shrink-0">
                       {t('settings.onMap')}
@@ -417,6 +439,14 @@ export default function SettingsPage() {
                       onClear={() => handleAddressClear('work')}
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setMapPickerField('work')}
+                    title={t('settings.pickOnMap')}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-primary-400 transition-all flex-shrink-0"
+                  >
+                    <FaMapMarkerAlt size={14} />
+                  </button>
                   {user.workLat && user.workLng && (
                     <span className="text-[10px] text-green-400 bg-green-600/20 px-2 py-0.5 rounded-full flex-shrink-0">
                       {t('settings.onMap')}
@@ -579,6 +609,18 @@ export default function SettingsPage() {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {mapPickerField && (
+        <MapAddressPickerModal
+          initial={
+            mapPickerField === 'home'
+              ? (user?.homeLat && user?.homeLng ? { lat: user.homeLat, lng: user.homeLng } : null)
+              : (user?.workLat && user?.workLng ? { lat: user.workLat, lng: user.workLng } : null)
+          }
+          onConfirm={(s) => { handleAddressSelect(mapPickerField, s); setMapPickerField(null); }}
+          onClose={() => setMapPickerField(null)}
+        />
       )}
 
     </div>

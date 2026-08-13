@@ -50,8 +50,16 @@ export class TelegramService {
     }
 
     const severityEmoji = report.severity >= 4 ? '🔴' : report.severity >= 3 ? '🟡' : '🟢';
-    const mapLink = `https://www.google.com/maps?q=${report.lat},${report.lng}`;
-    const coordsText = `${report.lat.toFixed(6)}, ${report.lng.toFixed(6)}`;
+    // Rounded to the same 6 decimals as coordsText below (~11cm precision,
+    // already well past real GPS accuracy) — was passing the raw
+    // full-precision float straight into the URL, so the map link (and
+    // Telegram's own link-preview card, which renders a DMS conversion of
+    // whatever's in the URL) showed a different-looking, falsely-precise
+    // 14-digit coordinate for the exact same point as "Координаты:" above it.
+    const latR = report.lat.toFixed(6);
+    const lngR = report.lng.toFixed(6);
+    const mapLink = `https://www.google.com/maps?q=${latR},${lngR}`;
+    const coordsText = `${latR}, ${lngR}`;
 
     let text = `${severityEmoji} <b>НОВЫЙ РЕПОРТ</b>\n`;
     text += `━━━━━━━━━━━━━━━\n`;

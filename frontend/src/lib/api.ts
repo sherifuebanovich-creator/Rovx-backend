@@ -74,11 +74,13 @@ api.interceptors.response.use(
     // free tier can take up to 30-60s to finish booting from cold, and one
     // 3s-delayed attempt just re-hits the still-booting instance and fails
     // again — visibly *slower* than failing immediately, for the same
-    // end result. Retry up to 5 times with increasing backoff (covers
-    // ~45s of deliberate waiting, on top of however long each attempt
-    // itself took) before finally giving up.
-    const MAX_COLD_START_RETRIES = 5;
-    const COLD_START_DELAYS_MS = [2000, 4000, 6000, 9000, 12000];
+    // end result. Retry up to 6 times with increasing backoff (covers ~48s
+    // of deliberate waiting, on top of however long each attempt itself
+    // took) — Render's own dashboard warns a free-tier cold start "can
+    // delay requests by 50 seconds or more", so the previous 5-retry/33s
+    // budget could still run out just short of a genuinely slow boot.
+    const MAX_COLD_START_RETRIES = 6;
+    const COLD_START_DELAYS_MS = [2000, 4000, 6000, 9000, 12000, 15000];
     const retryCount = originalRequest?._coldStartRetryCount || 0;
     if (
       originalRequest &&

@@ -288,10 +288,23 @@ export class FriendsService {
 
     if (onlineFriends.length === 0) return [];
 
-    const keys = onlineFriends.map(f => `location:${f.id}`);
+    // Respects each friend's own shareLocationWithFriends preference — a
+    // friend who's turned this off must not appear here even to people who
+    // already have them added, regardless of being online. A friend with
+    // no UserPreference row yet defaults to sharing, same as the column's
+    // own @default(true).
+    const optedOut = await this.prisma.userPreference.findMany({
+      where: { userId: { in: onlineFriends.map(f => f.id) }, shareLocationWithFriends: false },
+      select: { userId: true },
+    });
+    const optedOutSet = new Set(optedOut.map(p => p.userId));
+    const visibleFriends = onlineFriends.filter(f => !optedOutSet.has(f.id));
+    if (visibleFriends.length === 0) return [];
+
+    const keys = visibleFriends.map(f => `location:${f.id}`);
     const results = await this.redis.mget(...keys);
 
-    return onlineFriends
+    return visibleFriends
       .map((f, i) => {
         if (!results[i]) return null;
         try {

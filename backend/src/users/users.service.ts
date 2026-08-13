@@ -183,7 +183,7 @@ export class UsersService {
     'nightMode', 'voiceEnabled', 'voiceGender', 'voiceLanguage', 'voiceVolume',
     'speedAlerts', 'cameraAlerts', 'trafficAlerts', 'hazardAlerts',
     'restStopInterval', 'fuelWarningLevel', 'units', 'mapStyle', 'defaultRouteType',
-    'limitTrafficSignalsRadius',
+    'limitTrafficSignalsRadius', 'shareLocationWithFriends',
   ] as const;
 
   async updatePreferences(userId: string, prefs: any) {

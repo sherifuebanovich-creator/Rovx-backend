@@ -221,6 +221,11 @@ model UserPreference {
   // the map only draws traffic-signal icons within 1km of the user;
   // other icon types (speed cameras, hazards, etc.) are unaffected.
   limitTrafficSignalsRadius Boolean @default(false)
+  // Gates GET /friends/locations — when off, this user is excluded from
+  // every friend's location list (and the map's green online-friend dots)
+  // even while online, without stopping them from seeing their OWN
+  // friends' locations. Defaults to on, matching prior always-on behavior.
+  shareLocationWithFriends Boolean @default(true)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("user_preferences")
 }
