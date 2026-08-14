@@ -431,19 +431,6 @@ export class MapService {
     return result;
   }
 
-  private detectCameraType(tags: Record<string, string>): string {
-    if (tags.man_mobile === 'yes' || tags.mobile === 'yes') return 'MOBILE';
-    if (tags['camera:type'] === 'tripos' || tags.tripod === 'yes') return 'TRIPOD';
-    if (tags['camera:type'] === 'red_light' || tags['red_light_camera'] === 'yes') return 'RED_LIGHT';
-    if (tags['camera:type'] === 'average_speed' || tags.average_speed === 'yes') return 'AVERAGE_SPEED';
-    if (tags.enforcement === 'bus_lane') return 'BUS_LANE';
-    if (tags.enforcement === 'dedicated_lane') return 'DEDICATED_LANE';
-    if (tags['camera:type'] === 'photographic' || tags['camera:type'] === 'radar') return 'PHOTORADAR';
-    if (tags.hidden === 'yes' || tags['camera:type'] === 'ambush') return 'AMBUSH';
-    if (tags.enforcement === 'seatbelt' || tags['camera:type'] === 'seatbelt') return 'SEATBELT';
-    return 'STATIONARY';
-  }
-
   async getTrafficSignals(lat: number, lng: number, radiusKm = 2) {
     const cacheKey = `traffic:db:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm}`;
     const cached = await this.redis.get(cacheKey);

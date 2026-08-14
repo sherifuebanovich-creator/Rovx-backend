@@ -227,12 +227,6 @@ export function updateBlueDotAccuracy(el: BlueDotElements, accuracyMeters: numbe
   el.accuracyCircle.style.height = `${clamped}px`;
 }
 
-export function metersToPixelsAtLat(meters: number, lat: number, zoom: number): number {
-  const latRad = (lat * Math.PI) / 180;
-  const metersPerPixel = (156543.03392 * Math.cos(latRad)) / Math.pow(2, zoom);
-  return meters / metersPerPixel;
-}
-
 export function accuracyCircleGeoJSON(lat: number, lng: number, radiusMeters: number, segments = 64): GeoJSON.Feature<GeoJSON.Polygon> {
   const coords: [number, number][] = [];
   const earthRadius = 6371000;
@@ -306,5 +300,3 @@ export function createReportPopupContent(
     </div>
   `;
 }
-
-export { CATEGORY_CONFIG, REPORT_CONFIG };

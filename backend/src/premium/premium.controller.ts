@@ -60,7 +60,6 @@ export class PremiumController {
   async webhookStripe(@Req() req: Request) {
     const sig = req.headers['stripe-signature'] as string;
     const rawBody = (req as any).rawBody || '';
-    const body = (req as any).body;
 
     if (!this.premiumService.isStripeConfigured()) {
       return { ok: true };

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GatewayService } from '../websocket/gateway.service';
-import { PremiumService, PREMIUM_TIERS } from '../premium/premium.service';
+import { PremiumService } from '../premium/premium.service';
 import { randomBytes } from 'crypto';
 
 function generateInviteToken(): string {

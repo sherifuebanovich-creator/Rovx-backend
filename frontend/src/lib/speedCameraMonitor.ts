@@ -1,7 +1,7 @@
 'use client';
 import { haversineDist, bearing } from './geo';
 
-export type CameraType =
+type CameraType =
   | 'STATIONARY'
   | 'TRIPOD'
   | 'PHOTORADAR'
@@ -60,16 +60,16 @@ const CAMERA_EMOJIS: Record<CameraType, string> = {
 const WARNING_DISTANCE_M = 1500;
 const MIN_WARNING_INTERVAL_MS = 15000;
 
-export function getCameraTypeLabel(type: CameraType, lang: string): string {
+function getCameraTypeLabel(type: CameraType, lang: string): string {
   const labels = CAMERA_TYPE_LABELS[type] || CAMERA_TYPE_LABELS.STATIONARY;
   return lang === 'ru' ? labels.ru : labels.en;
 }
 
-export function getCameraEmoji(type: CameraType): string {
+function getCameraEmoji(type: CameraType): string {
   return CAMERA_EMOJIS[type] || '📷';
 }
 
-export function isCameraAhead(
+function isCameraAhead(
   userLat: number,
   userLng: number,
   userBearing: number,
@@ -126,20 +126,6 @@ export function buildCameraAlertText(
     : (camera.name || '');
 
   return { title, subtitle, desc };
-}
-
-export function detectCameraTypeFromTags(tags: Record<string, string>): CameraType {
-  if (tags['camera:type'] === 'fixed' || tags.fixed === 'yes' || !tags.mobile) return 'STATIONARY';
-  if (tags.man_mobile === 'yes' || tags.mobile === 'yes') return 'MOBILE';
-  if (tags['camera:type'] === 'tripod' || tags['tripod'] === 'yes') return 'TRIPOD';
-  if (tags['camera:type'] === 'red_light' || tags['red_light_camera'] === 'yes') return 'RED_LIGHT';
-  if (tags['camera:type'] === 'average_speed' || tags['average_speed'] === 'yes') return 'AVERAGE_SPEED';
-  if (tags.enforcement === 'bus_lane') return 'BUS_LANE';
-  if (tags.enforcement === 'dedicated_lane') return 'DEDICATED_LANE';
-  if (tags['camera:type'] === 'photographic' || tags['camera:type'] === 'radar') return 'PHOTORADAR';
-  if (tags['camera:type'] === 'ambush' || tags.hidden === 'yes') return 'AMBUSH';
-  if (tags.enforcement === 'seatbelt' || tags['camera:type'] === 'seatbelt') return 'SEATBELT';
-  return 'STATIONARY';
 }
 
 export function createSpeedCameraMonitor() {

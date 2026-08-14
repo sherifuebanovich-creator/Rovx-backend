@@ -1,11 +1,10 @@
 'use client';
 import type { StyleSpecification } from 'maplibre-gl';
 
-export const OPENFREEMAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-export const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
-export const OPENFREEMAP_POSITRON = 'https://tiles.openfreemap.org/styles/positron';
+const OPENFREEMAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
+const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
 
-export const SATELLITE_STYLE: StyleSpecification = {
+const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
   name: 'Satellite',
   sources: {
@@ -40,23 +39,7 @@ export const MAP_STYLES: Record<string, string | StyleSpecification> = {
   traffic: OPENFREEMAP_LIGHT,
 };
 
-export const BUILDINGS_LAYER_ID = '3d-buildings';
-
-export function getBuildingLayer(map: maplibregl.Map): boolean {
-  try {
-    const style = map.getStyle();
-    if (!style?.sources) return false;
-
-    const sourceEntry = Object.entries(style.sources).find(
-      ([, s]) => (s as any).type === 'vector',
-    );
-    if (!sourceEntry) return false;
-
-    return true;
-  } catch {
-    return false;
-  }
-}
+const BUILDINGS_LAYER_ID = '3d-buildings';
 
 export function add3DBuildings(map: maplibregl.Map, isDark = false) {
   if (map.getLayer(BUILDINGS_LAYER_ID)) return;

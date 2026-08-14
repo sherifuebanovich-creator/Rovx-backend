@@ -64,7 +64,7 @@ function angleDiff(a: number, b: number): number {
   return d;
 }
 
-export function findClosestPointOnPolyline(
+function findClosestPointOnPolyline(
   userLat: number,
   userLng: number,
   polyline: Coordinates[],
@@ -289,7 +289,7 @@ const AVERAGE_SPEED_KMH: Record<VehicleType, number> = {
   TRUCK: 48,
 };
 
-export function estimateDurationFromDistanceKm(
+function estimateDurationFromDistanceKm(
   distanceKm: number,
   vehicleType: VehicleType = 'CAR',
 ): number {

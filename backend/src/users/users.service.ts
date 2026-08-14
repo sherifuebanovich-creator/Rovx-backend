@@ -5,7 +5,6 @@ const VEHICLE_TYPES = {
   CAR: 'CAR',
   TRUCK: 'TRUCK',
 } as const;
-type VehicleType = (typeof VEHICLE_TYPES)[keyof typeof VEHICLE_TYPES];
 
 @Injectable()
 export class UsersService {

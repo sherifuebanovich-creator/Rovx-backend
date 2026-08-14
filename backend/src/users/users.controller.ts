@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import { join, sep } from 'path';
-import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, unlinkSync } from 'fs';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';

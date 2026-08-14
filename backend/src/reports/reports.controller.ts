@@ -8,8 +8,6 @@ import {
   Query,
   UseGuards,
   UseInterceptors,
-  ParseBoolPipe,
-  UploadedFile,
   UploadedFiles,
   BadRequestException,
 } from '@nestjs/common';

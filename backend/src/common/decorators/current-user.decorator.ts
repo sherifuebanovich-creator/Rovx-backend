@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
-import { USER_ROLES, UserRole } from '../constants/roles';
+import { UserRole } from '../constants/roles';
 import { ROLES_KEY } from '../guards/roles.guard';
 
 export const CurrentUser = createParamDecorator(

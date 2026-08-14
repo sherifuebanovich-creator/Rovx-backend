@@ -34,7 +34,7 @@ const TOP_TIER_LAYER_IDS = [
  * every `before` argument in this codebase must be existence-checked first —
  * this generalizes that check to a preference-ordered list.
  */
-export function firstExistingLayer(map: maplibregl.Map, ids: string[]): string | undefined {
+function firstExistingLayer(map: maplibregl.Map, ids: string[]): string | undefined {
   for (const id of ids) {
     if (map.getLayer(id)) return id;
   }

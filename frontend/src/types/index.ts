@@ -104,7 +104,7 @@ export interface MapObject {
   distance?: number;
 }
 
-export type MapObjectCategory =
+type MapObjectCategory =
   | 'PARKING' | 'TRUCK_PARKING' | 'GAS_STATION' | 'EV_CHARGER'
   | 'CAFE' | 'RESTAURANT' | 'SHOP' | 'SUPERMARKET' | 'MALL'
   | 'TOILET' | 'SHOWER' | 'MOTEL' | 'HOTEL'
@@ -144,23 +144,6 @@ export type ReportType =
   | 'LENGTH_LIMIT' | 'SPEED_CAMERA' | 'ROAD_WORKS' | 'ACCIDENT'
   | 'ROAD_CLOSURE' | 'TRAFFIC_JAM' | 'POLICE' | 'HAZARD' | 'OTHER';
 
-export interface Trip {
-  id: string;
-  userId: string;
-  originName: string;
-  originLat: number;
-  originLng: number;
-  destName: string;
-  destLat: number;
-  destLng: number;
-  distance?: number;
-  duration?: number;
-  status: 'planned' | 'active' | 'completed' | 'cancelled';
-  startedAt?: string;
-  endedAt?: string;
-  createdAt: string;
-}
-
 export interface SearchSuggestion {
   id: string;
   name: string;
@@ -194,15 +177,6 @@ export interface PremiumSubscription {
   active: boolean;
 }
 
-export interface CityChatMessage {
-  id: string;
-  city: string;
-  userId: string;
-  content: string;
-  createdAt: string;
-  user: { id: string; displayName: string; avatar?: string };
-}
-
 export interface Friend {
   id: string;
   username: string;
@@ -229,31 +203,6 @@ export interface FriendLocation {
   speed?: number;
   heading?: number;
   updatedAt: number;
-}
-
-export interface FuelCalculation {
-  id: string;
-  originName: string;
-  destName: string;
-  distanceKm: number;
-  durationMin: number;
-  fuelConsumed: number;
-  fuelCost: number;
-  fuelPricePerLiter: number;
-  vehicleName?: string;
-  createdAt: string;
-}
-
-export interface FuelResult {
-  distanceKm: number;
-  durationMin: number;
-  fuelConsumed: number;
-  fuelCost: number;
-  fuelPricePerLiter: number;
-  efficiencyUsed: number;
-  fuelType: string;
-  originName: string;
-  destName: string;
 }
 
 export interface Group {
