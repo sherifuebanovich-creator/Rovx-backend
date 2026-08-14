@@ -257,16 +257,27 @@ function getDeviceInfo(): string {
 }
 
 // Auth endpoints
+// These are the requests most likely to land on a cold Render backend (a
+// brand-new visitor's very first action), but as plain POSTs they can't go
+// through the interceptor's cold-start retry above — replaying a register/
+// login blind could double-submit. Instead they get a longer timeout
+// (matching the ~50-60s cold-start window documented above) so the ORIGINAL
+// request has time to actually come back: with the old 15s default, a
+// register that took 20s server-side still created the account, but the
+// client gave up first and showed no success/redirect — the user was left
+// on a stuck spinner not knowing the account already existed, and a retry
+// then failed with 409.
+const AUTH_COLD_START_TIMEOUT = 60000;
 export const authApi = {
-  register: (data: any) => api.post('/auth/register', { ...data, deviceInfo: getDeviceInfo() }),
-  login: (data: any) => api.post('/auth/login', { ...data, deviceInfo: getDeviceInfo() }),
+  register: (data: any) => api.post('/auth/register', { ...data, deviceInfo: getDeviceInfo() }, { timeout: AUTH_COLD_START_TIMEOUT }),
+  login: (data: any) => api.post('/auth/login', { ...data, deviceInfo: getDeviceInfo() }, { timeout: AUTH_COLD_START_TIMEOUT }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
-  sendVerification: (email: string) => api.post('/auth/send-verification', { email }),
-  verifyEmail: (email: string, code: string) => api.post('/auth/verify-email', { email, code }),
-  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+  sendVerification: (email: string) => api.post('/auth/send-verification', { email }, { timeout: AUTH_COLD_START_TIMEOUT }),
+  verifyEmail: (email: string, code: string) => api.post('/auth/verify-email', { email, code }, { timeout: AUTH_COLD_START_TIMEOUT }),
+  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }, { timeout: AUTH_COLD_START_TIMEOUT }),
   resetPassword: (email: string, code: string, newPassword: string) =>
-    api.post('/auth/reset-password', { email, code, newPassword }),
+    api.post('/auth/reset-password', { email, code, newPassword }, { timeout: AUTH_COLD_START_TIMEOUT }),
 };
 
 // User endpoints

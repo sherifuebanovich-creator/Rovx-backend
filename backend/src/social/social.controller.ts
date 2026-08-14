@@ -5,7 +5,7 @@ import {
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { writeFile } from 'fs/promises';
 import { ForbiddenException } from '@nestjs/common';
@@ -13,6 +13,43 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SocialService } from './social.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+
+// Never derive a saved upload's extension from the client-supplied
+// originalname — see reports.controller.ts's MIME_EXTENSIONS comment for
+// the exact stored-XSS-via-.html exploit this closes. Always map from the
+// server-validated mimetype (or, for the generic-mimetype mobile fallback
+// below, from a regex capture restricted to this same whitelist so an
+// attacker still can't smuggle an arbitrary extension through originalname).
+const MEDIA_MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'video/webm': '.webm',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/3gpp': '.3gp',
+  'video/x-m4v': '.m4v',
+};
+
+const AUDIO_MIME_EXTENSIONS: Record<string, string> = {
+  'audio/webm': '.webm',
+  'audio/ogg': '.ogg',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/aac': '.aac',
+};
+
+const VIDEO_EXT_PATTERN = /\.(webm|mp4|mov|m4v|3gp)$/i;
+
+function getVideoMsgExtension(file: Express.Multer.File): string {
+  const byMime = MEDIA_MIME_EXTENSIONS[file.mimetype];
+  if (byMime) return byMime;
+  const match = VIDEO_EXT_PATTERN.exec(file.originalname || '');
+  return match ? `.${match[1].toLowerCase()}` : '.webm';
+}
 
 @ApiTags('Social')
 @ApiBearerAuth()
@@ -131,7 +168,7 @@ export class SocialController {
       storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/^(image\/|video\/)/)) {
+        if (!MEDIA_MIME_EXTENSIONS[file.mimetype]) {
           return cb(new BadRequestException('Only images and videos allowed'), false);
         }
         cb(null, true);
@@ -150,7 +187,7 @@ export class SocialController {
     const dir = join(process.cwd(), 'uploads', 'messages');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const urls = await Promise.all(files.map(async (f) => {
-      const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(f.originalname)}`;
+      const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${MEDIA_MIME_EXTENSIONS[f.mimetype]}`;
       await writeFile(join(dir, uniqueName), f.buffer);
       return `/uploads/messages/${uniqueName}`;
     }));
@@ -181,7 +218,7 @@ export class SocialController {
     if (!file) throw new BadRequestException('No audio file uploaded');
     const dir = join(process.cwd(), 'uploads', 'audio');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const uniqueName = `voice-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+    const uniqueName = `voice-${Date.now()}-${Math.round(Math.random() * 1e9)}${AUDIO_MIME_EXTENSIONS[file.mimetype] || '.webm'}`;
     await writeFile(join(dir, uniqueName), file.buffer);
     return { url: `/uploads/audio/${uniqueName}` };
   }
@@ -220,7 +257,7 @@ export class SocialController {
     if (!file) throw new BadRequestException('No video file uploaded');
     const dir = join(process.cwd(), 'uploads', 'video-messages');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const uniqueName = `videomsg-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname) || '.webm'}`;
+    const uniqueName = `videomsg-${Date.now()}-${Math.round(Math.random() * 1e9)}${getVideoMsgExtension(file)}`;
     await writeFile(join(dir, uniqueName), file.buffer);
     return { url: `/uploads/video-messages/${uniqueName}` };
   }

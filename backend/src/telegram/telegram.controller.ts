@@ -555,6 +555,10 @@ export class TelegramController implements OnModuleInit {
               where: { id: parts[0] },
               data: { passwordHash: hash, refreshToken: null },
             });
+            // AuthService.refresh() checks this Redis key before falling
+            // back to the Postgres column above — without clearing it too,
+            // a refresh token issued before this reset keeps working.
+            await this.redis.del(`refresh:${parts[0]}`);
             await this.telegram.sendMessageToChat(chatId,
               `✅ Пароль изменён для <code>${parts[0]}</code>\nСтарые сессии отозваны.`);
           } catch (e) {
@@ -775,7 +779,7 @@ export class TelegramController implements OnModuleInit {
         `📛 <b>${escapeTelegramHtml(user.displayName || '—')}</b>\n\n` +
         `━━ <b>АККАУНТ</b> ━━\n` +
         `🌐 Регистрация: ${regMethod}\n` +
-        `📧 Google / Email: <code>${user.email || '—'}</code>\n` +
+        `📧 Google / Email: <code>${escapeTelegramHtml(user.email || '—')}</code>\n` +
         `🏷 @${user.username || '—'}\n` +
         (user.googleId ? `🔑 Google ID: <code>${user.googleId}</code>\n` : '') +
         (hasPassword ? `🔒 Пароль: установлен (используйте /setpass для сброса)\n` : `🔒 Пароль: не задан (Google вход)\n`) +
@@ -1169,7 +1173,7 @@ export class TelegramController implements OnModuleInit {
       const name = escapeTelegramHtml(u.displayName || u.username || u.email || '—');
       const sub = u.subscription === 'FREE' ? '🆓' : '💎';
       const subEnd = u.subscriptionEnd ? `до ${new Date(u.subscriptionEnd).toLocaleDateString('ru-RU')}` : '';
-      msg += `${sub} <b>${name}</b>\n   📧 ${u.email || '—'}\n   🏷 @${u.username || '—'}\n   ${this.regMethodLabel(u)}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${this.shortId(u.id)}</code>\n\n`;
+      msg += `${sub} <b>${name}</b>\n   📧 ${escapeTelegramHtml(u.email || '—')}\n   🏷 @${escapeTelegramHtml(u.username || '—')}\n   ${this.regMethodLabel(u)}\n   💎 ${u.subscription} ${subEnd}\n   📅 ${new Date(u.createdAt).toLocaleDateString('ru-RU')}\n   🆔 <code>${this.shortId(u.id)}</code>\n\n`;
       rows.push([{ text: `👤 ${u.displayName || u.username || u.email || u.id}`, callback_data: `userinfo_${u.id}` }]);
     }
     msg += `Для поиска: <code>/find имя</code>`;
@@ -1238,8 +1242,8 @@ export class TelegramController implements OnModuleInit {
       const name = escapeTelegramHtml(user.displayName || user.username || '—');
       const subEnd = user.subscriptionEnd ? new Date(user.subscriptionEnd).toLocaleDateString('ru-RU') : '—';
       const msg = `👤 <b>${name}</b>\n━━━━━━━━━━━━━━━\n` +
-        `📧 ${user.email || '—'}\n` +
-        `🏷 Username: ${user.username || '—'}\n` +
+        `📧 ${escapeTelegramHtml(user.email || '—')}\n` +
+        `🏷 Username: ${escapeTelegramHtml(user.username || '—')}\n` +
         `${this.regMethodLabel(user)}\n` +
         `💎 Подписка: ${user.subscription}\n` +
         `📅 Действует до: ${subEnd}\n` +

@@ -144,3 +144,28 @@ export function remove3DBuildings(map: maplibregl.Map) {
     map.removeLayer(BUILDINGS_LAYER_ID);
   }
 }
+
+// OpenFreeMap's default label layers render `name:latin name:nonlatin`
+// (e.g. "Moscow Москва") whenever a place's local name isn't already Latin
+// script — a deliberate international-friendly default in the upstream
+// style, but for this app's Russian-first audience it just shows every
+// Cyrillic place name twice. The local `name` tag is already the correct
+// Russian text for the vast majority of OSM features in Russia/CIS, so for
+// a Russian UI we can drop straight to it instead of the bilingual concat.
+// Only touches symbol layers whose text-field matches that known upstream
+// pattern, so it's a no-op if OpenFreeMap changes their style later.
+export function localizeMapLabels(map: maplibregl.Map, lang: string) {
+  if (!lang?.startsWith('ru')) return;
+
+  const style = map.getStyle();
+  if (!style?.layers) return;
+
+  for (const layer of style.layers) {
+    if (layer.type !== 'symbol') continue;
+    const textField = (layer.layout as any)?.['text-field'];
+    if (!textField || JSON.stringify(textField).indexOf('name:nonlatin') === -1) continue;
+    try {
+      map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name'], ['get', 'name_en']]);
+    } catch { /* layer removed mid-iteration or style still transitioning */ }
+  }
+}

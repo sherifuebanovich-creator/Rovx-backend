@@ -148,8 +148,8 @@ export const useMapStore = create<MapState>((set) => ({
   // PERMISSION_DENIED/POSITION_UNAVAILABLE it never gets overwritten at all,
   // so {0,0} (open ocean off the coast of Africa) used to stay the
   // permanent map center for anyone who declines the location prompt.
-  // Moscow is a reasonable default for this app's CIS-focused user base.
-  mapCenter: { lat: 55.7558, lng: 37.6173 },
+  // Dubai — chosen default for this app's user base.
+  mapCenter: { lat: 25.2048, lng: 55.2708 },
   zoom: 13,
   flyToRequestId: 0,
   mapStyle: 'streets',

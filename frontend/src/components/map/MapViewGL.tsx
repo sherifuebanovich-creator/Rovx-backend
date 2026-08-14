@@ -13,7 +13,7 @@ import {
   categoryIconId,
   reportIconId,
 } from '@/lib/maplibreIcons';
-import { MAP_STYLES, add3DBuildings, remove3DBuildings } from '@/lib/mapStyles';
+import { MAP_STYLES, add3DBuildings, remove3DBuildings, localizeMapLabels } from '@/lib/mapStyles';
 import { ROUTE_LINE_ID, ROUTE_TRAVELED_ID, ROUTE_REMAINING_ID, POI_LAYER_ID, REPORTS_LAYER_ID } from '@/lib/mapLayerOrder';
 import UserLocationLayer from './UserLocationLayer';
 import MapFeaturesLayer from './MapFeaturesLayer';
@@ -172,6 +172,8 @@ export default function MapViewGL() {
         add3DBuildings(map, mapStyleRef.current === 'night');
         has3DBuildingsRef.current = true;
       }
+      const lang = document.documentElement.lang || localStorage.getItem('i18nextLng') || 'ru';
+      localizeMapLabels(map, lang);
     });
 
     mapRef.current = map;

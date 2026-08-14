@@ -31,19 +31,19 @@ export class WaypointDto {
 }
 
 export class CalculateRouteDto {
-  @ApiProperty({ example: 55.7558 })
+  @ApiProperty({ example: 25.2048 })
   @IsNumber()
   originLat: number;
 
-  @ApiProperty({ example: 37.6173 })
+  @ApiProperty({ example: 55.2708 })
   @IsNumber()
   originLng: number;
 
-  @ApiProperty({ example: 59.9343 })
+  @ApiProperty({ example: 24.4539 })
   @IsNumber()
   destLat: number;
 
-  @ApiProperty({ example: 30.3351 })
+  @ApiProperty({ example: 54.3773 })
   @IsNumber()
   destLng: number;
 

@@ -67,6 +67,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Refresh access token' })
   async refresh(
     @Headers('x-refresh-token') headerToken: string,
@@ -93,6 +94,7 @@ export class AuthController {
 
   @Post('refresh-cookie')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Refresh access token via httpOnly cookie' })
   async refreshCookie(
     @Req() req: Request,

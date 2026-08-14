@@ -42,4 +42,11 @@ EXPOSE 3001
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Run as a non-root user: entrypoint.sh calls `prisma generate`/`db push` at
+# startup (needs write access under /app) and the app writes to uploads/, so
+# chown the whole tree instead of just dropping privileges on top of root-owned
+# files.
+RUN groupadd -r app && useradd -r -g app -d /app app && chown -R app:app /app
+USER app
+
 ENTRYPOINT ["/entrypoint.sh"]
