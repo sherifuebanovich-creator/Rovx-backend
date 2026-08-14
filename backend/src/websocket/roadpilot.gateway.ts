@@ -39,6 +39,14 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private readonly logger = new Logger(RovxGateway.name);
   private readonly connectedUsers = new Map<string, string>();
   private readonly userConnections = new Map<string, Set<string>>();
+  // No WS event in this gateway goes through NestJS's global ThrottlerGuard
+  // (REST-only) or any per-event limit of its own — location:update is the
+  // most expensive per-call (2 Prisma queries + a Redis write) and the
+  // highest-frequency by design, so it's the one worth guarding first. The
+  // real frontend already self-throttles to 1 per 5s (useSocket.ts); this
+  // floor is well under that so it never affects a well-behaved client.
+  private readonly lastLocationUpdate = new Map<string, number>();
+  private static readonly LOCATION_UPDATE_MIN_INTERVAL_MS = 2000;
   private readonly USER_ONLINE_TTL = 1800;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -142,6 +150,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
         if (!conns || conns.size === 0) {
           this.userConnections.delete(userId);
+          this.lastLocationUpdate.delete(userId);
           await this.redis.srem('online:users', userId);
           await this.redis.del(`online:ts:${userId}`);
           await this.notifyFriendsOnlineStatus(userId, false);
@@ -160,6 +169,11 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
+
+    const now = Date.now();
+    const last = this.lastLocationUpdate.get(userId) || 0;
+    if (now - last < RovxGateway.LOCATION_UPDATE_MIN_INTERVAL_MS) return;
+    this.lastLocationUpdate.set(userId, now);
 
     if (typeof data?.lat !== 'number' || typeof data?.lng !== 'number' ||
         !isFinite(data.lat) || !isFinite(data.lng) ||
@@ -225,7 +239,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     try {
       const sender = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { subscription: true, subscriptionEnd: true },
+        select: { subscription: true, subscriptionEnd: true, preferences: { select: { shareLocationWithFriends: true } } },
       });
       // subscriptionEnd must be checked too — it's only ever reset to FREE on
       // explicit cancel/admin action, not automatically on expiry, so relying
@@ -235,6 +249,12 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       // by also checking subscriptionEnd).
       const expired = !!sender?.subscriptionEnd && sender.subscriptionEnd < new Date();
       if (!sender || expired || !['PREMIUM_STANDARD', 'PREMIUM_MAX'].includes(sender.subscription)) return;
+      // friends.service.ts#getFriendsLocations (the REST snapshot) filters
+      // out users who've turned this off; this live push had no equivalent
+      // check, so opting out here did nothing against this socket path. No
+      // preferences row defaults to sharing, matching the column's own
+      // @default(true).
+      if (sender.preferences?.shareLocationWithFriends === false) return;
 
       const friendships = await this.prisma.friend.findMany({
         where: {
@@ -380,6 +400,13 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { lat: number; lng: number; radius?: number },
   ) {
+    // handleConnection's JWT check (a DB round-trip) runs async and doesn't
+    // gate handler wiring — every other stateful handler in this file reads
+    // connectedUsers to confirm that check actually landed before doing
+    // anything; this one didn't, so a socket presenting a since-rejected
+    // token (banned user, etc.) could still join arbitrary area rooms during
+    // that window, not just in a narrow race.
+    if (!this.connectedUsers.get(client.id)) return;
     // Unlike location:update, this never left stale `area:*` rooms on
     // repeated calls (e.g. the user panning/searching the map) — the
     // socket's room membership only grew, up to hundreds of rooms per
@@ -797,7 +824,7 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage('voice:call')
   async handleVoiceCall(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { targetUserId: string; callerName: string; callerId?: string },
+    @MessageBody() data: { targetUserId: string },
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId || !data.targetUserId) return;
@@ -805,9 +832,16 @@ export class RovxGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     // userId with no relationship to them — harassment vector.
     if (!(await this.areUsersConnected(userId, data.targetUserId))) return;
 
+    // Was `data.callerName` straight from the client — the incoming-call UI
+    // on the target's end showed whatever name the caller's socket claimed,
+    // letting one friend impersonate another in the call prompt. Look it up
+    // server-side instead, same as sos:trigger/city:message do for their own
+    // sender-name fields.
+    const caller = await this.prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } });
+
     this.gatewayService.sendToUser(data.targetUserId, 'voice:call', {
       callerId: userId,
-      callerName: data.callerName || 'User',
+      callerName: caller?.displayName || 'User',
     });
   }
 

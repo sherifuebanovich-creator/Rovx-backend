@@ -1031,7 +1031,7 @@ export class PremiumService {
     return { success: true, message: `Платёж принят! Ожидает подтверждения администратором. Обычно до 30 минут.`, status: 'pending' };
   }
 
-  async approvePayment(userId: string): Promise<{ success: boolean; message: string }> {
+  async approvePayment(userId: string, messageId?: number): Promise<{ success: boolean; message: string }> {
     // Telegram redelivers callbacks on timeout, and the inline keyboard
     // buttons stay clickable after use — a double-tap or a redelivered
     // update could both read status:'pending' before either write commits.
@@ -1042,6 +1042,18 @@ export class PremiumService {
       const sub = await tx.premiumSubscription.findUnique({ where: { userId } });
       if (!sub || sub.status !== 'pending') {
         return { success: false, message: 'Нет ожидающего платежа' };
+      }
+
+      // See the `telegram:payment-msg:` write in confirmDirectPayment — this
+      // button may have been issued for a payment the user has since
+      // superseded with a fresh submission (same row, new paymentId). A
+      // missing/expired key fails open (same tolerance as the Xsolla lock)
+      // since it just means the entry aged out, not that anything's wrong.
+      if (messageId != null) {
+        const expectedPaymentId = await this.redis.get(`telegram:payment-msg:${messageId}`);
+        if (expectedPaymentId && sub.paymentId && expectedPaymentId !== sub.paymentId) {
+          return { success: false, message: 'Эта заявка устарела — пользователь отправил новый платёж. Проверьте актуальную заявку.' };
+        }
       }
 
       // Was a flat `now + 30 days` (confirmDirectPayment always writes the
@@ -1067,13 +1079,20 @@ export class PremiumService {
     });
   }
 
-  async rejectPayment(userId: string): Promise<{ success: boolean; message: string }> {
+  async rejectPayment(userId: string, messageId?: number): Promise<{ success: boolean; message: string }> {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "userId" FROM premium_subscriptions WHERE "userId" = ${userId} FOR UPDATE`;
 
       const sub = await tx.premiumSubscription.findUnique({ where: { userId } });
       if (!sub || sub.status !== 'pending') {
         return { success: false, message: 'Нет ожидающего платежа' };
+      }
+
+      if (messageId != null) {
+        const expectedPaymentId = await this.redis.get(`telegram:payment-msg:${messageId}`);
+        if (expectedPaymentId && sub.paymentId && expectedPaymentId !== sub.paymentId) {
+          return { success: false, message: 'Эта заявка устарела — пользователь отправил новый платёж. Проверьте актуальную заявку.' };
+        }
       }
 
       // confirmDirectPayment deliberately allows early renewals / tier

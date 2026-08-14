@@ -696,7 +696,8 @@ export class TelegramController implements OnModuleInit {
 
         if (data?.startsWith('pay_approve_')) {
           const userId = data.replace('pay_approve_', '');
-          const result = await this.premium.approvePayment(userId);
+          const messageId = body.callback_query.message?.message_id;
+          const result = await this.premium.approvePayment(userId, messageId);
           if (result.success) {
             await this.telegram.answerCallbackQuery(cbId, '✅ Платёж одобрен!');
             if (chatId) {
@@ -710,7 +711,8 @@ export class TelegramController implements OnModuleInit {
 
         if (data?.startsWith('pay_reject_')) {
           const userId = data.replace('pay_reject_', '');
-          const result = await this.premium.rejectPayment(userId);
+          const messageId = body.callback_query.message?.message_id;
+          const result = await this.premium.rejectPayment(userId, messageId);
           if (result.success) {
             await this.telegram.answerCallbackQuery(cbId, '❌ Платёж отклонён');
             if (chatId) {
