@@ -497,6 +497,8 @@
     "voiceGender": "Голос",
     "voiceGenderMale": "Мужской",
     "voiceGenderFemale": "Женский",
+    "voicePreviewText": "Через триста метров поворот направо",
+    "voicePreviewNeedsSound": "Включите звук, чтобы услышать голос",
     "darkMode": "Тема",
     "theme": {
       "light": "Светлая",

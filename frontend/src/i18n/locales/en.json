@@ -493,6 +493,8 @@
     "voiceGender": "Voice",
     "voiceGenderMale": "Male",
     "voiceGenderFemale": "Female",
+    "voicePreviewText": "In three hundred meters, turn right",
+    "voicePreviewNeedsSound": "Turn on sound to hear the voice",
     "darkMode": "Theme",
     "theme": {
       "light": "Light",

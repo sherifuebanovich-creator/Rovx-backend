@@ -17,6 +17,7 @@ import { VehicleForm } from '@/components/vehicles/VehicleForm';
 import { AddressPicker } from '@/components/settings/AddressPicker';
 import { Vehicle } from '@/types';
 import { getStoredThemeMode, resolveIsDark } from '@/lib/theme';
+import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 
 // Pulls in maplibre-gl (~300KB+) — dynamic+ssr:false so that weight only
 // loads if/when the user actually opens the map picker, instead of bloating
@@ -32,6 +33,7 @@ export default function SettingsPage() {
   const { t } = useTranslation();
   const { user, setUser, preferences, setPreferences } = useAuthStore();
   const { themeMode, setDarkMode, setThemeMode, mapStyle, setMapStyle, show3D, setShow3D } = useMapStore();
+  const { speak, isSpeaking } = useVoiceAssistant();
   const [notifications, setNotifications] = useState(preferences?.trafficAlerts ?? true);
   const [shareLocation, setShareLocation] = useState(preferences?.shareLocationWithFriends ?? true);
   const [sound, setSound] = useState(preferences?.voiceEnabled ?? true);
@@ -242,11 +244,22 @@ export default function SettingsPage() {
         { icon: <FaBell size={16} className="text-yellow-400" />, label: t('settings.notifications'), right: <Toggle value={notifications} onChange={() => { const v = !notifications; setNotifications(v); updatePreference('trafficAlerts', v); }} /> },
         { icon: <FaUsers size={16} className="text-green-400" />, label: t('settings.shareLocation'), right: <Toggle value={shareLocation} onChange={() => { const v = !shareLocation; setShareLocation(v); updatePreference('shareLocationWithFriends', v); }} /> },
         { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.sound'), right: <Toggle value={sound} onChange={() => { const v = !sound; setSound(v); updatePreference('voiceEnabled', v); }} /> },
-        { icon: <FaVolumeUp size={16} className="text-blue-400" />, label: t('settings.voiceGender'),
+        { icon: <FaVolumeUp size={16} className={`text-blue-400 ${isSpeaking ? 'animate-pulse' : ''}`} />, label: t('settings.voiceGender'),
           right: (
             <div className="flex items-center gap-1.5">
               {(['MALE', 'FEMALE'] as const).map((g) => (
-                <button key={g} type="button" onClick={() => { setVoiceGender(g); updatePreference('voiceGender', g); }}
+                // Changing this toggle used to give zero feedback about
+                // whether TTS actually works or what the voice sounds like —
+                // the tap itself is a user gesture, so it's the one place we
+                // can play a short preview without hitting the browser's
+                // autoplay-block. setPreferences() below is synchronous, so
+                // speak()'s own read of preferences.voiceGender already sees
+                // the new value by the time it fires.
+                <button key={g} type="button" onClick={() => {
+                  setVoiceGender(g); updatePreference('voiceGender', g);
+                  if (sound) speak(t('settings.voicePreviewText'), true);
+                  else toast(t('settings.voicePreviewNeedsSound'));
+                }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
                     voiceGender === g
                       ? 'bg-primary-600/30 border-primary-500/50 text-white'

@@ -167,6 +167,16 @@ export class VoiceRoomsService {
     if (room.size === 0) this.rooms.delete(roomId);
     return { roomId, participant };
   }
+
+  // The last participant leaving only ever cleared the in-memory Map above
+  // — the DB row stayed isActive:true forever, so listActiveRooms() (which
+  // filters on isActive) kept surfacing it with a permanent "0/N" forever.
+  // updateMany + the isActive:true guard makes this a no-op if the owner
+  // already closed the room explicitly (closeRoom) around the same time.
+  async closeRoomIfEmpty(roomId: string): Promise<void> {
+    if (this.rooms.has(roomId)) return;
+    await this.prisma.voiceRoom.updateMany({ where: { id: roomId, isActive: true }, data: { isActive: false } });
+  }
 }
 
 export interface RTCIceServerConfig {

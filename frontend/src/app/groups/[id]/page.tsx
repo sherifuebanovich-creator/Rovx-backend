@@ -85,7 +85,6 @@ export default function GroupChatPage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', description: '', city: '' });
   const [editLoading, setEditLoading] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
@@ -727,76 +726,7 @@ export default function GroupChatPage() {
           }`}>
           <FaStar size={16} fill={group.isFavorited ? 'currentColor' : 'none'} />
         </button>
-        {isMember && (
-          <button onClick={() => setShowMembers(!showMembers)}
-            className="px-3 py-1.5 rounded-lg bg-dark-surface text-gray-400 text-xs hover:bg-dark-border">
-            {showMembers ? t('groupDetails.chat') : t('groupDetails.members')}
-          </button>
-        )}
-        {isOwner && (
-          <div className="flex gap-1">
-            <button onClick={() => { setEditing(!editing); setEditForm({ name: group.name, description: group.description || '', city: group.city || '' }); }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-dark-surface text-gray-400 hover:bg-dark-border">
-              <FaEdit size={12} />
-            </button>
-            <button onClick={handleDeleteGroup}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20">
-              <FaTrash size={12} />
-            </button>
-          </div>
-        )}
       </div>
-
-      {/* Members panel */}
-      <AnimatePresence>
-        {showMembers && isMember && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-dark-border">
-            <div className="p-4 space-y-2">
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{t('groupDetails.members')} ({group.members?.length})</p>
-              {group.members?.map(m => (
-                <div key={m.id} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
-                    {m.user?.avatar ? <img src={mediaUrl(m.user.avatar)} alt="" className="w-full h-full object-cover" /> : m.user?.displayName?.[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <span className="text-sm text-dark-text flex items-center gap-1">{m.user.displayName}<RoleBadge role={m.user?.role} /></span>
-                  {m.isAdmin && <span className="text-[10px] text-primary-400 bg-primary-600/20 px-1.5 py-0.5 rounded">{t('groupDetails.admin')}</span>}
-                </div>
-              ))}
-              {isMember && !isOwner && (
-                <button onClick={leaveGroup} className="mt-3 text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
-                  <FaSignOutAlt size={10} /> {t('groupDetails.leave')}
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Edit panel */}
-      <AnimatePresence>
-        {editing && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-dark-border">
-            <div className="p-4 space-y-2">
-              <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
-                className="input-field text-sm" placeholder={t('groupDetails.nameLabel')} />
-              <input value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
-                className="input-field text-sm" placeholder={t('groupDetails.descriptionLabel')} />
-              <input value={editForm.city} onChange={e => setEditForm(p => ({ ...p, city: e.target.value }))}
-                className="input-field text-sm" placeholder={t('groupDetails.cityLabel')} />
-              <div className="flex gap-2">
-                <button onClick={() => setEditing(false)}
-                  className="flex-1 py-2 rounded-xl text-sm bg-dark-surface text-gray-400 hover:bg-dark-border">{t('groupDetails.cancel')}</button>
-                <button onClick={handleEditGroup} disabled={editLoading}
-                  className="flex-1 py-2 rounded-xl text-sm bg-primary-600 text-white hover:bg-primary-500 flex items-center justify-center gap-1">
-                  {editLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSave size={12} /> {t('groupDetails.save')}</>}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* NOT A MEMBER — show join screen */}
       {!isMember ? (
@@ -1158,9 +1088,39 @@ export default function GroupChatPage() {
               <button onClick={() => setShowInfo(false)} className="text-gray-400 hover:text-dark-text">
                 <FaArrowLeft size={16} />
               </button>
-              <h2 className="text-dark-text font-semibold">{t('groupDetails.info')}</h2>
+              <h2 className="text-dark-text font-semibold flex-1">{t('groupDetails.info')}</h2>
+              {isOwner && (
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditing(!editing); setEditForm({ name: group.name, description: group.description || '', city: group.city || '' }); }}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-dark-surface text-gray-400 hover:bg-dark-border">
+                    <FaEdit size={12} />
+                  </button>
+                  <button onClick={handleDeleteGroup}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20">
+                    <FaTrash size={12} />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto">
+              {isOwner && editing ? (
+                <div className="p-4 space-y-2">
+                  <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                    className="input-field text-sm" placeholder={t('groupDetails.nameLabel')} />
+                  <input value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
+                    className="input-field text-sm" placeholder={t('groupDetails.descriptionLabel')} />
+                  <input value={editForm.city} onChange={e => setEditForm(p => ({ ...p, city: e.target.value }))}
+                    className="input-field text-sm" placeholder={t('groupDetails.cityLabel')} />
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditing(false)}
+                      className="flex-1 py-2 rounded-xl text-sm bg-dark-surface text-gray-400 hover:bg-dark-border">{t('groupDetails.cancel')}</button>
+                    <button onClick={handleEditGroup} disabled={editLoading}
+                      className="flex-1 py-2 rounded-xl text-sm bg-primary-600 text-white hover:bg-primary-500 flex items-center justify-center gap-1">
+                      {editLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><FaSave size={12} /> {t('groupDetails.save')}</>}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="flex flex-col items-center py-8 px-4">
                 <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-600 flex items-center justify-center text-white text-3xl font-bold mb-4 overflow-hidden">
                   {group.avatar ? <img src={mediaUrl(group.avatar)} alt="" className="w-full h-full object-cover" /> : group.name[0]?.toUpperCase()}
@@ -1174,7 +1134,8 @@ export default function GroupChatPage() {
                   )}
                 </div>
               </div>
-              <div className="px-4 space-y-3">
+              )}
+              {(!isOwner || !editing) && <div className="px-4 space-y-3">
                 {group.description && (
                   <div className="bg-dark-surface rounded-xl p-4">
                     <p className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wider">{t('groupDetails.description')}</p>
@@ -1355,7 +1316,7 @@ export default function GroupChatPage() {
                     <FaSignOutAlt size={14} /> {t('groupDetails.leave')}
                   </button>
                 ) : null}
-              </div>
+              </div>}
             </div>
           </motion.div>
         )}

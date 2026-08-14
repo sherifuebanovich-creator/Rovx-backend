@@ -86,6 +86,18 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
         next(new Error('Unauthorized'));
       }
     });
+
+    // Live participant counts are in-memory only (see voice-rooms.service.ts)
+    // and every restart/redeploy starts that Map empty — any room whose last
+    // participant left via a clean disconnect gets closed automatically now
+    // (closeRoomIfEmpty), but rooms are per-call sessions the frontend
+    // creates fresh on every "start call" rather than reusable channels, so
+    // one that was live across a restart has no participants left to
+    // reconnect anyway. Sweep isActive rooms once at boot so a redeploy
+    // doesn't leave them stuck "active" with a permanent 0/N forever.
+    this.prisma.voiceRoom.updateMany({ where: { isActive: true }, data: { isActive: false } })
+      .then(({ count }) => { if (count) this.logger.log(`Closed ${count} stale voice room(s) left active from before this boot`); })
+      .catch((err) => this.logger.warn(`Startup voice room sweep failed: ${(err as Error).message}`));
   }
 
   handleConnection(client: Socket) {
@@ -93,9 +105,9 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
     this.logger.log(`Voice socket connected: ${client.id} (user: ${user?.userId})`);
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     this.connectedUsers.delete(client.id);
-    this.leaveCurrentRoom(client);
+    await this.leaveCurrentRoom(client);
   }
 
   @SubscribeMessage('room:join')
@@ -106,7 +118,7 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
     // A client can be mid-reconnect or switching rooms — always drop any
     // previous membership first so a stale entry (and its socket.io room
     // subscription) never lingers under a new roomId.
-    this.leaveCurrentRoom(client);
+    await this.leaveCurrentRoom(client);
 
     const room = await this.prisma.voiceRoom.findUnique({ where: { id: data.roomId } });
     if (!room || !room.isActive) return { error: 'Room not found' };
@@ -155,8 +167,8 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
   }
 
   @SubscribeMessage('room:leave')
-  handleLeave(@ConnectedSocket() client: Socket) {
-    this.leaveCurrentRoom(client);
+  async handleLeave(@ConnectedSocket() client: Socket) {
+    await this.leaveCurrentRoom(client);
   }
 
   // Closing a room (VoiceRoomsController#close) only ever flipped isActive
@@ -174,13 +186,18 @@ export class VoiceRoomsGateway implements OnGatewayInit, OnGatewayConnection, On
     }).catch(() => {});
   }
 
-  private leaveCurrentRoom(client: Socket) {
+  private async leaveCurrentRoom(client: Socket) {
     const result = this.voiceRoomsService.removeParticipant(client.id);
     if (!result) return;
     const { roomId, participant } = result;
     client.leave(`voice:${roomId}`);
     this.server.to(`voice:${roomId}`).emit('room:user-left', { userId: participant.userId, socketId: client.id });
     this.logger.log(`User ${participant.userId} left voice room ${roomId}`);
+    try {
+      await this.voiceRoomsService.closeRoomIfEmpty(roomId);
+    } catch (err) {
+      this.logger.warn(`Failed to auto-close empty room ${roomId}: ${(err as Error).message}`);
+    }
   }
 
   // ── WebRTC signaling relay ──────────────────────────────────────────
