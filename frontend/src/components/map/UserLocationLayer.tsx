@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useCallback, useState, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import { useMapStore } from '@/store/map.store';
 import {
@@ -20,6 +21,7 @@ interface Props {
 }
 
 function UserLocationLayer({ map }: Props) {
+  const { t: tCommon } = useTranslation();
   const blueDotRef = useRef<BlueDotElements | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const accuracySourceId = 'user-accuracy-circle';
@@ -366,7 +368,7 @@ function UserLocationLayer({ map }: Props) {
           <span className="flex-1">{locationError}</span>
           <button
             onClick={() => setDismissedError(locationError)}
-            aria-label="Dismiss"
+            aria-label={tCommon('common.close')}
             className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
           >
             ×

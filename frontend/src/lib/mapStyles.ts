@@ -7,6 +7,14 @@ const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
 const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
   name: 'Satellite',
+  // MapViewGL's poi-objects-layer/poi-reports-layer add a symbol layer with
+  // `text-field` on top of whichever style is active (see the glyph-server
+  // comment there) — without a `glyphs` template here, MapLibre has nowhere
+  // to rasterize those labels from and warns "use of text-field requires a
+  // style glyphs property", silently dropping every POI name label while in
+  // Satellite mode. Same endpoint the OpenFreeMap-hosted styles already use,
+  // so 'Noto Sans Regular' resolves identically across all MAP_STYLES.
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
   sources: {
     'satellite': {
       type: 'raster',

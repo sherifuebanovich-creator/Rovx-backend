@@ -384,6 +384,12 @@
     "title": "Traffic Lights",
     "sec": "s"
   },
+  "geolocation": {
+    "permissionDenied": "Location permission denied. Please enable it in browser settings.",
+    "unavailable": "Location unavailable. Ensure GPS is enabled.",
+    "timedOut": "Location request timed out. Retrying...",
+    "notSupported": "Geolocation is not supported by your browser"
+  },
   "auth": {
     "errors": {
       "backendSyncFailed": "Couldn't finish signing you in. Please try Google sign-in again."
@@ -771,7 +777,14 @@
     "findFriends": "Find Friends",
     "online": "Online",
     "offline": "Offline",
-    "searchError": "Search failed"
+    "searchError": "Search failed",
+    "blockedTab": "Blocked",
+    "block": "Block",
+    "unblock": "Unblock",
+    "blockConfirm": "Block {{name}}? They won't be able to add you as a friend, message you, or call you.",
+    "userBlocked": "User blocked",
+    "userUnblocked": "User unblocked",
+    "noBlocked": "No blocked users"
   },
   "voiceRooms": {
     "title": "Voice Rooms",

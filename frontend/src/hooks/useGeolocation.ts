@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMapStore } from '@/store/map.store';
 import { haversineDist } from '@/lib/geo';
 
@@ -30,6 +31,7 @@ function setSmoothedSpeed(v: number) {
 }
 
 export function useGeolocation() {
+  const { t } = useTranslation();
   const watchIdRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
   const smoothSpeedRef = useRef(getInitialSmoothedSpeed());
@@ -123,13 +125,13 @@ export function useGeolocation() {
   const handleError = useCallback((error: GeolocationPositionError) => {
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        setError('Location permission denied. Please enable in browser settings.');
-        setLocationError('Location permission denied');
+        setError(t('geolocation.permissionDenied'));
+        setLocationError(t('geolocation.permissionDenied'));
         setPermissionState('denied');
         break;
       case error.POSITION_UNAVAILABLE:
-        setError('Location unavailable. Ensure GPS is enabled.');
-        setLocationError('Location unavailable');
+        setError(t('geolocation.unavailable'));
+        setLocationError(t('geolocation.unavailable'));
         setPermissionState('unavailable');
         break;
       case error.TIMEOUT:
@@ -138,17 +140,17 @@ export function useGeolocation() {
         // is just a background retry, not a real failure. Surfacing the
         // banner anyway made a working blue dot look "broken".
         if (!hasFixRef.current) {
-          setError('Location request timed out. Retrying...');
-          setLocationError('Location request timed out');
+          setError(t('geolocation.timedOut'));
+          setLocationError(t('geolocation.timedOut'));
         }
         break;
     }
-  }, [setLocationError]);
+  }, [setLocationError, t]);
 
   const startWatching = useCallback(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      setLocationError('Geolocation not supported');
+      setError(t('geolocation.notSupported'));
+      setLocationError(t('geolocation.notSupported'));
       return;
     }
 
@@ -172,7 +174,7 @@ export function useGeolocation() {
     };
 
     watchIdRef.current = navigator.geolocation.watchPosition(processPosition, handleError, options);
-  }, [processPosition, handleError]);
+  }, [processPosition, handleError, t]);
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {
