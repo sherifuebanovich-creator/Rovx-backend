@@ -34,6 +34,33 @@ export class MailService {
     return !!this.transporter;
   }
 
+  private lastVerify: { ok: boolean; error?: string; at: number } | null = null;
+  private static readonly VERIFY_CACHE_MS = 5 * 60 * 1000;
+
+  /**
+   * Actually authenticates against the SMTP server (nodemailer's VRFY/no-op
+   * handshake, doesn't send an email) — `isConfigured()` alone only proves
+   * SMTP_USER/PASS are *set*, not that they still work (an expired Gmail App
+   * Password fails silently in sendVerificationCode's catch block with
+   * nothing surfaced to the caller). Cached for a few minutes so /health
+   * being polled (Render's own healthcheck included) doesn't hammer the SMTP
+   * server with a fresh auth attempt on every request.
+   */
+  async verify(): Promise<{ ok: boolean; error?: string }> {
+    if (!this.transporter) return { ok: false, error: 'not_configured' };
+    if (this.lastVerify && Date.now() - this.lastVerify.at < MailService.VERIFY_CACHE_MS) {
+      return this.lastVerify;
+    }
+    try {
+      await this.transporter.verify();
+      this.lastVerify = { ok: true, at: Date.now() };
+    } catch (err: any) {
+      this.lastVerify = { ok: false, error: err?.message || 'verify_failed', at: Date.now() };
+      this.logger.error(`SMTP verify failed: ${this.lastVerify.error}`);
+    }
+    return this.lastVerify;
+  }
+
   async sendVerificationCode(to: string, code: string): Promise<boolean> {
     if (!this.transporter) {
       this.logger.warn(`SMTP not configured — skipping email to ${to}`);

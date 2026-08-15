@@ -35,13 +35,21 @@ export class HealthController {
       redisStatus = 'down';
     }
 
-    // Not part of `isHealthy` — SMTP being unconfigured shouldn't flip the
-    // healthcheck to 503 and send Render into a restart loop over something
-    // that isn't a crash. It's exposed here purely as a no-secrets-leaked
-    // way to see whether SMTP_USER/SMTP_PASS are actually set on Render,
-    // since that env var panel isn't otherwise reachable from outside the
-    // dashboard.
-    const mailStatus = this.mail.isConfigured() ? 'configured' : 'not_configured';
+    // Not part of `isHealthy` — SMTP being unconfigured/broken shouldn't flip
+    // the healthcheck to 503 and send Render into a restart loop over
+    // something that isn't a crash. It's exposed here purely as a
+    // no-secrets-leaked way to see whether SMTP_USER/SMTP_PASS are set AND
+    // actually authenticate, since that env var panel isn't otherwise
+    // reachable from outside the dashboard, and a wrong/expired credential
+    // fails silently in sendVerificationCode with nothing surfaced to the
+    // caller (by design — /auth/forgot-password always returns generic
+    // success to avoid leaking which emails are registered).
+    const mailResult = await this.mail.verify();
+    const mailStatus = mailResult.ok
+      ? 'configured'
+      : mailResult.error === 'not_configured'
+        ? 'not_configured'
+        : `auth_failed: ${mailResult.error}`;
 
     const isHealthy = dbStatus === 'ok' && redisStatus === 'ok';
     const status = isHealthy ? 'ok' : 'degraded';
