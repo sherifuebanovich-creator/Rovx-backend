@@ -2,6 +2,7 @@ import { Controller, Get, Logger, HttpException, HttpStatus } from '@nestjs/comm
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from './prisma/prisma.service';
 import { RedisService } from './redis/redis.service';
+import { MailService } from './mail/mail.service';
 
 @ApiTags('Health')
 @Controller('health')
@@ -11,6 +12,7 @@ export class HealthController {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private mail: MailService,
   ) {}
 
   @Get()
@@ -33,6 +35,14 @@ export class HealthController {
       redisStatus = 'down';
     }
 
+    // Not part of `isHealthy` — SMTP being unconfigured shouldn't flip the
+    // healthcheck to 503 and send Render into a restart loop over something
+    // that isn't a crash. It's exposed here purely as a no-secrets-leaked
+    // way to see whether SMTP_USER/SMTP_PASS are actually set on Render,
+    // since that env var panel isn't otherwise reachable from outside the
+    // dashboard.
+    const mailStatus = this.mail.isConfigured() ? 'configured' : 'not_configured';
+
     const isHealthy = dbStatus === 'ok' && redisStatus === 'ok';
     const status = isHealthy ? 'ok' : 'degraded';
 
@@ -42,7 +52,7 @@ export class HealthController {
         version: '1.0.0',
         app: 'ROVX API',
         timestamp: new Date().toISOString(),
-        services: { database: dbStatus, redis: redisStatus },
+        services: { database: dbStatus, redis: redisStatus, mail: mailStatus },
       }, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
@@ -51,7 +61,7 @@ export class HealthController {
       version: '1.0.0',
       app: 'ROVX API',
       timestamp: new Date().toISOString(),
-      services: { database: dbStatus, redis: redisStatus },
+      services: { database: dbStatus, redis: redisStatus, mail: mailStatus },
     };
   }
 }

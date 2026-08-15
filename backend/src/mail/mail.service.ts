@@ -29,6 +29,11 @@ export class MailService {
     });
   }
 
+  /** Exposed for /health so SMTP misconfiguration is visible without reading Render's env vars directly. */
+  isConfigured(): boolean {
+    return !!this.transporter;
+  }
+
   async sendVerificationCode(to: string, code: string): Promise<boolean> {
     if (!this.transporter) {
       this.logger.warn(`SMTP not configured — skipping email to ${to}`);
